@@ -24,89 +24,121 @@ def to_rome(dt):
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(pytz_timezone('Europe/Rome'))
 
-def scegli_operatori_automatici(servizi_ids, data_str, ora_str, operatori_possibili, turni_per_operatore, all_apps):
+def is_calendar_closed(op_id, inizio, fine, turni_per_operatore, all_apps):
     """
-    Restituisce una lista di operatori assegnati (uno per ogni servizio).
-    1. Prova a mettere tutti i servizi con lo stesso operatore.
-    2. Se non è possibile, restituisce solo None (NON distribuisce più tra operatori per debug).
+    Restituisce True se la cella (intervallo orario per operatore) NON è selezionabile per prenotazioni.
+    Controlla:
+    - fuori turno
+    - blocchi OFF globali o per operatore
+    - sovrapposizione appuntamenti
+    """
+    def to_naive(dt):
+        if dt is not None and getattr(dt, "tzinfo", None) is not None:
+            return dt.replace(tzinfo=None)
+        return dt
+
+    inizio = to_naive(inizio)
+    fine = to_naive(fine)
+    shifts = turni_per_operatore.get(op_id, [])
+    # Fuori turno
+    if not any(s <= inizio.time() and fine.time() <= e for s, e in shifts):
+        return True
+    for a in all_apps:
+        a_start = to_naive(a.start_time)
+        a_end = to_naive(a.start_time + timedelta(minutes=a._duration))
+        # Blocco OFF globale
+        if a.operator_id is None and a.note and "OFF" in a.note:
+            if a_start < fine and a_end > inizio:
+                return True
+        # Blocco OFF per operatore
+        if a.operator_id == op_id and a.note and "OFF" in a.note:
+            if a_start < fine and a_end > inizio:
+                return True
+        # Sovrapposizione appuntamenti
+        if a.operator_id == op_id and not (a.note and "OFF" in a.note):
+            if a_start < fine and a_end > inizio:
+                return True
+    return False
+
+def scegli_operatori_automatici(servizi_ids, data_str, ora_str, operatori_possibili, turni_per_operatore, all_apps, operatori_preferiti_ids=[]):
+    """
+    Restituisce una lista di operatori assegnati (uno per ogni servizio), seguendo le priorità:
+    1. Tutti i servizi con lo stesso operatore (priorità alta).
+    2. Se non possibile, assegnazione a cascata cercando di raggruppare il maggior numero di servizi
+       sullo stesso operatore, preferendo gli operatori_preferiti_ids.
+    3. Se neanche a cascata è possibile assegnare tutti i servizi, restituisce [None] * len(servizi_ids).
     """
 
     servizi_objs = Service.query.filter(Service.id.in_(servizi_ids)).all()
     servizi_map = {s.id: s for s in servizi_objs}
-    servizi_operatori = {s.id: [op.id for op in s.operators] for s in servizi_objs}
+    servizi_operatori_abilitati = {s.id: [op.id for op in s.operators] for s in servizi_objs}
     servizi_durate = [servizi_map[sid].servizio_durata or 30 for sid in servizi_ids]
 
-    operatori_possibili = [
-        op for op in operatori_possibili
-        if all(op.id in servizi_operatori[sid] for sid in servizi_ids)
-    ]
+    # Filtra gli operatori che sono almeno abilitati per uno dei servizi richiesti
+    # e ordina gli operatori preferiti per primi
+    operatori_rilevanti = sorted(
+        [op for op in operatori_possibili if any(op.id in servizi_operatori_abilitati[sid] for sid in servizi_ids)],
+        key=lambda op: (op.id not in operatori_preferiti_ids, op.user_nome) # Metti i preferiti per primi
+    )
 
-    data_giorno = datetime.strptime(data_str, "%Y-%m-%d").date()
     start_time = datetime.strptime(f"{data_str} {ora_str}", "%Y-%m-%d %H:%M")
 
-    def is_calendar_closed(op_id, inizio, fine):
-        shifts = turni_per_operatore.get(op_id, [])
-        if not any(s <= inizio.time() and fine.time() <= e for s, e in shifts):
-            return True
-        for a in all_apps:
-            a_start = a.start_time.replace(tzinfo=None)
-            a_end = a_start + timedelta(minutes=a._duration)
-            if a.operator_id is None and a.note and "OFF" in a.note:
-                if a_start < fine and a_end > inizio:
-                    return True
-            if a.operator_id == op_id:
-                if a_start < fine and a_end > inizio:
-                    return True
-        return False
+    # --- 1. Prova tutti con lo stesso operatore (PRIORITÀ ALTA) ---
+    # Inizia dagli operatori preferiti per questa ricerca
+    for op in operatori_rilevanti:
+        # Se l'operatore non è abilitato per *tutti* i servizi, salta
+        if not all(op.id in servizi_operatori_abilitati.get(sid, []) for sid in servizi_ids):
+            continue
 
-    # 1. Prova tutti con lo stesso operatore
-    for op in operatori_possibili:
-        slot_corrente = start_time
+        slot_corrente_temp = start_time
         ok = True
-        for durata in servizi_durate:
-            inizio = slot_corrente
-            fine = slot_corrente + timedelta(minutes=durata)
-            if is_calendar_closed(op.id, inizio, fine):
+        for durata_servizio in servizi_durate:
+            inizio_temp = slot_corrente_temp
+            fine_temp = slot_corrente_temp + timedelta(minutes=durata_servizio)
+            
+            if is_calendar_closed(op.id, inizio_temp, fine_temp, turni_per_operatore, all_apps):
                 ok = False
                 break
-            slot_corrente = fine
+            slot_corrente_temp = fine_temp # Aggiorna lo slot per il servizio successivo
+        
         if ok:
+            # Trovato un singolo operatore per tutti i servizi! 🎉
             return [op.id] * len(servizi_ids)
 
-    # 2. Disabilitato per debug: NON assegnare a cascata
-    # slot_corrente = start_time
-    # operatori_assegnati = []
-    # i = 0
-    # while i < len(servizi_ids):
-    #     found = False
-    #     for op in operatori_possibili:
-    #         # Prova a incastrare più servizi possibile su questo operatore da posizione i
-    #         slot = slot_corrente
-    #         j = i
-    #         while j < len(servizi_ids):
-    #             durata = servizi_durate[j]
-    #             inizio = slot
-    #             fine = slot + timedelta(minutes=durata)
-    #             if is_calendar_closed(op.id, inizio, fine):
-    #                 break
-    #             slot = fine
-    #             j += 1
-    #         # Se almeno uno lo mette, assegnali tutti all'operatore e continua
-    #         if j > i:
-    #             operatori_assegnati += [op.id] * (j - i)
-    #             slot_corrente = slot
-    #             i = j
-    #             found = True
-    #             break
-    #     if not found:
-    #         # Nessun operatore libero per il servizio i
-    #         operatori_assegnati.append(None)
-    #         slot_corrente += timedelta(minutes=servizi_durate[i])
-    #         i += 1
-    # return operatori_assegnati
-
-    # Return None per tutti se non fattibile tutta la catena su uno stesso operatore
-    return [None] * len(servizi_ids)
+    # --- 2. Assegnazione a cascata con raggruppamento e preferenza operatori (PRIORITÀ SECONDARIA) ---
+    operatori_assegnati = []
+    slot_corrente = start_time
+    
+    for i, servizio_id in enumerate(servizi_ids):
+        durata_servizio = servizi_durate[i]
+        inizio_servizio = slot_corrente
+        fine_servizio = slot_corrente + timedelta(minutes=durata_servizio)
+        
+        found_operator_for_current_service = False
+        
+        # Prova prima con gli operatori preferiti che sono anche abilitati per questo servizio
+        for op in [o for o in operatori_rilevanti if o.id in servizi_operatori_abilitati.get(servizio_id, [])]:
+            if not is_calendar_closed(op.id, inizio_servizio, fine_servizio, turni_per_operatore, all_apps):
+                operatori_assegnati.append(op.id)
+                slot_corrente = fine_servizio
+                found_operator_for_current_service = True
+                break # Operatore trovato per questo servizio, passa al prossimo
+        
+        if not found_operator_for_current_service:
+            # Se nessuno degli operatori preferiti va bene, prova tutti gli altri operatori rilevanti
+            # (non preferiti, ma comunque abilitati e disponibili)
+            for op in [o for o in operatori_possibili if o.id in servizi_operatori_abilitati.get(servizio_id, []) and o.id not in operatori_preferiti_ids]:
+                if not is_calendar_closed(op.id, inizio_servizio, fine_servizio, turni_per_operatore, all_apps):
+                    operatori_assegnati.append(op.id)
+                    slot_corrente = fine_servizio
+                    found_operator_for_current_service = True
+                    break
+        
+        if not found_operator_for_current_service:
+            # Se non si trova nessun operatore per il servizio corrente, la catena fallisce
+            return [None] * len(servizi_ids) 
+            
+    return operatori_assegnati # Ritorna la lista completa di operatori assegnati
 
 booking_bp = Blueprint('booking', __name__)
 
@@ -167,6 +199,8 @@ def orari_disponibili():
     servizi = Service.query.filter(Service.id.in_(servizi_ids)).all()
     if not servizi:
         return jsonify({"error": "Servizi non trovati"}), 404
+    
+    servizi_operatori = {s.id: [op.id for op in s.operators] for s in servizi}
 
     data = datetime.strptime(data_str, "%Y-%m-%d").date()
     business_info = BusinessInfo.query.first()
@@ -281,6 +315,7 @@ def orari_disponibili():
             fine = datetime.combine(data, end)
             while slot + durata <= fine:
                 slot_corrente = slot
+                operatori_catena = []
                 ok = True
                 for servizio_item in servizi_items:
                     servizio_id = int(servizio_item.get("servizio_id"))
@@ -288,14 +323,23 @@ def orari_disponibili():
                     durata_td = timedelta(minutes=durata_servizio)
                     inizio = slot_corrente
                     fine_servizio = slot_corrente + durata_td
-                    risultato, motivo = operatore_disponibile(op.id, inizio, fine_servizio)
-                    if not risultato:
+
+                    # Cerca un operatore disponibile per questo servizio
+                    trovato = False
+                    for op in operatori_disponibili:
+                        risultato, motivo = operatore_disponibile(op.id, inizio, fine_servizio)
+                        if risultato and op.id in [op_id for op_id in servizi_operatori[servizio_id]]:
+                            operatori_catena.append(op.id)
+                            trovato = True
+                            break
+                    if not trovato:
                         ok = False
                         break
                     slot_corrente = fine_servizio
+
                 if ok:
                     orari.append(slot.strftime("%H:%M"))
-                    slot_operatori[slot.strftime("%H:%M")] = [op.id] * len(servizi_items)
+                    slot_operatori[slot.strftime("%H:%M")] = operatori_catena
                 slot += slot_step
 
     orari = sorted(list(set(orari)))
@@ -317,7 +361,7 @@ def prenota():
     servizi = data.get('servizi', [])
     codice_conferma = data.get('codice_conferma')
     dummy_client = Client.get_dummy_booking()
-    booking_session_id = str(uuid.uuid4()) # Genera un ID di sessione unico per la prenotazione
+    booking_session_id = str(uuid.uuid4())
 
     # Verifica codice conferma
     if 'codice_conferma' in session:
@@ -332,123 +376,161 @@ def prenota():
     if not all([nome, telefono, data_str, ora]) or not servizi or not isinstance(servizi, list):
         return jsonify({"error": "Tutti i campi sono obbligatori"}), 400
 
-    operatori_assegnati = data.get("operatori_assegnati", [])
-    if len(operatori_assegnati) != len(servizi):
-        # Assegnazione automatica se non specificata dal frontend
-        operatori_assegnati = scegli_operatori_automatici(
-            servizi_ids=[int(s.get("servizio_id")) for s in servizi],
-            data_str=data_str,
-            ora_str=ora,
-            operatori_possibili=operatori_disponibili,
-            turni_per_operatore=turni_per_operatore,
-            all_apps=all_apps
-        )
-        if len(operatori_assegnati) != len(servizi):
-            return jsonify({
-                "success": False,
-                "prenotazioni": [],
-                "errori": ["Non è stato possibile assegnare operatori a tutti i servizi richiesti."]
-            })
-
-    risultati = []
-    errori = []
-
-    start_time = datetime.strptime(f"{data_str} {ora}", "%Y-%m-%d %H:%M")
-    data_date = start_time.date()
-    business_info = BusinessInfo.query.first()
-    apertura = business_info.active_opening_time
-    chiusura = business_info.active_closing_time
-
-    operatori_disponibili = Operator.query.filter_by(is_deleted=False, is_visible=True).all()
-    turni_raw = OperatorShift.query.filter(
-        OperatorShift.operator_id.in_([o.id for o in operatori_disponibili]),
-        OperatorShift.shift_date == data_date
-    ).all()
-    turni_per_operatore = {}
-    for t in turni_raw:
-        start = max(t.shift_start_time or apertura, apertura)
-        end   = min(t.shift_end_time   or chiusura, chiusura)
-        if start < end:
-            turni_per_operatore.setdefault(t.operator_id, []).append((start, end))
-    for op in operatori_disponibili:
-        if op.id not in turni_per_operatore:
-            turni_per_operatore[op.id] = [(apertura, chiusura)]
-
-    day_start = datetime.combine(data_date, time.min)
-    day_end   = datetime.combine(data_date + timedelta(days=1), time.min)
-    all_apps  = Appointment.query.filter(
-        Appointment.start_time >= day_start,
-        Appointment.start_time <  day_end
-    ).all()
-
-    def to_naive(dt):
-        """Converte un datetime aware in naive, oppure lo restituisce se già naive."""
-        if dt is not None and getattr(dt, "tzinfo", None) is not None:
-            return dt.replace(tzinfo=None)
-        return dt
-
-    def operatore_disponibile(op_id, inizio, fine):
-        # 1. Verifica turno
-        shifts = turni_per_operatore.get(op_id, [])
-        if not any(s <= inizio.time() and fine.time() <= e for s, e in shifts):
-            return False
-        # 2. Verifica sovrapposizioni appuntamenti e blocchi OFF
-        for a in all_apps:
-            a_start = to_naive(a.start_time)
-            a_end   = to_naive(a_start + timedelta(minutes=a._duration))
-            # OFF globali
-            if a.operator_id is None and a.note and "OFF" in a.note:
-                if a_start < to_naive(fine) and a_end > to_naive(inizio):
-                    return False
-            if a.operator_id == op_id:
-                if a_start < to_naive(fine) and a_end > to_naive(inizio):
-                    return False
-        return True
-
-    risultati = []
-    slot_corrente = start_time
+    # --- PATCH: Usa la stessa logica di orari_disponibili per validare slot e operatori ---
     servizi_ids = [int(s.get("servizio_id")) for s in servizi]
     servizi_objs = Service.query.filter(Service.id.in_(servizi_ids)).all()
     servizi_map = {s.id: s for s in servizi_objs}
     servizi_operatori = {s.id: [op.id for op in s.operators] for s in servizi_objs}
 
-    def is_calendar_closed(op_id, inizio, fine, turni_per_operatore, all_apps):
-        # Converto tutto a naive
-        inizio = to_naive(inizio)
-        fine = to_naive(fine)
-        shifts = turni_per_operatore.get(op_id, [])
-        if not any(s <= inizio.time() and fine.time() <= e for s, e in shifts):
-            return True
-        for a in all_apps:
-            a_start = to_naive(a.start_time)
-            a_end   = to_naive(a.start_time + timedelta(minutes=a._duration))
-            if a.operator_id is None and a.note and "OFF" in a.note:
-                if a_start < fine and a_end > inizio:
-                    return True
-            if a.operator_id == op_id and a.note and "OFF" in a.note:
-                if a_start < fine and a_end > inizio:
-                    return True
-        return False
+    data = datetime.strptime(data_str, "%Y-%m-%d").date()
+    business_info = BusinessInfo.query.first()
+    apertura = business_info.active_opening_time
+    chiusura = business_info.active_closing_time
 
+    operatori_disponibili = Operator.query.filter_by(is_deleted=False, is_visible=True).all()
+    turni_disponibili = OperatorShift.query.filter(
+        OperatorShift.operator_id.in_([o.id for o in operatori_disponibili]),
+        OperatorShift.shift_date == data
+    ).all()
+    turni_per_operatore = {}
+    for op in operatori_disponibili:
+        op_turni = [
+            (
+                t.shift_start_time if isinstance(t.shift_start_time, time) else apertura,
+                t.shift_end_time if isinstance(t.shift_end_time, time) else chiusura
+            )
+            for t in turni_disponibili if t.operator_id == op.id
+        ]
+        if not op_turni:
+            op_turni = [(apertura, chiusura)]
+        op_turni = [
+            (max(start, apertura), min(end, chiusura))
+            for (start, end) in op_turni
+            if max(start, apertura) < min(end, chiusura)
+        ]
+        if op_turni:
+            turni_per_operatore[op.id] = op_turni
+
+    appuntamenti = Appointment.query.filter(
+        Appointment.start_time >= datetime.combine(data, time.min),
+        Appointment.start_time < datetime.combine(data + timedelta(days=1), time.min)
+    ).all()
+    blocchi_off = Appointment.query.filter(
+        Appointment.start_time >= datetime.combine(data, time.min),
+        Appointment.start_time < datetime.combine(data + timedelta(days=1), time.min),
+        or_(
+            Appointment.note.ilike('%OFF%'),
+            Appointment.service_id == 9999
+        )
+    ).all()
+    for b in blocchi_off:
+        if b not in appuntamenti:
+            appuntamenti.append(b)
+
+    # --- LOGICA IDENTICA A orari_disponibili ---
+    durata_totale = sum([s.servizio_durata or 30 for s in servizi_objs])
+    durata = timedelta(minutes=durata_totale)
+    slot_step = timedelta(minutes=15)
+    intervalli_tmp = []
+    for op_id, turni in turni_per_operatore.items():
+        for t in turni:
+            intervalli_tmp.append(t)
+    intervalli_tmp.sort()
+    intervalli = []
+    for intervallo in intervalli_tmp:
+        if not intervalli:
+            intervalli.append(intervallo)
+        else:
+            last_start, last_end = intervalli[-1]
+            curr_start, curr_end = intervallo
+            if curr_start <= last_end:
+                intervalli[-1] = (last_start, max(last_end, curr_end))
+            else:
+                intervalli.append((curr_start, curr_end))
+
+    orari = []
+    slot_operatori = {}
+    for start, end in intervalli:
+        slot = datetime.combine(data, start)
+        fine = datetime.combine(data, end)
+        while slot + durata <= fine:
+            slot_corrente = slot
+            operatori_catena = []
+            ok = True
+            for idx, servizio_item in enumerate(servizi):
+                servizio_id = int(servizio_item.get("servizio_id"))
+                durata_servizio = servizi_map[servizio_id].servizio_durata or 30
+                durata_td = timedelta(minutes=durata_servizio)
+                inizio = slot_corrente
+                fine_servizio = slot_corrente + durata_td
+
+                operatore_scelto = servizio_item.get("operatore_id")
+                if operatore_scelto:
+                    possibili_operatori = [op for op in operatori_disponibili if op.id == int(operatore_scelto)]
+                else:
+                    preferiti = [op for op in operatori_disponibili if op.id in [
+                        int(s.get("operatore_id")) for s in servizi if s.get("operatore_id")
+                    ]]
+                    altri = [op for op in operatori_disponibili if op not in preferiti]
+                    possibili_operatori = preferiti + altri
+
+                trovato = False
+                for op in possibili_operatori:
+                    turni = turni_per_operatore.get(op.id, [])
+                    if not any(start <= inizio.time() and fine_servizio.time() <= end for start, end in turni):
+                        continue
+                    busy = False
+                    for app in appuntamenti:
+                        app_start = app.start_time.replace(tzinfo=None)
+                        app_end = app_start + timedelta(minutes=app._duration)
+                        if app.operator_id is None and app.note and "OFF" in app.note:
+                            if app_start < fine_servizio and app_end > inizio:
+                                busy = True
+                                break
+                        if str(app.operator_id) == str(op.id):
+                            if app_start < fine_servizio and app_end > inizio:
+                                busy = True
+                                break
+                    if busy:
+                        continue
+                    if op.id in servizi_operatori[servizio_id]:
+                        operatori_catena.append(op.id)
+                        trovato = True
+                        break
+                if not trovato:
+                    ok = False
+                    break
+                slot_corrente = fine_servizio
+            if ok:
+                orari.append(slot.strftime("%H:%M"))
+                slot_operatori[slot.strftime("%H:%M")] = operatori_catena
+            slot += slot_step
+
+    # --- FINE LOGICA IDENTICA ---
+
+    # Controlla che lo slot richiesto sia tra quelli disponibili
+    if ora not in orari:
+        return jsonify({"success": False, "errori": ["Lo slot richiesto non è più disponibile. Ricarica la pagina e riprova."]}), 400
+
+    # Controlla che i servizi con operatore scelto siano assegnati a quell'operatore
+    slot_ops = slot_operatori[ora]
+    for idx, servizio_item in enumerate(servizi):
+        operatore_id = servizio_item.get("operatore_id")
+        if operatore_id:
+            if slot_ops[idx] != int(operatore_id):
+                return jsonify({"success": False, "errori": ["La sequenza di operatori richiesta non è più disponibile per questo slot. Ricarica la pagina e riprova."]}), 400
+
+    # Ora salva la prenotazione
+    risultati = []
+    slot_corrente = datetime.strptime(f"{data_str} {ora}", "%Y-%m-%d %H:%M")
     for idx, servizio_item in enumerate(servizi):
         servizio_id = int(servizio_item.get("servizio_id"))
-        operatore_id = int(operatori_assegnati[idx])
-        servizio = servizi_map.get(servizio_id)
-        if not servizio:
-            errori.append(f"Servizio {servizio_id} non trovato")
-            break
-        if operatore_id not in servizi_operatori.get(servizio_id, []):
-            errori.append(f"L'operatore selezionato non è abilitato per il servizio {servizio.servizio_nome}")
-            break
-        durata_servizio = servizio.servizio_durata or 30
+        durata_servizio = servizi_map[servizio_id].servizio_durata or 30
         durata_td = timedelta(minutes=durata_servizio)
         inizio = slot_corrente
         fine = slot_corrente + durata_td
-        
-        if is_calendar_closed(operatore_id, inizio, fine, turni_per_operatore, all_apps):
-            errori.append(f"Non puoi prenotare su una cella calendar-closed per il servizio {servizio.servizio_nome} alle {inizio.strftime('%H:%M')}")
-            break
-
+        operatore_id = slot_operatori[ora][idx]
+        servizio = servizi_map.get(servizio_id)
         note = f"PRENOTATO DA BOOKING ONLINE - Nome: {nome}, Cognome: {cognome}, Telefono: {telefono}, Email: {email}"
         operatore = Operator.query.get(operatore_id)
         operatore_nome = f"{operatore.user_nome} {operatore.user_cognome}" if operatore else ""
@@ -479,7 +561,7 @@ def prenota():
 
     # Invio email di conferma SOLO se ci sono risultati
     if risultati:
-        SENDGRID_API_KEY = os.environ.get('SENDGRID_API_KEY') or 'INSERISCI_LA_TUA_KEY'
+        SENDGRID_API_KEY = os.environ.get('SENDGRID_API_KEY')
         try:
             sg = SendGridAPIClient(SENDGRID_API_KEY)
             appuntamenti_html = ""
@@ -492,16 +574,16 @@ def prenota():
                 totale_durata += durata
                 totale_prezzo += prezzo
                 appuntamenti_html += f"""
-            <li>
-                <b>Data:</b> {r['data']}<br>
-                <b>Ora:</b> {r['ora']}<br>
-                {f"<b>Operatore:</b> {r['operatore_nome']}<br>" if r['operatore_nome'] else ""}
-                <b>Servizio:</b> {r['servizio_nome']}<br>
-                <small>
-                    Durata: {durata} min<br>
-                    Prezzo: {prezzo:.2f} €
-                </small>
-            </li>
+                    <li>
+                        <b>Data:</b> {r['data']}<br>
+                        <b>Ora:</b> {r['ora']}<br>
+                        {f"<b>Operatore:</b> {r['operatore_nome']}<br>" if r['operatore_nome'] else ""}
+                        <b>Servizio:</b> {r['servizio_nome']}<br>
+                        <small>
+                            Durata: {durata} min<br>
+                            Prezzo: {prezzo:.2f} €
+                        </small>
+                    </li>
                 """
             riepilogo = f"""
                 <p>Ciao {nome},</p>
@@ -524,14 +606,10 @@ def prenota():
         except Exception as e:
             print("ERRORE INVIO EMAIL DI CONFERMA:", e)
 
-    # Dopo la prenotazione, elimina il codice dalla sessione per sicurezza
-    session.pop('codice_conferma', None)
-    session.pop('email_conferma', None)
-
     return jsonify({
         "success": len(risultati) > 0,
         "prenotazioni": risultati,
-        "errori": errori
+        "errori": []
     })
 
 @booking_bp.route('/invia-codice', methods=['POST'])
