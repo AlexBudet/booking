@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environment
+venv/
+.env/
+env/
+.venv/
+
+# VS Code
+.vscode/
+
+# PyCharm
+.idea/
+
+# Sublime
+*.sublime-project
+*.sublime-workspace
+
+# macOS
+.DS_Store
+
+# Log files
+*.log
+
+# Env file
+.env
+
+# Local DB (se presenti)
+*.sqlite3
+*.db
+
+# Test/Temp
+*.tmp
+*.swp
+test_output/

@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <title>Prenota il tuo appuntamento</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background: #f8f9fa; }
+    .container-booking {
+      max-width: 600px;
+      margin: 40px auto;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 10px #e0e0e0;
+      padding: 2rem;
+    }
+    .booking-sidebar {
+      background: #fffbe8;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px #f0e6d2;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    @media (max-width: 767px) {
+      .container-booking { max-width: 100%; margin: 0; border-radius: 0; box-shadow: none; padding: 1rem; }
+      .booking-sidebar { display: none !important; }
+      .desktop-only { display: none !important; }
+      .mobile-full { width: 100% !important; }
+    }
+
+  #codice-conferma {
+    border: 1px solid #444 !important;
+  }
+
+#aggiungi-servizio {
+  margin-top: 10px;
+  margin-bottom: 10px;
+  background-color: #332f32;
+  color: #f0eeee;
+  width: 95%;
+}
+
+#aggiungi-servizio:hover {
+  background-color: #7b787a;
+  color: #ffffff;
+}
+
+#pseudoblocchi-servizi {
+  margin-top: 10px;
+}
+
+.rimuovi-pseudoblocco {
+  text-decoration: none !important;
+}
+
+  .booking-sidebar {
+    background: #333132; /* esempio azzurro */
+    color: rgb(236, 207, 218);
+  }
+
+  /* Cambia colore pseudoblocchi */
+#pseudoblocchi-servizi .alert-secondary {
+  background-color: #421d30 !important;
+  color: #f4d1de !important;
+}
+#pseudoblocchi-servizi .alert-secondary b,
+#pseudoblocchi-servizi .alert-secondary span,
+#pseudoblocchi-servizi .alert-secondary small {
+  color: #f7e9f3 !important;
+}
+
+  body {
+    background: #333132;
+    color: rgb(243, 233, 237);
+  }
+
+  .container-booking {
+    background: #5c5a5b;
+    color: rgb(238, 219, 226);
+  }
+
+  .servizio-iniziale {
+    width: 100%;
+    height: 38px;
+    border-radius: 8px;
+    background-color: #1f1f1f;
+    color: #f0eeee;
+    padding: 0.375rem 0.75rem;
+    font-size: 1rem;
+    line-height: 1.5;
+    border: 1px solid #ced4da;
+    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+  }
+
+  .form-select {
+  background-color: #444 !important;
+  color: #eaced6 !important;
+  border-color: #87647c !important;
+  /* Freccetta chiara */
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;charset=UTF-8,<svg width='16' height='16' xmlns='http://www.w3.org/2000/svg'><path fill='%23eaced6' d='M4 6l4 4 4-4'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 1.2em;
+  padding-right: 2.5em;
+}
+
+    .form-control, .form-select, .form-control:focus, .form-select:focus {
+    background-color: #444 !important;
+    color: #eaced6 !important;
+    border-color: #87647c !important;
+  }
+  .form-control::placeholder {
+    color: #bbaeb3 !important;
+    opacity: 1;
+  }
+  select.form-select option {
+    background-color: #444 !important;
+    color: #eaced6 !important;
+  }
+
+  input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(2);
+  /* oppure: filter: brightness(2); per solo schiarire */
+}
+
+#inviaCodiceBtn {
+  background-color: #87647c !important; /* esempio: viola chiaro */
+  color: #fff !important;
+  border: none !important;
+}
+#inviaCodiceBtn:hover {
+  background-color: #a98ca7 !important;
+}
+</style>
+</head>
+<body>
+  <div id="container-booking" class="container-booking">
+    <!-- Sidebar info salone, visibile solo su desktop -->
+    <div class="booking-sidebar desktop-only mb-4">
+      <h3 class="mb-2">PORTALE PRENOTAZIONI</h3>
+      <h3 class="mb-2" style="color: #ffffff;">Sun Express 3 s.a.s.</h3>
+      <div class="mb-2"><i class="fa-solid fa-location-dot"></i> Via Domenico Modugno (BI)</div>
+      <div class="mb-2"><i class="fa-solid fa-phone"></i> 0152538296</div>
+      <p class="mt-3" style="font-size: 0.95em; color: #e7eace;">
+        Scegli i <b>servizi</b>, la <b>data</b> e l'<b>orario</b>.<br>
+      </p>
+    </div>
+<form id="bookingForm" autocomplete="off">
+  <input type="hidden" id="csrf_token" name="csrf_token" value="{{ csrf_token() }}">
+
+<div class="row align-items-end mb-2" id="selezione-iniziale-servizio">
+  <div class="col-7">
+    <select class="form-select" id="servizio-iniziale">
+      <option value="">Scegli servizio...</option>
+      {% for servizio in servizi %}
+      <option value="{{ servizio.id }}">{{ servizio.servizio_nome }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-4">
+  <div id="risultati_operatore" class="list-group" style="display:none; position:relative; z-index:10;"></div>
+  <div id="select_operatore_wrapper" style="margin-top:8px; display:none;">
+    <select id="operatore" class="form-select">
+      <option value="">Operatore</option>
+      {% for operatore in operatori %}
+      <option value="{{ operatore.id }}">{{ operatore.user_nome }} {{ operatore.user_cognome }}</option>
+      {% endfor %}
+    </select>
+  </div>
+</div>
+
+<button type="button" id="aggiungi-servizio" class="btn btn-outline-secondary btn-sm mt-2">+ Aggiungi servizio</button>
+
+<div id="pseudoblocchi-servizi"></div>
+
+<div class="mb-3" id="data_wrapper" style="display:none;">
+  <label for="data" class="form-label">Data*</label>
+  <input type="date" id="data" name="data" class="form-control">
+  <div id="data_label" class="form-text mt-2" style="font-size:0.9em; font-weight:normal; color:#c2aebc; padding-left:15px;"></div>
+</div>
+<div class="mb-3" id="ora_wrapper" style="display:none;">
+  <label for="ora" class="form-label">Orario*</label>
+  <select class="form-select" id="ora" required>
+    <option value="">Seleziona una data e un servizio</option>
+  </select>
+</div>
+  <div id="dati-cliente" style="display:none; margin-top:20px;">
+  <table style="width:100%; border-collapse:collapse;">
+    <tr>
+      <td style="padding: 6px 0; width: 120px;"><label for="nome" style="margin-bottom:0;">Nome:</label></td>
+      <td><input type="text" id="nome" required class="form-control" autocomplete="given-name"></td>
+    </tr>
+    <tr>
+      <td style="padding: 6px 0;"><label for="cognome" style="margin-bottom:0;">Cognome:</label></td>
+      <td><input type="text" id="cognome" required class="form-control" autocomplete="family-name"></td>
+    </tr>
+    <tr>
+      <td style="padding: 6px 0;"><label for="telefono" style="margin-bottom:0;">Cellulare:</label></td>
+      <td><input type="tel" id="telefono" required class="form-control" autocomplete="tel"></td>
+    </tr>
+    <tr>
+      <td style="padding: 6px 0;"><label for="email" style="margin-bottom:0;">Email:</label></td>
+      <td><input type="email" id="email" required class="form-control" autocomplete="email"></td>
+    </tr>
+  </table>
+  <button type="button" id="inviaCodiceBtn" class="btn btn-success w-100" style="display:none; margin-top:20px;">Invia codice di conferma</button>
+</div>
+<div id="codice-conferma-wrapper" style="display:none; margin-top:20px;">
+  <label>Codice di conferma ricevuto via email:
+    <input type="text" id="codice-conferma" required>
+  </label>
+  <button type="button" id="inviaConfermaPrenotazioneBtn" class="btn btn-primary w-100 mt-3" style="display:none;">
+    Conferma prenotazione
+  </button>
+</div>
+    </form>
+    <div id="msg" class="mt-3"></div>
+  </div>
+
+<script>
+const servizi = {{ servizi_json|tojson }};
+const operatori = {{ operatori_json|tojson }};
+
+// Nascondi la select operatore inizialmente
+document.getElementById('select_operatore_wrapper').style.display = 'none';
+
+// Quando selezioni il servizio
+document.getElementById('servizio-iniziale').addEventListener('change', function() {
+  const servizioId = parseInt(this.value);
+  const servizio = servizi.find(s => s.id === servizioId);
+  const operatoriSelect = document.getElementById('operatore');
+  operatoriSelect.innerHTML = '<option value="">Operatore</option>';
+
+  if (servizio && servizio.operator_ids.length) {
+    operatori
+      .filter(op => servizio.operator_ids.includes(op.id))
+      .forEach(op => {
+        const opt = document.createElement('option');
+        opt.value = op.id;
+        opt.textContent = op.nome;
+        operatoriSelect.appendChild(opt);
+      });
+    // Mostra la select solo se ci sono operatori associati
+    document.getElementById('select_operatore_wrapper').style.display = '';
+  } else {
+    // Nascondi la select se non ci sono operatori selezionabili
+    document.getElementById('select_operatore_wrapper').style.display = 'none';
+  }
+});
+
+function loadOrari() {
+  const servizi = getServiziSelezionati();
+  if (!servizi.length) return;
+  const data = document.getElementById('data').value;
+  const oraSelect = document.getElementById('ora');
+  oraSelect.innerHTML = '<option value="">Caricamento orari...</option>';
+
+  // Costruisci la query string con tutti i servizi selezionati
+const params = new URLSearchParams();
+params.append('data', data);
+servizi.forEach(s => {
+  params.append('servizi[]', JSON.stringify({ servizio_id: s.servizio_id, operatore_id: s.operatore_id }));
+});
+
+const operatoriUnici = [...new Set(servizi.map(s => s.operatore_id).filter(op => op))];
+if (operatoriUnici.length === 1 && operatoriUnici[0]) {
+  params.append('operatore_id', operatoriUnici[0]);
+}
+
+  fetch('/orari?' + params.toString())
+    .then(r => r.json())
+    .then(res => {
+      oraSelect.innerHTML = '';
+      const orari = res.orari_disponibili || [];
+      window._operatoriOrariMap = res.operatori_assegnati || {};
+      if (orari.length > 0) {
+        oraSelect.innerHTML = '<option value="">Seleziona un orario</option>';
+        orari.forEach(orario => {
+          const opt = document.createElement('option');
+          opt.value = orario;
+          opt.textContent = orario;
+          oraSelect.appendChild(opt);
+        });
+      } else {
+        oraSelect.innerHTML = '<option value="">Nessun orario disponibile</option>';
+      }
+    })
+    .catch(() => {
+      oraSelect.innerHTML = '<option value="">Errore caricamento orari</option>';
+    });
+}
+
+// 1. All'avvio mostra solo servizio e operatore
+document.getElementById('data_wrapper').style.display = 'none';
+document.getElementById('ora_wrapper').style.display = 'none';
+document.getElementById('dati-cliente').style.display = 'none';
+inviaCodiceBtn.style.display = 'none';
+
+function aggiornaDataLabel() {
+  const dataInput = document.getElementById('data');
+  const dataLabel = document.getElementById('data_label');
+  if (!dataInput.value) {
+    dataLabel.textContent = '';
+    return;
+  }
+  const giorni = ['DOMENICA', 'LUNEDÌ', 'MARTEDÌ', 'MERCOLEDÌ', 'GIOVEDÌ', 'VENERDÌ', 'SABATO'];
+  const [yyyy, mm, dd] = dataInput.value.split('-');
+  const dataObj = new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
+  const giornoSettimana = giorni[dataObj.getDay()];
+  dataLabel.textContent = `${giornoSettimana}`;
+}
+
+// Aggiorna quando cambia la data
+document.getElementById('data').addEventListener('input', aggiornaDataLabel);
+
+// Aggiorna anche quando mostri la data precompilata
+// --- PATCH: mostra la data solo dopo almeno un servizio aggiunto ---
+function mostraDataSePronto() {
+  const servizi = getServiziSelezionati();
+  const almenoUno = servizi.length > 0 && servizi.every(s => s.servizio_id);
+  if (almenoUno) {
+    document.getElementById('data_wrapper').style.display = '';
+    aggiornaDataLabel();
+    scrollToBottom();
+  } else {
+    document.getElementById('data_wrapper').style.display = 'none';
+    document.getElementById('ora_wrapper').style.display = 'none';
+    document.getElementById('dati-cliente').style.display = 'none';
+    inviaCodiceBtn.style.display = 'none';
+  }
+}
+
+// 3. Dopo la selezione della data, mostra gli orari disponibili
+document.getElementById('data').addEventListener('change', function() {
+  if (this.value) {
+    document.getElementById('ora_wrapper').style.display = '';
+    loadOrari();
+    scrollToBottom(); 
+  } else {
+    document.getElementById('ora_wrapper').style.display = 'none';
+    document.getElementById('dati-cliente').style.display = 'none';
+    inviaCodiceBtn.style.display = 'none';
+  }
+});
+
+// 4. Dopo la selezione dell'orario, mostra i campi cliente
+document.getElementById('ora').addEventListener('change', function() {
+  if (this.value) {
+    document.getElementById('dati-cliente').style.display = '';
+    scrollToBottom();
+  } else {
+    document.getElementById('dati-cliente').style.display = 'none';
+    inviaCodiceBtn.style.display = 'none';
+  }
+});
+
+// 5. Solo quando tutti i campi cliente sono compilati, mostra il bottone "Chiedi codice di conferma"
+['nome', 'cognome', 'telefono', 'email'].forEach(id => {
+  document.getElementById(id).addEventListener('input', function() {
+    const nome = document.getElementById('nome').value.trim();
+    const cognome = document.getElementById('cognome').value.trim();
+    const telefono = document.getElementById('telefono').value.trim();
+    const email = document.getElementById('email').value.trim();
+    if (nome && cognome && telefono && email) {
+      inviaCodiceBtn.style.display = '';
+      scrollToBottom();
+    } else {
+      inviaCodiceBtn.style.display = 'none';
+    }
+  });
+});
+
+document.getElementById('inviaCodiceBtn').addEventListener('click', function() {
+  // Prendi i dati dal form
+  const nome = document.getElementById('nome').value.trim();
+  const cognome = document.getElementById('cognome').value.trim();
+  const telefono = document.getElementById('telefono').value.trim();
+  const email = document.getElementById('email').value.trim();
+
+  const csrfToken = document.getElementById('csrf_token').value;
+
+  fetch('/invia-codice', {
+    method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'X-CSRFToken': csrfToken
+  },
+    body: JSON.stringify({ nome, cognome, telefono, email })
+  })
+  .then(r => r.json())
+  .then(res => {
+    if (res.success) {
+      document.getElementById('codice-conferma-wrapper').style.display = '';
+      document.getElementById('inviaCodiceBtn').style.display = 'none';
+      document.getElementById('inviaConfermaPrenotazioneBtn').style.display = '';
+      scrollToBottom();
+    } else {
+      alert(res.error || 'Errore invio codice');
+    }
+  })
+  .catch(() => {
+    alert('Errore di rete durante l\'invio del codice');
+  });
+});
+
+document.getElementById('inviaConfermaPrenotazioneBtn').addEventListener('click', function() {
+  const codice = document.getElementById('codice-conferma').value.trim();
+  if (!codice) {
+    alert('Inserisci il codice di conferma ricevuto via email.');
+    return;
+  }
+  const nome = document.getElementById('nome').value.trim();
+  const cognome = document.getElementById('cognome').value.trim();
+  const telefono = document.getElementById('telefono').value.trim();
+  const email = document.getElementById('email').value.trim();
+  const data = document.getElementById('data').value;
+  const ora = document.getElementById('ora').value;
+  const csrfToken = document.getElementById('csrf_token').value;
+
+  // Raccogli tutti i servizi e operatori selezionati
+  const servizi = getServiziSelezionati();
+
+    let operatori_assegnati = [];
+  if (window._operatoriOrariMap && window._operatoriOrariMap[ora]) {
+    operatori_assegnati = window._operatoriOrariMap[ora];
+  }
+
+fetch('/prenota', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+  body: JSON.stringify({
+    nome, cognome, telefono, email,
+    data, ora,
+    codice_conferma: codice,
+    servizi, // array [{servizio_id, operatore_id}, ...]
+    operatori_assegnati
+  })
+})
+  .then(r => r.json())
+  .then(res => {
+    const msg = document.getElementById('msg');
+    let divTotale = document.getElementById('totale-servizi');
+if (divTotale) divTotale.style.display = 'none';
+if (res.success && res.prenotazioni && res.prenotazioni.length) {
+  let sommario = '';
+  let totaleDurata = 0;
+  let totalePrezzo = 0;
+  res.prenotazioni.forEach(p => {
+    const durata = parseInt(p.servizio_durata || 0, 10);
+    const prezzo = parseFloat(p.servizio_prezzo || 0);
+    totaleDurata += durata;
+    totalePrezzo += prezzo;
+    sommario += `<div class="mb-3 p-3 border rounded bg-light" style="color: #333;">
+      <strong>Riepilogo appuntamento:</strong><br>
+      <span>🗓 <b>Data:</b> ${p.data} <b>Ora:</b> ${p.ora}</span><br>
+      ${p.operatore_nome ? `<span>👤 <b>con</b> ${p.operatore_nome}</span><br>` : ""}
+      <span>💇 <b>Servizio:</b> ${p.servizio_nome}</span><br>
+      <small>Durata: ${durata} min - Prezzo: €${prezzo.toFixed(2)}</small>
+    </div>`;
+  });
+  sommario += `<div class="alert alert-dark mt-2"><b>Totale durata:</b> ${totaleDurata} min &nbsp; | &nbsp; <b>Totale costo:</b> €${totalePrezzo.toFixed(2)}</div>`;
+  msg.innerHTML = sommario + '<div class="alert alert-success">Prenotazione confermata! Per ulteriori informazioni, contattaci al telefono fisso o scrivici su Whatsapp!.</div>';
+      document.getElementById('bookingForm').reset();
+      document.getElementById('data_wrapper').style.display = 'none';
+      document.getElementById('ora_wrapper').style.display = 'none';
+      document.getElementById('dati-cliente').style.display = 'none';
+      document.getElementById('codice-conferma-wrapper').style.display = 'none';
+      document.getElementById('inviaConfermaPrenotazioneBtn').style.display = 'none';
+    } else {
+      msg.innerHTML = `<div class="alert alert-danger">${res.error || 'Errore'}</div>`;
+    }
+  })
+  .catch(() => {
+    document.getElementById('msg').innerHTML = '<div class="alert alert-danger">Errore di rete.</div>';
+  });
+});
+
+// Invio prenotazione (rimane invariato)
+document.getElementById('bookingForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  const nome = document.getElementById('nome').value.trim();
+  const telefono = document.getElementById('telefono').value.trim();
+  const servizio = document.getElementById('servizio').value;
+  const data = document.getElementById('data').value;
+  const ora = document.getElementById('ora').value;
+  const msg = document.getElementById('msg');
+  msg.textContent = '';
+  fetch('/prenota', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({nome, telefono, servizio_id: servizio, data, ora})
+  })
+  .then(r => r.json())
+  .then(res => {
+    if (res.success) {
+      msg.innerHTML = '<div class="alert alert-success">Prenotazione registrata! Riceverai conferma via telefono.</div>';
+      document.getElementById('bookingForm').reset();
+      document.getElementById('data_wrapper').style.display = 'none';
+      document.getElementById('ora_wrapper').style.display = 'none';
+      continuaBtn.textContent = 'Continua';
+      continuaBtn.classList.remove('btn-success');
+      continuaBtn.classList.add('btn-primary');
+      continuaBtn.type = 'button';
+    } else {
+      msg.innerHTML = `<div class="alert alert-danger">${res.error || 'Errore'}</div>`;
+    }
+  })
+  .catch(() => {
+    msg.innerHTML = '<div class="alert alert-danger">Errore di rete.</div>';
+  });
+});
+</script>
+<script>
+  function scrollToBottom() {
+  window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+}
+</script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const servizioIniziale = document.getElementById('servizio-iniziale');
+  const operatoreIniziale = document.getElementById('operatore');
+  const aggiungiBtn = document.getElementById('aggiungi-servizio');
+  const pseudoblocchi = document.getElementById('pseudoblocchi-servizi');
+
+  if (!servizioIniziale || !aggiungiBtn) return; // Evita errori se non trovati
+
+  aggiungiBtn.style.display = 'none';
+  servizioIniziale.addEventListener('change', function() {
+    aggiungiBtn.style.display = this.value ? '' : 'none';
+  });
+
+  // Aggiungi pseudoblocco al click
+  aggiungiBtn.addEventListener('click', function() {
+    const servizioId = servizioIniziale.value;
+    const operatoreId = operatoreIniziale.value;
+    const servizioTxt = servizioIniziale.options[servizioIniziale.selectedIndex].text;
+    const operatoreTxt = operatoreIniziale.options[operatoreIniziale.selectedIndex]?.text || '';
+
+    if (!servizioId) {
+      alert('Seleziona un servizio!');
+      return;
+    }
+
+    // Crea pseudoblocco
+const servizioObj = servizi.find(s => s.id == servizioId);
+const durata = servizioObj?.servizio_durata ? `${servizioObj.servizio_durata} min` : '';
+const prezzo = servizioObj?.servizio_prezzo ? `€${servizioObj.servizio_prezzo}` : '';
+
+    const blocco = document.createElement('div');
+    blocco.className = 'alert alert-secondary d-flex align-items-center justify-content-between mb-2';
+    blocco.innerHTML = `
+  <span>
+    <b>Servizio:</b> ${servizioTxt}
+    ${operatoreId ? `<span class="ms-2"><b>con</b> ${operatoreTxt}</span>` : ''}
+    <br>
+    <small class="text-muted" style="font-size:0.85em;">
+      ${durata ? `Durata: ${durata}` : ''}${durata && prezzo ? ' · ' : ''}${prezzo ? `Prezzo: ${prezzo}` : ''}
+    </small>
+    <input type="hidden" class="servizio-id" value="${servizioId}">
+    <input type="hidden" class="operatore-id" value="${operatoreId}">
+  </span>
+  <button type="button" class="btn btn-sm btn-link text-danger rimuovi-pseudoblocco" title="Rimuovi"><b>&times;</b></button>
+`;
+pseudoblocchi.appendChild(blocco);
+
+    // Reset selezione iniziale
+    servizioIniziale.value = '';
+    operatoreIniziale.value = '';
+    aggiungiBtn.style.display = 'none';
+    aggiornaTotaleServizi();
+    mostraDataSePronto();
+  });
+
+  // Rimuovi pseudoblocco
+pseudoblocchi.addEventListener('click', function(e) {
+  // Cerca il bottone anche se il click è sul figlio <b>
+  const btn = e.target.closest('.rimuovi-pseudoblocco');
+  if (btn) {
+    btn.closest('.alert').remove();
+    aggiornaTotaleServizi();
+    mostraDataSePronto();
+  }
+});
+
+  // Funzione per raccogliere tutti i servizi+operatori selezionati
+window.getServiziSelezionati = function() {
+  // Conteggia SOLO i blocchi che contengono il campo servizio-id (esclude il div dei totali)
+  return Array.from(document.querySelectorAll('#pseudoblocchi-servizi .alert'))
+    .filter(blocco => blocco.querySelector('.servizio-id'))
+    .map(blocco => ({
+      servizio_id: blocco.querySelector('.servizio-id').value,
+      operatore_id: blocco.querySelector('.operatore-id').value
+    }));
+};
+
+window.aggiornaTotaleServizi = function() {
+  const serviziSelezionati = getServiziSelezionati();
+  let totaleDurata = 0;
+  let totalePrezzo = 0;
+  serviziSelezionati.forEach(sel => {
+    const servizioObj = servizi.find(s => String(s.id) === String(sel.servizio_id));
+    if (servizioObj) {
+      totaleDurata += parseInt(servizioObj.servizio_durata || 0, 10);
+      totalePrezzo += parseFloat(servizioObj.servizio_prezzo || 0);
+    }
+  });
+
+  let divTotale = document.getElementById('totale-servizi');
+  if (!divTotale) {
+    divTotale = document.createElement('div');
+    divTotale.id = 'totale-servizi';
+    divTotale.className = 'alert alert-dark mt-2';
+  }
+  if (serviziSelezionati.length > 0) {
+    divTotale.innerHTML = `<b>Totale durata:</b> ${totaleDurata} min &nbsp; | &nbsp; <b>Totale costo:</b> €${totalePrezzo.toFixed(2)}`;
+    divTotale.style.display = '';
+
+  // Rimuovi il divTotale se già presente (ovunque sia)
+  if (divTotale.parentNode) divTotale.parentNode.removeChild(divTotale);
+
+  // Appendi SEMPRE in fondo a pseudoblocchi-servizi, DOPO TUTTI i blocchi
+  const container = document.getElementById('pseudoblocchi-servizi');
+  container.appendChild(divTotale);
+  } else {
+    // Se nessun servizio selezionato, rimuovi il div se presente
+    if (divTotale.parentNode) divTotale.parentNode.removeChild(divTotale);
+  }
+};
+
+  // Mostra la data solo se almeno uno pseudoblocco è presente
+  window.mostraDataSePronto = function() {
+    const servizi = getServiziSelezionati();
+    if (servizi.length > 0) {
+      document.getElementById('data_wrapper').style.display = '';
+      aggiornaDataLabel();
+      scrollToBottom();
+    } else {
+      document.getElementById('data_wrapper').style.display = 'none';
+      document.getElementById('ora_wrapper').style.display = 'none';
+      document.getElementById('dati-cliente').style.display = 'none';
+      inviaCodiceBtn.style.display = 'none';
+    }
+  };
+});
+</script>
+</body>
+</html>
