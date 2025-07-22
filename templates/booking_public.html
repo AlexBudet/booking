@@ -22,26 +22,32 @@
       padding: 1.5rem;
       margin-bottom: 2rem;
     }
-    @media (max-width: 767px) {
-      .container-booking { max-width: 100%; margin: 0; border-radius: 0; box-shadow: none; padding: 1rem; }
-       .booking-sidebar {
-    width: 50px;           /* Sidebar più stretta */
-    min-width: 48px;
-    font-size: 0.45rem;    /* Testo più piccolo */
-    /* Altri stili per rendere la sidebar usabile e compatta */
-    overflow-x: visible;
-    overflow-y: auto;
-    background: #fafafa;
-    border-right: 1px solid #eee;
-    position: fixed;
-    top: 0;
-    left: 0;
-    height: 100vh;
-    z-index: 999;
+@media (max-width: 767px) {
+  .container-booking {
+    max-width: 100%;
+    margin: 0;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 1rem;
   }
-      .desktop-only { display: none !important; }
-      .mobile-full { width: 100% !important; }
-    }
+  .booking-sidebar {
+    width: 90vw;                 /* Larga il 90% della viewport */
+    max-width: 98vw;
+    margin: 12px auto 18px auto; /* Centrata con un po' di spazio sopra e sotto */
+    min-width: unset;
+    font-size: calc(1.1rem + 0.7vw); /* Font size proporzionale allo schermo */
+    position: static;             /* NON fixed */
+    left: 0;
+    top: 0;
+    height: auto;
+    z-index: auto;
+    border-right: none;
+    box-shadow: 0 2px 8px #2222;
+    padding: 1.2rem 0.8rem;
+  }
+  .desktop-only { display: none !important; }
+  .mobile-full { width: 100% !important; }
+}
 
   #codice-conferma {
     border: 1px solid #444 !important;
