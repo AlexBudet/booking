@@ -2,8 +2,11 @@ import os
 from flask import Flask
 from appl import db
 from routes.booking import booking_bp
+from flask_wtf import CSRFProtect
 
 app = Flask(__name__)
+
+csrf = CSRFProtect(app)
 
 # Usa la variabile d'ambiente impostata su Azure
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('SQLALCHEMY_DATABASE_URI')
