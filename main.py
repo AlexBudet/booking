@@ -1,7 +1,7 @@
 import os
 from flask import Flask
 from appl.models import db
-from appl.routes.booking import booking_bp
+from routes.booking import booking_bp
 
 app = Flask(__name__)
 
