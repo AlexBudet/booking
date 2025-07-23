@@ -349,6 +349,7 @@ if (operatoriUnici.length === 1 && operatoriUnici[0]) {
 document.getElementById('data_wrapper').style.display = 'none';
 document.getElementById('ora_wrapper').style.display = 'none';
 document.getElementById('dati-cliente').style.display = 'none';
+const inviaCodiceBtn = document.getElementById('inviaCodiceBtn');
 inviaCodiceBtn.style.display = 'none';
 
 function aggiornaDataLabel() {
@@ -685,9 +686,8 @@ aggiungiBtn.addEventListener('click', function() {
   if (!blockPrezzo && maxPrezzo > 0 && totalePrezzo > maxPrezzo) {
     alert("Attenzione: " + msgPrezzo);
   }
-  };
-    // FINE PATCH
-
+});
+// --- FINE PATCH ---
 // Funzioni globali
 window.getServiziSelezionati = function() {
   // Conteggia SOLO i blocchi che contengono il campo servizio-id (esclude il div dei totali)
