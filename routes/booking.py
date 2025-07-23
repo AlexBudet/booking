@@ -326,7 +326,7 @@ def orari_disponibili():
                 "operatori_assegnati": {},
                 "warning": None,
                 "block": True,
-                "error": rule_msg or "Limite superato, prenotazione bloccata.",
+                "error": rule_msg or "Limite superato, prenotazione riprova.",
                 "debug": debug_info
             })
         elif rule_type == "warning":
