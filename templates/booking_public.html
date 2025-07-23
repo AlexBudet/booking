@@ -161,6 +161,11 @@
   margin-left: auto;
   margin-right: auto;
 }
+
+  .modal-content.bg-dark-custom {
+    background-color: #333132 !important;
+    color: #f4d1de !important;
+  }
 </style>
 </head>
 <body>
@@ -246,12 +251,12 @@
 <!-- Modal Privacy -->
 <div class="modal fade" id="modalPrivacy" tabindex="-1" aria-labelledby="modalPrivacyLabel" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-centered">
-    <div class="modal-content">
+    <div class="modal-content bg-dark-custom">
       <div class="modal-header">
         <h5 class="modal-title" id="modalPrivacyLabel">Informativa sulla Privacy</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
       </div>
-      <div class="modal-body" style="white-space:pre-line; font-size:0.98em;">
+      <div class="modal-body" style="white-space:pre-line">
         INFORMATIVA SUL TRATTAMENTO DEI DATI PERSONALI AI SENSI DELL’ART. 13 DEL D. LGS. 196/2003 (Codice in materia di protezione dei dati personali) e dell’art 13 GDPR
 Ai sensi dell’art. 13 del Regolamento (UE) 2016/679 (di seguito "GDPR"), recante disposizioni a tutela delle persone fisiche con riguardo al trattamento dei dati personali nonché alla libera circolazione di tali dati, desideriamo informarLa che i dati personali da Lei forniti formeranno oggetto di trattamento nel rispetto della normativa sopra richiamata e degli obblighi di riservatezza cui è tenuto il Titolare del trattamento.
 Per trattamento di dati personali si intende qualsiasi operazione o insieme di operazioni, compiute con o senza l'ausilio di processi automatizzati e applicate a dati personali o insiemi di dati personali, come la raccolta, la registrazione, l'organizzazione, la strutturazione, la conservazione, l'adattamento o la modifica, l'estrazione, la consultazione, l'uso, la comunicazione mediante trasmissione, diffusione o qualsiasi altra forma di messa a disposizione, il raffronto o l'interconnessione, la limitazione, la cancellazione o la distruzione.
@@ -295,12 +300,12 @@ L’esercizio dei suddetti diritti potrà essere esercitato tramite l’invio di
 <!-- Modal Condizioni di Vendita -->
 <div class="modal fade" id="modalCondizioni" tabindex="-1" aria-labelledby="modalCondizioniLabel" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-centered">
-    <div class="modal-content">
+    <div class="modal-content bg-dark-custom">
       <div class="modal-header">
         <h5 class="modal-title" id="modalCondizioniLabel">Condizioni di Vendita</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
       </div>
-      <div class="modal-body" style="white-space:pre-line; font-size:0.98em;">
+      <div class="modal-body" style="white-space:pre-line;">
         Condizioni generali di vendita (CGV)
 Premesse
 Le presenti Condizioni Generali di Vendita (per brevità anche CGV) regolano l'acquisto, tramite modalità telematiche, dei servizi presentati sul sito https://booking.prisma6software.com gestito da Sun Express 3 s.a.s. con sede in Via Domenico Modugno ().
@@ -867,7 +872,7 @@ window.mostraDataSePronto = function() {
  */
 document.addEventListener('DOMContentLoaded', function() {
   function hideAlerts() {
-    ['alert-warning-durata', 'alert-block-durata', 'alert-warning-prezzo', 'alert-block-prezzo'].forEach(id => {
+  ['alert-warning-durata', 'alert-block-durata', 'alert-warning-prezzo', 'alert-block-prezzo', 'alert-privacy-condizioni'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.style.display = 'none';
     });
