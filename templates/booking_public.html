@@ -710,7 +710,7 @@ document.addEventListener('DOMContentLoaded', function() {
         .forEach(op => {
           const opt = document.createElement('option');
           opt.value = op.id;
-          opt.textContent = op.user_nome + ' ' + op.user_cognome;
+          opt.textContent = op.user_nome;
           operatoriSelect.appendChild(opt);
         });
       document.getElementById('select_operatore_wrapper').style.display = '';
