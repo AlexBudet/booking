@@ -698,6 +698,27 @@ document.addEventListener('DOMContentLoaded', function() {
   const aggiungiBtn = document.getElementById('aggiungi-servizio');
   const suggestions = document.getElementById('servizio-suggestions');
   const pseudoblocchi = document.getElementById('pseudoblocchi-servizi');
+  const operatoreIniziale = document.getElementById('operatore');
+
+    function aggiornaOperatori(servizioId) {
+    const servizio = servizi.find(s => String(s.id) === String(servizioId));
+    const operatoriSelect = document.getElementById('operatore');
+    operatoriSelect.innerHTML = '<option value="">Operatore</option>';
+
+    if (servizio && servizio.operator_ids && servizio.operator_ids.length) {
+      operatori
+        .filter(op => servizio.operator_ids.includes(op.id))
+        .forEach(op => {
+          const opt = document.createElement('option');
+          opt.value = op.id;
+          opt.textContent = op.user_nome + ' ' + op.user_cognome;
+          operatoriSelect.appendChild(opt);
+        });
+      document.getElementById('select_operatore_wrapper').style.display = '';
+    } else {
+      document.getElementById('select_operatore_wrapper').style.display = 'none';
+    }
+  }
 
   if (!servizioIniziale || !aggiungiBtn) return;
 
