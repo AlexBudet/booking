@@ -393,22 +393,23 @@ document.getElementById('select_operatore_wrapper').style.display = 'none';
 
 // Quando selezioni il servizio
 document.getElementById('servizio-iniziale').addEventListener('change', function() {
-  const servizioId = parseInt(this.value);
-  const servizio = servizi.find(s => s.id === servizioId);
+  // Prendi l'id dal campo nascosto!
+  const servizioId = document.getElementById('servizio-id-selezionato').value;
+  const servizio = servizi.find(s => String(s.id) === String(servizioId));
   const operatoriSelect = document.getElementById('operatore');
   operatoriSelect.innerHTML = '<option value="">Operatore</option>';
 
-if (servizio && servizio.operator_ids.length) {
-  operatori
-    .filter(op => servizio.operator_ids.includes(op.id))
-    .forEach(op => {
-      const opt = document.createElement('option');
-      opt.value = op.id;
-      opt.textContent = op.nome;
-      operatoriSelect.appendChild(opt);
-    });
-  document.getElementById('select_operatore_wrapper').style.display = '';
-}
+  if (servizio && servizio.operator_ids.length) {
+    operatori
+      .filter(op => servizio.operator_ids.includes(op.id))
+      .forEach(op => {
+        const opt = document.createElement('option');
+        opt.value = op.id;
+        opt.textContent = op.nome;
+        operatoriSelect.appendChild(opt);
+      });
+    document.getElementById('select_operatore_wrapper').style.display = '';
+  }
 });
 
 function loadOrari() {
