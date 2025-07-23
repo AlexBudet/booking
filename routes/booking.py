@@ -310,6 +310,27 @@ def orari_disponibili():
     durata = timedelta(minutes=durata_totale)
     slot_step = timedelta(minutes=15)
 
+    # --- PATCH: controllo regole prenotazione alternativa ---
+    totale_prezzo = sum([float(getattr(s, 'servizio_prezzo', 0) or 0) for s in servizi])
+    business_info = BusinessInfo.query.first()
+    max_durata = business_info.booking_max_durata or 0
+    max_prezzo = business_info.booking_max_prezzo or 0
+    rule_type = business_info.booking_rule_type or "none"
+    rule_msg = business_info.booking_rule_message or "Limite superato!"
+
+    block = False
+    warning = None
+    error = None
+
+    if (max_durata > 0 and durata_totale > max_durata) or (max_prezzo > 0 and totale_prezzo > max_prezzo):
+        debug_info.append(f"Limite superato: durata={durata_totale}, prezzo={totale_prezzo}")
+        if rule_type == "block":
+            block = True
+            error = rule_msg or "Limite superato, prenotazione riprova."
+        elif rule_type == "warning":
+            warning = rule_msg or "Limite superato, attenzione!"
+# --- FINE PATCH ---
+
     # Prova solo slot dove un singolo operatore può coprire TUTTI i servizi richiesti in sequenza
     for op in operatori_disponibili:
         for start, end in intervalli:
@@ -348,6 +369,9 @@ def orari_disponibili():
     return jsonify({
         "orari_disponibili": orari,
         "operatori_assegnati": slot_operatori,
+        "block": block,
+        "warning": warning,
+        "error": error,
         "debug": debug_info
     })
 
