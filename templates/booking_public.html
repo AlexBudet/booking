@@ -198,21 +198,25 @@
 
 <div id="regole-prenotazione" class="mb-3">
   {% if business_info.booking_rule_type_durata == 'warning' and business_info.booking_max_durata %}
-    <div class="alert alert-warning">
+    <div class="alert alert-warning alert-dismissible fade show" role="alert" id="alert-warning-durata">
       <b>Attenzione:</b> {{ business_info.booking_rule_message_durata }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Chiudi"></button>
     </div>
   {% elif business_info.booking_rule_type_durata == 'block' and business_info.booking_max_durata %}
-    <div class="alert alert-danger">
+    <div class="alert alert-danger alert-dismissible fade show" role="alert" id="alert-block-durata">
       <b>Blocco:</b> {{ business_info.booking_rule_message_durata }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Chiudi"></button>
     </div>
   {% endif %}
   {% if business_info.booking_rule_type_prezzo == 'warning' and business_info.booking_max_prezzo %}
-    <div class="alert alert-warning">
+    <div class="alert alert-warning alert-dismissible fade show" role="alert" id="alert-warning-prezzo">
       <b>Attenzione:</b> {{ business_info.booking_rule_message_prezzo }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Chiudi"></button>
     </div>
   {% elif business_info.booking_rule_type_prezzo == 'block' and business_info.booking_max_prezzo %}
-    <div class="alert alert-danger">
+    <div class="alert alert-danger alert-dismissible fade show" role="alert" id="alert-block-prezzo">
       <b>Blocco:</b> {{ business_info.booking_rule_message_prezzo }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Chiudi"></button>
     </div>
   {% endif %}
 </div>
@@ -724,6 +728,25 @@ window.aggiornaTotaleServizi = function() {
       inviaCodiceBtn.style.display = 'none';
     }
   };
+</script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  // Funzione per nascondere gli alert
+  function hideAlerts() {
+    ['alert-warning-durata', 'alert-block-durata', 'alert-warning-prezzo', 'alert-block-prezzo'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = 'none';
+    });
+  }
+
+  // Nascondi alert quando l’utente interagisce con i campi principali
+  ['servizio-iniziale', 'operatore', 'data', 'ora', 'aggiungi-servizio'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('click', hideAlerts);
+      el.addEventListener('change', hideAlerts);
+    }
+  });
 });
 </script>
 </body>
