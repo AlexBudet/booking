@@ -784,8 +784,9 @@ document.getElementById('servizio-search').addEventListener('input', function() 
   select.innerHTML = '<option value="">Scegli servizio...</option>';
 
   if (q.length >= 3) {
+    // fetch al server per ottenere solo i servizi che contengono q
     fetch(`/search-servizi?q=${encodeURIComponent(q)}`)
-      .then(r => r.json())
+      .then(response => response.json())
       .then(data => {
         data.forEach(s => {
           const opt = document.createElement('option');
@@ -793,9 +794,9 @@ document.getElementById('servizio-search').addEventListener('input', function() 
           opt.textContent = s.servizio_nome;
           select.appendChild(opt);
         });
-        // apre automaticamente il menu dei risultati
+        // Apri il menu a tendina
+        select.size = Math.min(data.length + 1, 8); // mostra max 8 righe
         select.focus();
-        select.click();
       })
       .catch(() => {
         servizi.forEach(s => {
@@ -804,6 +805,8 @@ document.getElementById('servizio-search').addEventListener('input', function() 
           opt.textContent = s.servizio_nome;
           select.appendChild(opt);
         });
+        select.size = servizi.length + 1;
+        select.focus();
       });
   } else {
     servizi.forEach(s => {
@@ -812,9 +815,15 @@ document.getElementById('servizio-search').addEventListener('input', function() 
       opt.textContent = s.servizio_nome;
       select.appendChild(opt);
     });
+    // Chiudi il menu a tendina
+    select.size = 1;
   }
 });
-</script>
 
+// Chiudi il menu quando selezioni un servizio
+document.getElementById('servizio-iniziale').addEventListener('change', function() {
+  this.size = 1;
+});
+</script>
 </body>
 </html>
