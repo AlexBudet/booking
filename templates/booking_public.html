@@ -179,13 +179,10 @@
   <input type="hidden" id="csrf_token" name="csrf_token" value="{{ csrf_token() }}">
 
 <div class="row align-items-end mb-2" id="selezione-iniziale-servizio">
-  <div class="col-7">
-    <select class="form-select" id="servizio-iniziale">
-      <option value="">Scegli servizio...</option>
-      {% for servizio in servizi %}
-      <option value="{{ servizio.id }}">{{ servizio.servizio_nome }}</option>
-      {% endfor %}
-    </select>
+  <div class="col-7 position-relative mb-2">
+    <input type="text" id="servizio-search" class="form-control" placeholder="Cerca servizio..." autocomplete="off">
+    <div id="servizio-suggestions" class="list-group position-absolute w-100" style="z-index:1000; display:none;"></div>
+    <input type="hidden" id="servizio-id-selezionato">
   </div>
   <div class="col-4">
   <div id="risultati_operatore" class="list-group" style="display:none; position:relative; z-index:10;"></div>
@@ -774,6 +771,59 @@ document.addEventListener('DOMContentLoaded', function() {
       el.addEventListener('change', hideAlerts);
     }
   });
+});
+</script>
+<script>
+  document.getElementById('servizio-search').addEventListener('focus', function() {
+  const suggestions = document.getElementById('servizio-suggestions');
+  suggestions.innerHTML = '';
+  servizi.forEach(s => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'list-group-item list-group-item-action';
+    item.textContent = s.servizio_nome;
+    item.onclick = function() {
+      document.getElementById('servizio-search').value = s.servizio_nome;
+      document.getElementById('servizio-id-selezionato').value = s.id;
+      suggestions.style.display = 'none';
+      // Puoi aggiungere qui la logica per mostrare operatori associati
+    };
+    suggestions.appendChild(item);
+  });
+  suggestions.style.display = 'block';
+});
+
+document.getElementById('servizio-search').addEventListener('input', function() {
+  const q = this.value.trim().toLowerCase();
+  const suggestions = document.getElementById('servizio-suggestions');
+  suggestions.innerHTML = '';
+  if (q.length < 3) {
+    suggestions.style.display = 'none';
+    document.getElementById('servizio-id-selezionato').value = '';
+    return;
+  }
+  servizi.filter(s => s.servizio_nome.toLowerCase().includes(q)).forEach(s => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'list-group-item list-group-item-action';
+    item.textContent = s.servizio_nome;
+    item.onclick = function() {
+      document.getElementById('servizio-search').value = s.servizio_nome;
+      document.getElementById('servizio-id-selezionato').value = s.id;
+      suggestions.style.display = 'none';
+      // Puoi aggiungere qui la logica per mostrare operatori associati
+    };
+    suggestions.appendChild(item);
+  });
+  suggestions.style.display = suggestions.children.length ? 'block' : 'none';
+});
+
+// Chiudi suggerimenti se clicchi fuori
+document.addEventListener('click', function(e) {
+  if (!document.getElementById('servizio-search').contains(e.target) &&
+      !document.getElementById('servizio-suggestions').contains(e.target)) {
+    document.getElementById('servizio-suggestions').style.display = 'none';
+  }
 });
 </script>
 </body>
