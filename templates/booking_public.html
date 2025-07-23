@@ -593,105 +593,99 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   // Aggiungi servizio
-  aggiungiBtn.addEventListener('click', function() {
-    const servizioId = servizioIniziale.value;
-    const operatoreId = operatoreIniziale.value;
-    const servizioTxt = servizioIniziale.options[servizioIniziale.selectedIndex].text;
-    const operatoreTxt = operatoreIniziale.options[operatoreIniziale.selectedIndex]?.text || '';
+aggiungiBtn.addEventListener('click', function() {
+  const servizioId = servizioIniziale.value;
+  const operatoreId = operatoreIniziale.value;
+  const servizioTxt = servizioIniziale.options[servizioIniziale.selectedIndex].text;
+  const operatoreTxt = operatoreIniziale.options[operatoreIniziale.selectedIndex]?.text || '';
 
-    if (!servizioId) {
-      alert('Seleziona un servizio!');
-      return;
+  if (!servizioId) {
+    alert('Seleziona un servizio!');
+    return;
+  }
+
+  const servizioObj = servizi.find(s => s.id == servizioId);
+  const serviziSelezionati = getServiziSelezionati();
+  let totaleDurata = 0;
+  let totalePrezzo = 0;
+  serviziSelezionati.forEach(sel => {
+    const obj = servizi.find(s => String(s.id) === String(sel.servizio_id));
+    if (obj) {
+      totaleDurata += parseInt(obj.servizio_durata || 0, 10);
+      totalePrezzo += parseFloat(obj.servizio_prezzo || 0);
     }
+  });
+  // Considera ANCHE il servizio che stai per inserire
+  if (servizioObj) {
+    totaleDurata += parseInt(servizioObj.servizio_durata || 0, 10);
+    totalePrezzo += parseFloat(servizioObj.servizio_prezzo || 0);
+  }
 
-    // --- PATCH: blocco durata/prezzo ---
-    const servizioObj = servizi.find(s => s.id == servizioId);
-    const serviziSelezionati = getServiziSelezionati();
-    let totaleDurata = 0;
-    let totalePrezzo = 0;
-    serviziSelezionati.forEach(sel => {
-      const obj = servizi.find(s => String(s.id) === String(sel.servizio_id));
-      if (obj) {
-        totaleDurata += parseInt(obj.servizio_durata || 0, 10);
-        totalePrezzo += parseFloat(obj.servizio_prezzo || 0);
-      }
-    });
-    // Aggiungi anche il servizio che stai per inserire
-    if (servizioObj) {
-      totaleDurata += parseInt(servizioObj.servizio_durata || 0, 10);
-      totalePrezzo += parseFloat(servizioObj.servizio_prezzo || 0);
-    }
+  const maxDurata = {{ business_info.booking_max_durata or 0 }};
+  const maxPrezzo = {{ business_info.booking_max_prezzo or 0 }};
+  const blockDurata = "{{ business_info.booking_rule_type_durata }}" === "block";
+  const blockPrezzo = "{{ business_info.booking_rule_type_prezzo }}" === "block";
+  const msgDurata = {{ business_info.booking_rule_message_durata|tojson }};
+  const msgPrezzo = {{ business_info.booking_rule_message_prezzo|tojson }};
 
-    // Limiti e tipo regola dal backend (renderizzati come variabili JS)
-    const maxDurata = {{ business_info.booking_max_durata or 0 }};
-    const maxPrezzo = {{ business_info.booking_max_prezzo or 0 }};
-    const blockDurata = "{{ business_info.booking_rule_type_durata }}" === "block";
-    const blockPrezzo = "{{ business_info.booking_rule_type_prezzo }}" === "block";
-    const msgDurata = {{ business_info.booking_rule_message_durata|tojson }};
-    const msgPrezzo = {{ business_info.booking_rule_message_prezzo|tojson }};
+  // === AGGIUNGI SEMPRE IL BLOCCO, MA RIMUOVILO SE SFORI ===
+  const durata = servizioObj?.servizio_durata ? `${servizioObj.servizio_durata} min` : '';
+  const prezzo = servizioObj?.servizio_prezzo ? `€${servizioObj.servizio_prezzo}` : '';
+  const blocco = document.createElement('div');
+  blocco.className = 'alert alert-secondary d-flex align-items-center justify-content-between mb-2';
+  blocco.innerHTML = `
+    <span>
+      <b>Servizio:</b> ${servizioTxt}
+      ${operatoreId ? `<span class="ms-2"><b>con</b> ${operatoreTxt}</span>` : ''}
+      <br>
+      <small class="text-muted" style="font-size:0.85em;">
+        ${durata ? `Durata: ${durata}` : ''}${durata && prezzo ? ' · ' : ''}${prezzo ? `Prezzo: ${prezzo}` : ''}
+      </small>
+      <input type="hidden" class="servizio-id" value="${servizioId}">
+      <input type="hidden" class="operatore-id" value="${operatoreId}">
+    </span>
+    <button type="button" class="btn btn-sm btn-link text-danger rimuovi-pseudoblocco" title="Rimuovi"><b>&times;</b></button>
+  `;
+  pseudoblocchi.appendChild(blocco);
 
-if (blockDurata && maxDurata > 0 && totaleDurata > maxDurata) {
-  alert("Blocco durata: " + msgDurata);
-  // Mostra anche l'alert Bootstrap
-  const alertDiv = document.getElementById('alert-block-durata');
-  if (alertDiv) alertDiv.style.display = '';
-  return; // Annulla aggiunta
-}
-if (blockPrezzo && maxPrezzo > 0 && totalePrezzo > maxPrezzo) {
-  alert("Blocco prezzo: " + msgPrezzo);
-  // Mostra anche l'alert Bootstrap
-  const alertDiv = document.getElementById('alert-block-prezzo');
-  if (alertDiv) alertDiv.style.display = '';
-  return; // Annulla aggiunta
-}
+  // Reset selezione
+  servizioIniziale.value = '';
+  operatoreIniziale.value = '';
+  aggiungiBtn.style.display = 'none';
+  aggiornaTotaleServizi();
+  mostraDataSePronto();
 
-    if (!blockDurata && maxDurata > 0 && totaleDurata > maxDurata) {
-  alert("Attenzione: " + msgDurata);
-}
-if (!blockPrezzo && maxPrezzo > 0 && totalePrezzo > maxPrezzo) {
-  alert("Attenzione: " + msgPrezzo);
-}
-    // --- FINE PATCH ---
-
-    const durata = servizioObj?.servizio_durata ? `${servizioObj.servizio_durata} min` : '';
-    const prezzo = servizioObj?.servizio_prezzo ? `€${servizioObj.servizio_prezzo}` : '';
-
-    const blocco = document.createElement('div');
-    blocco.className = 'alert alert-secondary d-flex align-items-center justify-content-between mb-2';
-    blocco.innerHTML = `
-      <span>
-        <b>Servizio:</b> ${servizioTxt}
-        ${operatoreId ? `<span class="ms-2"><b>con</b> ${operatoreTxt}</span>` : ''}
-        <br>
-        <small class="text-muted" style="font-size:0.85em;">
-          ${durata ? `Durata: ${durata}` : ''}${durata && prezzo ? ' · ' : ''}${prezzo ? `Prezzo: ${prezzo}` : ''}
-        </small>
-        <input type="hidden" class="servizio-id" value="${servizioId}">
-        <input type="hidden" class="operatore-id" value="${operatoreId}">
-      </span>
-      <button type="button" class="btn btn-sm btn-link text-danger rimuovi-pseudoblocco" title="Rimuovi"><b>&times;</b></button>
-    `;
-    pseudoblocchi.appendChild(blocco);
-
-    // Reset selezione iniziale
-    servizioIniziale.value = '';
-    operatoreIniziale.value = '';
-    aggiungiBtn.style.display = 'none';
+  // --- BLOCCO DURATA ---
+  if (blockDurata && maxDurata > 0 && totaleDurata > maxDurata) {
+    alert("Blocco durata: " + msgDurata);
+    const alertDiv = document.getElementById('alert-block-durata');
+    if (alertDiv) alertDiv.style.display = '';
+    // RIMUOVI l'ultimo pseudoblocco (appena aggiunto)
+    if (blocco && blocco.parentNode) blocco.parentNode.removeChild(blocco);
     aggiornaTotaleServizi();
     mostraDataSePronto();
-  });
+    return;
+  }
+  // --- BLOCCO PREZZO ---
+  if (blockPrezzo && maxPrezzo > 0 && totalePrezzo > maxPrezzo) {
+    alert("Blocco prezzo: " + msgPrezzo);
+    const alertDiv = document.getElementById('alert-block-prezzo');
+    if (alertDiv) alertDiv.style.display = '';
+    // RIMUOVI l'ultimo pseudoblocco (appena aggiunto)
+    if (blocco && blocco.parentNode) blocco.parentNode.removeChild(blocco);
+    aggiornaTotaleServizi();
+    mostraDataSePronto();
+    return;
+  }
 
-  // Rimuovi pseudoblocco
-  pseudoblocchi.addEventListener('click', function(e) {
-    // Cerca il bottone anche se il click è sul figlio <b>
-    const btn = e.target.closest('.rimuovi-pseudoblocco');
-    if (btn) {
-      btn.closest('.alert').remove();
-      aggiornaTotaleServizi();
-      mostraDataSePronto();
-    }
-  });
-});
+  // Warning semplice: solo alert, non rimuovere nulla
+  if (!blockDurata && maxDurata > 0 && totaleDurata > maxDurata) {
+    alert("Attenzione: " + msgDurata);
+  }
+  if (!blockPrezzo && maxPrezzo > 0 && totalePrezzo > maxPrezzo) {
+    alert("Attenzione: " + msgPrezzo);
+  }
+    // --- FINE PATCH ---
 
 // Funzioni globali
 window.getServiziSelezionati = function() {
