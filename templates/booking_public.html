@@ -602,6 +602,7 @@ fetch('/prenota', {
 })
   .then(r => r.json())
   .then(res => {
+    console.log("Risposta /prenota:", res);
     const msg = document.getElementById('msg');
     let divTotale = document.getElementById('totale-servizi');
 if (divTotale) divTotale.style.display = 'none';
@@ -664,6 +665,7 @@ document.getElementById('bookingForm').addEventListener('submit', function(e) {
   })
   .then(r => r.json())
   .then(res => {
+    console.log("Risposta /prenota:", res);
     if (res.success) {
       msg.innerHTML = '<div class="alert alert-success">Prenotazione registrata! Riceverai conferma via telefono.</div>';
       document.getElementById('bookingForm').reset();
@@ -788,7 +790,50 @@ const operatoreTxt = operatoreIniziale.options[operatoreIniziale.selectedIndex]?
     }
 
     // --- PATCH: blocco durata/prezzo ---
+    const serviziSelezionati = getServiziSelezionati();
+    let totaleDurata = 0;
+    let totalePrezzo = 0;
+    serviziSelezionati.forEach(sel => {
+      const obj = servizi.find(s => String(s.id) === String(sel.servizio_id));
+      if (obj) {
+        totaleDurata += parseInt(obj.servizio_durata || 0, 10);
+        totalePrezzo += parseFloat(obj.servizio_prezzo || 0);
+      }
+    });
+    // Aggiungi anche il servizio che stai per inserire
+    if (servizioObj) {
+      totaleDurata += parseInt(servizioObj.servizio_durata || 0, 10);
+      totalePrezzo += parseFloat(servizioObj.servizio_prezzo || 0);
+    }
 
+const maxDurata = {{ business_info.booking_max_durata|default(0, true) }};
+const maxPrezzo = {{ business_info.booking_max_prezzo|default(0, true) }};
+const blockDurata = "{{ business_info.booking_rule_type_durata|default('none') }}" === "block";
+const blockPrezzo = "{{ business_info.booking_rule_type_prezzo|default('none') }}" === "block";
+const msgDurata = {{ business_info.booking_rule_message_durata|default('', true)|tojson }};
+const msgPrezzo = {{ business_info.booking_rule_message_prezzo|default('', true)|tojson }};
+
+if (blockDurata && maxDurata > 0 && totaleDurata > maxDurata) {
+  alert("Blocco durata: " + msgDurata);
+  // Mostra anche l'alert Bootstrap
+  const alertDiv = document.getElementById('alert-block-durata');
+  if (alertDiv) alertDiv.style.display = '';
+  return; // Annulla aggiunta
+}
+if (blockPrezzo && maxPrezzo > 0 && totalePrezzo > maxPrezzo) {
+  alert("Blocco prezzo: " + msgPrezzo);
+  // Mostra anche l'alert Bootstrap
+  const alertDiv = document.getElementById('alert-block-prezzo');
+  if (alertDiv) alertDiv.style.display = '';
+  return; // Annulla aggiunta
+}
+
+    if (!blockDurata && maxDurata > 0 && totaleDurata > maxDurata) {
+  alert("Attenzione: " + msgDurata);
+}
+if (!blockPrezzo && maxPrezzo > 0 && totalePrezzo > maxPrezzo) {
+  alert("Attenzione: " + msgPrezzo);
+}
     // --- FINE PATCH ---
 
     const durata = servizioObj?.servizio_durata ? `${servizioObj.servizio_durata} min` : '';
