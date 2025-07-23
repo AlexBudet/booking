@@ -621,14 +621,20 @@ document.addEventListener('DOMContentLoaded', function() {
     const msgDurata = {{ business_info.booking_rule_message_durata|tojson }};
     const msgPrezzo = {{ business_info.booking_rule_message_prezzo|tojson }};
 
-    if (blockDurata && maxDurata > 0 && totaleDurata > maxDurata) {
-      alert("Blocco durata: " + msgDurata);
-      return; // Annulla aggiunta
-    }
-    if (blockPrezzo && maxPrezzo > 0 && totalePrezzo > maxPrezzo) {
-      alert("Blocco prezzo: " + msgPrezzo);
-      return; // Annulla aggiunta
-    }
+if (blockDurata && maxDurata > 0 && totaleDurata > maxDurata) {
+  alert("Blocco durata: " + msgDurata);
+  // Mostra anche l'alert Bootstrap
+  const alertDiv = document.getElementById('alert-block-durata');
+  if (alertDiv) alertDiv.style.display = '';
+  return; // Annulla aggiunta
+}
+if (blockPrezzo && maxPrezzo > 0 && totalePrezzo > maxPrezzo) {
+  alert("Blocco prezzo: " + msgPrezzo);
+  // Mostra anche l'alert Bootstrap
+  const alertDiv = document.getElementById('alert-block-prezzo');
+  if (alertDiv) alertDiv.style.display = '';
+  return; // Annulla aggiunta
+}
 
     if (!blockDurata && maxDurata > 0 && totaleDurata > maxDurata) {
   alert("Attenzione: " + msgDurata);
