@@ -320,9 +320,21 @@ def orari_disponibili():
 
     if (max_durata > 0 and durata_totale > max_durata) or (max_prezzo > 0 and totale_prezzo > max_prezzo):
         if rule_type == "block":
-            return jsonify({"success": False, "errori": [rule_msg or "Limite superato, prenotazione bloccata."]}), 400
+            return jsonify({
+                "orari_disponibili": [],
+                "operatori_assegnati": {},
+                "warning": None,
+                "block": True,
+                "error": rule_msg or "Limite superato, prenotazione bloccata."
+            })  # <-- status 200!
         elif rule_type == "warning":
-            return jsonify({"success": True, "warning": rule_msg or "Limite superato, attenzione!"})
+            return jsonify({
+                "orari_disponibili": [],
+                "operatori_assegnati": {},
+                "warning": rule_msg or "Limite superato, attenzione!",
+                "block": False,
+                "error": None
+            }) 
     # --- FINE PATCH ---
 
     # Prova solo slot dove un singolo operatore può coprire TUTTI i servizi richiesti in sequenza
