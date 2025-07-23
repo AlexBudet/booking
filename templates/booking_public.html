@@ -168,9 +168,15 @@
     <!-- Sidebar info salone, visibile solo su desktop -->
     <div class="booking-sidebar mb-4">
       <h3 class="mb-2">PORTALE PRENOTAZIONI</h3>
-      <h3 class="mb-2" style="color: #ffffff;">Sun Express 3 s.a.s.</h3>
-      <div class="mb-2"><i class="fa-solid fa-location-dot"></i> Via Domenico Modugno (BI)</div>
-      <div class="mb-2"><i class="fa-solid fa-phone"></i> 0152538296</div>
+<h3 class="mb-2" style="color: #ffffff;">{{ business_info.business_name }}</h3>
+<div class="mb-2">
+  <i class="fa-solid fa-location-dot"></i>
+  {{ business_info.address }}{% if business_info.city %} ({{ business_info.city }}){% endif %}
+</div>
+<div class="mb-2">
+  <i class="fa-solid fa-phone"></i>
+  {{ business_info.phone }}
+</div>
       <p class="mt-3" style="font-size: 0.95em; color: #e7eace;">
         Scegli i <b>servizi</b>, la <b>data</b> e l'<b>orario</b>.<br>
       </p>
@@ -187,7 +193,7 @@
       {% endfor %}
     </select>
   </div>
-  <div class="col-4">
+  <div class="col-4 mb-2">
     <div id="risultati_operatore" class="list-group" style="display:none; position:relative; z-index:10;"></div>
     <div id="select_operatore_wrapper">
       <select id="operatore" class="form-select">
