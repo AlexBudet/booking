@@ -179,6 +179,9 @@
   <input type="hidden" id="csrf_token" name="csrf_token" value="{{ csrf_token() }}">
 
 <div class="row align-items-end mb-2" id="selezione-iniziale-servizio">
+  <div class="col-12 mb-2">
+  <input type="text" id="servizio-search" class="form-control" placeholder="Cerca servizio...">
+</div>
   <div class="col-7">
     <select class="form-select" id="servizio-iniziale">
       <option value="">Scegli servizio...</option>
@@ -771,6 +774,23 @@ document.addEventListener('DOMContentLoaded', function() {
       el.addEventListener('click', hideAlerts);
       el.addEventListener('change', hideAlerts);
     }
+  });
+});
+</script>
+<script>
+  document.getElementById('servizio-search').addEventListener('input', function() {
+  const query = this.value.trim().toLowerCase();
+  const select = document.getElementById('servizio-iniziale');
+  select.innerHTML = '<option value="">Scegli servizio...</option>';
+  let filtered = servizi;
+  if (query.length >= 3) {
+    filtered = servizi.filter(s => s.servizio_nome.toLowerCase().includes(query));
+  }
+  filtered.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s.id;
+    opt.textContent = s.servizio_nome;
+    select.appendChild(opt);
   });
 });
 </script>
