@@ -778,20 +778,42 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 <script>
-  document.getElementById('servizio-search').addEventListener('input', function() {
-  const query = this.value.trim().toLowerCase();
+document.getElementById('servizio-search').addEventListener('input', function() {
+  const q = this.value.trim();
   const select = document.getElementById('servizio-iniziale');
+  // reset del dropdown
   select.innerHTML = '<option value="">Scegli servizio...</option>';
-  let filtered = servizi;
-  if (query.length >= 3) {
-    filtered = servizi.filter(s => s.servizio_nome.toLowerCase().includes(query));
+
+  if (q.length >= 3) {
+    // fetch al server per ottenere solo i servizi che contengono q
+    fetch(`/search-servizi?q=${encodeURIComponent(q)}`)
+      .then(response => response.json())
+      .then(data => {
+        data.forEach(s => {
+          const opt = document.createElement('option');
+          opt.value = s.id;
+          opt.textContent = s.servizio_nome;
+          select.appendChild(opt);
+        });
+      })
+      .catch(() => {
+        // in caso di errore, ritorna elenco completo
+        servizi.forEach(s => {
+          const opt = document.createElement('option');
+          opt.value = s.id;
+          opt.textContent = s.servizio_nome;
+          select.appendChild(opt);
+        });
+      });
+  } else {
+    // sotto le 3 lettere, mostro l’elenco completo
+    servizi.forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.id;
+      opt.textContent = s.servizio_nome;
+      select.appendChild(opt);
+    });
   }
-  filtered.forEach(s => {
-    const opt = document.createElement('option');
-    opt.value = s.id;
-    opt.textContent = s.servizio_nome;
-    select.appendChild(opt);
-  });
 });
 </script>
 </body>

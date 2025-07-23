@@ -180,6 +180,20 @@ def booking_page():
         business_info=business_info
     )
 
+@booking_bp.route('/search-servizi')
+def search_servizi():
+    q = request.args.get('q', '', type=str)
+    # filtro case‐insensitive sui nomi dei servizi
+    risultati = Service.query \
+        .filter(Service.servizio_nome.ilike(f"%{q}%")) \
+        .order_by(Service.servizio_nome) \
+        .all()
+    # restituisco JSON con id e nome
+    return jsonify([
+        {"id": s.id, "servizio_nome": s.servizio_nome}
+        for s in risultati
+    ])
+
 @booking_bp.route('/orari', methods=['GET'])
 def orari_disponibili():
     data_str = request.args.get('data')  # formato: YYYY-MM-DD
