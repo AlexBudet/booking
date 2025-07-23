@@ -409,26 +409,35 @@ def prenota():
 
     max_durata = business_info.booking_max_durata or 0
     max_prezzo = business_info.booking_max_prezzo or 0
-    rule_type = business_info.booking_rule_type or "none"
-    rule_msg = business_info.booking_rule_message or "Limite superato!"
+    rule_type_durata = business_info.booking_rule_type_durata or "none"
+    rule_msg_durata = business_info.booking_rule_message_durata or "Limite durata superato!"
+    rule_type_prezzo = business_info.booking_rule_type_prezzo or "none"
+    rule_msg_prezzo = business_info.booking_rule_message_prezzo or "Limite prezzo superato!"
 
     contiene_pseudoblocco = any([int(s.get("servizio_id")) == 9999 for s in servizi])
 
     popup_warning = None
     if contiene_pseudoblocco:
-        if (max_durata > 0 and durata_totale > max_durata) or (max_prezzo > 0 and totale_prezzo > max_prezzo):
-            if rule_type == "block":
+        # Blocco per durata
+        if max_durata > 0 and durata_totale > max_durata:
+            if rule_type_durata == "block":
                 return jsonify({
                     "success": False,
                     "errori": [],
-                    "popup_error": rule_msg or "Limite superato, blocco non consentito."
+                    "popup_error": rule_msg_durata or "Limite durata superato, blocco non consentito."
                 }), 400
-            elif rule_type == "warning":
-                popup_warning = rule_msg or "Limite superato, attenzione."
-        else:
-            popup_warning = None
-    else:
-        popup_warning = None
+            elif rule_type_durata == "warning":
+                popup_warning = rule_msg_durata or "Limite durata superato, attenzione."
+        # Blocco per prezzo
+        if max_prezzo > 0 and totale_prezzo > max_prezzo:
+            if rule_type_prezzo == "block":
+                return jsonify({
+                    "success": False,
+                    "errori": [],
+                    "popup_error": rule_msg_prezzo or "Limite prezzo superato, blocco non consentito."
+                }), 400
+            elif rule_type_prezzo == "warning":
+                popup_warning = rule_msg_prezzo or "Limite prezzo superato, attenzione."
 
     operatori_disponibili = Operator.query.filter_by(is_deleted=False, is_visible=True).all()
     turni_disponibili = OperatorShift.query.filter(

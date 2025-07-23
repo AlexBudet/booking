@@ -168,10 +168,10 @@ class BusinessInfo(db.Model):
     whatsapp_message = db.Column(db.Text, nullable=True)
     booking_max_durata = db.Column(db.Integer, default=0)
     booking_rule_type_durata = db.Column(db.String(20), default="none")
-    booking_rule_message_durata = db.Column(db.String(255), default="")
+    booking_rule_message_durata = db.Column(db.String(255), default="none")
     booking_max_prezzo = db.Column(db.Float, default=0)
     booking_rule_type_prezzo = db.Column(db.String(20), default="none")
-    booking_rule_message_prezzo = db.Column(db.String(255), default="")
+    booking_rule_message_prezzo = db.Column(db.String(255), default="none")
 
     @property
     def closing_days_list(self):
