@@ -613,8 +613,8 @@ const maxDurata = {{ business_info.booking_max_durata or 0 }};
 const maxPrezzo = {{ business_info.booking_max_prezzo or 0 }};
 const blockDurata = "{{ business_info.booking_rule_type_durata }}" === "block";
 const blockPrezzo = "{{ business_info.booking_rule_type_prezzo }}" === "block";
-const msgDurata = "{{ business_info.booking_rule_message_durata|escapejs }}";
-const msgPrezzo = "{{ business_info.booking_rule_message_prezzo|escapejs }}";
+const msgDurata = {{ business_info.booking_rule_message_durata|tojson }};
+const msgPrezzo = {{ business_info.booking_rule_message_prezzo|tojson }};
 
 if (blockDurata && maxDurata > 0 && totaleDurata > maxDurata) {
   alert("Blocco durata: " + msgDurata);
