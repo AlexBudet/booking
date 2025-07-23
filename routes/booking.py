@@ -148,6 +148,7 @@ def booking_page():
         # Mostra solo servizi visibili online
     servizi = Service.query.filter_by(is_visible_online=True, is_deleted=False).all()
     operatori = Operator.query.filter_by(is_visible=True, is_deleted=False).all()
+    business_info = BusinessInfo.query.first()
 
     servizi_json = [
         {
@@ -175,7 +176,8 @@ def booking_page():
         servizi=servizi,
         operatori=operatori,
         servizi_json=servizi_json,
-        operatori_json=operatori_json
+        operatori_json=operatori_json,
+        business_info=business_info
     )
 
 @booking_bp.route('/orari', methods=['GET'])

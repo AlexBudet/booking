@@ -196,6 +196,27 @@
 
 <div id="pseudoblocchi-servizi"></div>
 
+<div id="regole-prenotazione" class="mb-3">
+  {% if business_info.booking_rule_type_durata == 'warning' and business_info.booking_max_durata %}
+    <div class="alert alert-warning">
+      <b>Attenzione:</b> {{ business_info.booking_rule_message_durata }}
+    </div>
+  {% elif business_info.booking_rule_type_durata == 'block' and business_info.booking_max_durata %}
+    <div class="alert alert-danger">
+      <b>Blocco:</b> {{ business_info.booking_rule_message_durata }}
+    </div>
+  {% endif %}
+  {% if business_info.booking_rule_type_prezzo == 'warning' and business_info.booking_max_prezzo %}
+    <div class="alert alert-warning">
+      <b>Attenzione:</b> {{ business_info.booking_rule_message_prezzo }}
+    </div>
+  {% elif business_info.booking_rule_type_prezzo == 'block' and business_info.booking_max_prezzo %}
+    <div class="alert alert-danger">
+      <b>Blocco:</b> {{ business_info.booking_rule_message_prezzo }}
+    </div>
+  {% endif %}
+</div>
+
 <div class="mb-3" id="data_wrapper" style="display:none;">
   <label for="data" class="form-label">Data*</label>
   <input type="date" id="data" name="data" class="form-control">
