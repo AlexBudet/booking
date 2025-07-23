@@ -585,8 +585,47 @@ document.addEventListener('DOMContentLoaded', function() {
       return;
     }
 
-    // Crea pseudoblocco
+if (!servizioId) {
+  alert('Seleziona un servizio!');
+  return;
+}
+
+// --- PATCH: blocco durata/prezzo ---
 const servizioObj = servizi.find(s => s.id == servizioId);
+const serviziSelezionati = getServiziSelezionati();
+let totaleDurata = 0;
+let totalePrezzo = 0;
+serviziSelezionati.forEach(sel => {
+  const obj = servizi.find(s => String(s.id) === String(sel.servizio_id));
+  if (obj) {
+    totaleDurata += parseInt(obj.servizio_durata || 0, 10);
+    totalePrezzo += parseFloat(obj.servizio_prezzo || 0);
+  }
+});
+// Aggiungi anche il servizio che stai per inserire
+if (servizioObj) {
+  totaleDurata += parseInt(servizioObj.servizio_durata || 0, 10);
+  totalePrezzo += parseFloat(servizioObj.servizio_prezzo || 0);
+}
+
+// Limiti e tipo regola dal backend (renderizzati come variabili JS)
+const maxDurata = {{ business_info.booking_max_durata or 0 }};
+const maxPrezzo = {{ business_info.booking_max_prezzo or 0 }};
+const blockDurata = "{{ business_info.booking_rule_type_durata }}" === "block";
+const blockPrezzo = "{{ business_info.booking_rule_type_prezzo }}" === "block";
+const msgDurata = "{{ business_info.booking_rule_message_durata|escapejs }}";
+const msgPrezzo = "{{ business_info.booking_rule_message_prezzo|escapejs }}";
+
+if (blockDurata && maxDurata > 0 && totaleDurata > maxDurata) {
+  alert("Blocco durata: " + msgDurata);
+  return; // Annulla aggiunta
+}
+if (blockPrezzo && maxPrezzo > 0 && totalePrezzo > maxPrezzo) {
+  alert("Blocco prezzo: " + msgPrezzo);
+  return; // Annulla aggiunta
+}
+// --- FINE PATCH ---
+
 const durata = servizioObj?.servizio_durata ? `${servizioObj.servizio_durata} min` : '';
 const prezzo = servizioObj?.servizio_prezzo ? `€${servizioObj.servizio_prezzo}` : '';
 
