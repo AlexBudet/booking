@@ -387,6 +387,7 @@ Per quanto non espressamente previsto nelle presenti CGV, si applica la legge it
 <script>
 const servizi = {{ servizi_json|tojson }};
 const operatori = {{ operatori_json|tojson }};
+const inviaCodiceBtn = document.getElementById('inviaCodiceBtn');
 
 // Nascondi la select operatore inizialmente
 document.getElementById('select_operatore_wrapper').style.display = 'none';
