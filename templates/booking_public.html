@@ -496,6 +496,14 @@ fetch('/prenota', {
     const msg = document.getElementById('msg');
     let divTotale = document.getElementById('totale-servizi');
 if (divTotale) divTotale.style.display = 'none';
+if (res.popup_error) {
+  alert(res.popup_error); // oppure apri la tua modale personalizzata
+  return;
+}
+if (res.popup_warning) {
+  alert(res.popup_warning); // oppure apri la tua modale personalizzata
+  // Non fare return: la prenotazione va avanti anche in caso di warning
+}
 if (res.success && res.prenotazioni && res.prenotazioni.length) {
   let sommario = '';
   let totaleDurata = 0;
