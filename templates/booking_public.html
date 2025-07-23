@@ -725,10 +725,14 @@ document.addEventListener('DOMContentLoaded', function() {
   aggiungiBtn.style.display = 'none';
 
   // Mostra tutti i servizi al focus
-  servizioIniziale.addEventListener('focus', function() {
-    showSuggestions(servizi);
-      document.getElementById('select_operatore_wrapper').style.display = ''; 
-  });
+let operatoreResoVisibile = false;
+document.getElementById('servizio-iniziale').addEventListener('focus', function() {
+  showSuggestions(servizi);
+  if (!operatoreResoVisibile) {
+    document.getElementById('select_operatore_wrapper').style.display = '';
+    operatoreResoVisibile = true;
+  }
+});
 
   // Filtra servizi dalla terza lettera
   servizioIniziale.addEventListener('input', function() {
