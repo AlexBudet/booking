@@ -1,10 +1,10 @@
-import json
+from appl import db
 from enum import Enum as PyEnum
 from sqlalchemy import Boolean, Enum, ForeignKey, Integer, String, Time, Text
 from sqlalchemy.sql import func
 from sqlalchemy import JSON, DateTime
-from appl import db
 from datetime import timedelta, datetime
+import json
 
 # Enum necessari
 class ServiceCategory(PyEnum):

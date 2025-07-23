@@ -603,6 +603,27 @@ def prenota():
                 html_content=riepilogo
             )
             sg.send(message)
+
+            # Invio email all'admin
+            business_info = BusinessInfo.query.first()
+            admin_email = business_info.email if business_info and business_info.email else None
+            admin_riepilogo = f"""
+                <h3>nuova prenotazione: {nome},</h3>
+                <ul>
+                    {appuntamenti_html}
+                </ul>
+                <div style="padding:12px; background:#f2f2f2; margin:20px 0; border-radius:8px;">
+                <b>Totale durata:</b> {totale_durata} min &nbsp; | &nbsp; <b>Totale costo:</b> €{totale_prezzo:.2f}
+                </div>
+            """
+            admin_message = Mail(
+                from_email='noreply@sunexpressbeauty.com',
+                to_emails=admin_email,
+                subject=f'Nuova prenotazione - {nome}',
+                html_content=admin_riepilogo
+            )
+            sg.send(admin_message)
+
         except Exception as e:
             print("ERRORE INVIO EMAIL DI CONFERMA:", e)
 
