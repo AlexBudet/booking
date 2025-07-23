@@ -781,13 +781,11 @@ document.addEventListener('DOMContentLoaded', function() {
 document.getElementById('servizio-search').addEventListener('input', function() {
   const q = this.value.trim();
   const select = document.getElementById('servizio-iniziale');
-  // reset del dropdown
   select.innerHTML = '<option value="">Scegli servizio...</option>';
 
   if (q.length >= 3) {
-    // fetch al server per ottenere solo i servizi che contengono q
     fetch(`/search-servizi?q=${encodeURIComponent(q)}`)
-      .then(response => response.json())
+      .then(r => r.json())
       .then(data => {
         data.forEach(s => {
           const opt = document.createElement('option');
@@ -795,9 +793,11 @@ document.getElementById('servizio-search').addEventListener('input', function() 
           opt.textContent = s.servizio_nome;
           select.appendChild(opt);
         });
+        // apre automaticamente il menu dei risultati
+        select.focus();
+        select.click();
       })
       .catch(() => {
-        // in caso di errore, ritorna elenco completo
         servizi.forEach(s => {
           const opt = document.createElement('option');
           opt.value = s.id;
@@ -806,7 +806,6 @@ document.getElementById('servizio-search').addEventListener('input', function() 
         });
       });
   } else {
-    // sotto le 3 lettere, mostro l’elenco completo
     servizi.forEach(s => {
       const opt = document.createElement('option');
       opt.value = s.id;
@@ -816,5 +815,6 @@ document.getElementById('servizio-search').addEventListener('input', function() 
   }
 });
 </script>
+
 </body>
 </html>
