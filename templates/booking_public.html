@@ -862,6 +862,7 @@ if (!blockPrezzo && maxPrezzo > 0 && totalePrezzo > maxPrezzo) {
     aggiungiBtn.style.display = 'none';
     aggiornaTotaleServizi();
     mostraDataSePronto();
+  });
 
   // Rimuovi pseudoblocco
   pseudoblocchi.addEventListener('click', function(e) {
@@ -873,6 +874,8 @@ if (!blockPrezzo && maxPrezzo > 0 && totalePrezzo > maxPrezzo) {
       mostraDataSePronto();
     }
   });
+});
+
 
 // Funzioni globali
 window.getServiziSelezionati = function() {
