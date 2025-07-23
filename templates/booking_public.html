@@ -16,22 +16,10 @@
       padding: 2rem;
     }
     .booking-sidebar {
-      background: #fffbe8;
       border-radius: 12px;
       box-shadow: 0 2px 8px #f0e6d2;
       padding: 1.5rem;
-      width: 90vw;                 /* Larga il 90% della viewport */
-      max-width: 98vw;
-      margin: 12px auto 18px auto; /* Centrata con un po' di spazio sopra e sotto */
-      min-width: unset;
-      font-size: calc(1.1rem + 0.7vw); /* Font size proporzionale allo schermo */
-      position: static;             /* NON fixed */
-      left: 0;
-      top: 0;
-      height: auto;
-      z-index: auto;
-      border-right: none;
-      padding: 1.2rem 0.8rem;
+      margin-bottom: 2rem;
     }
 @media (max-width: 767px) {
   .container-booking {
@@ -41,7 +29,21 @@
     box-shadow: none;
     padding: 1rem;
   }
-
+  .booking-sidebar {
+    width: 90vw;                 /* Larga il 90% della viewport */
+    max-width: 98vw;
+    margin: 12px auto 18px auto; /* Centrata con un po' di spazio sopra e sotto */
+    min-width: unset;
+    font-size: calc(1.1rem + 0.7vw); /* Font size proporzionale allo schermo */
+    position: static;             /* NON fixed */
+    left: 0;
+    top: 0;
+    height: auto;
+    z-index: auto;
+    border-right: none;
+    box-shadow: 0 2px 8px #2222;
+    padding: 1.2rem 0.8rem;
+  }
   .desktop-only { display: none !important; }
   .mobile-full { width: 100% !important; }
 }
