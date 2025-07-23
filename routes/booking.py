@@ -310,27 +310,6 @@ def orari_disponibili():
     durata = timedelta(minutes=durata_totale)
     slot_step = timedelta(minutes=15)
 
-    # --- PATCH: controllo regole prenotazione alternativa ---
-    totale_prezzo = sum([float(getattr(s, 'servizio_prezzo', 0) or 0) for s in servizi])
-    business_info = BusinessInfo.query.first()
-    max_durata = business_info.booking_max_durata or 0
-    max_prezzo = business_info.booking_max_prezzo or 0
-    rule_type = business_info.booking_rule_type or "none"
-    rule_msg = business_info.booking_rule_message or "Limite superato!"
-
-    block = False
-    warning = None
-    error = None
-
-    if (max_durata > 0 and durata_totale > max_durata) or (max_prezzo > 0 and totale_prezzo > max_prezzo):
-        debug_info.append(f"Limite superato: durata={durata_totale}, prezzo={totale_prezzo}")
-        if rule_type == "block":
-            block = True
-            error = rule_msg or "Limite superato, prenotazione riprova."
-        elif rule_type == "warning":
-            warning = rule_msg or "Limite superato, attenzione!"
-# --- FINE PATCH ---
-
     # Prova solo slot dove un singolo operatore può coprire TUTTI i servizi richiesti in sequenza
     for op in operatori_disponibili:
         for start, end in intervalli:
@@ -369,9 +348,6 @@ def orari_disponibili():
     return jsonify({
         "orari_disponibili": orari,
         "operatori_assegnati": slot_operatori,
-        "block": block,
-        "warning": warning,
-        "error": error,
         "debug": debug_info
     })
 
@@ -412,6 +388,33 @@ def prenota():
     business_info = BusinessInfo.query.first()
     apertura = business_info.active_opening_time
     chiusura = business_info.active_closing_time
+
+    # --- CONTROLLA LIMITE DURATA/PREZZO SU BLOCCO ---
+    durata_totale = sum([s.servizio_durata or 30 for s in servizi_objs])
+    totale_prezzo = sum([float(getattr(s, 'servizio_prezzo', 0) or 0) for s in servizi_objs])
+
+    max_durata = business_info.booking_max_durata or 0
+    max_prezzo = business_info.booking_max_prezzo or 0
+    rule_type = business_info.booking_rule_type or "none"
+    rule_msg = business_info.booking_rule_message or "Limite superato!"
+
+    contiene_pseudoblocco = any([int(s.get("servizio_id")) == 9999 for s in servizi])
+
+    popup_warning = None
+    if contiene_pseudoblocco:
+        if (max_durata > 0 and durata_totale > max_durata) or (max_prezzo > 0 and totale_prezzo > max_prezzo):
+            if rule_type == "block":
+                return jsonify({
+                    "success": False,
+                    "errori": [],
+                    "popup_error": rule_msg or "Limite superato, blocco non consentito."
+                }), 400
+            elif rule_type == "warning":
+                popup_warning = rule_msg or "Limite superato, attenzione."
+        else:
+            popup_warning = None
+    else:
+        popup_warning = None
 
     operatori_disponibili = Operator.query.filter_by(is_deleted=False, is_visible=True).all()
     turni_disponibili = OperatorShift.query.filter(
@@ -531,8 +534,6 @@ def prenota():
                 orari.append(slot.strftime("%H:%M"))
                 slot_operatori[slot.strftime("%H:%M")] = operatori_catena
             slot += slot_step
-
-    # --- FINE LOGICA IDENTICA ---
 
     # Controlla che lo slot richiesto sia tra quelli disponibili
     if ora not in orari:
@@ -658,7 +659,8 @@ def prenota():
     return jsonify({
         "success": len(risultati) > 0,
         "prenotazioni": risultati,
-        "errori": []
+        "errori": [],
+        "popup_warning": popup_warning
     })
 
 @booking_bp.route('/invia-codice', methods=['POST'])
