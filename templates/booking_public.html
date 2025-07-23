@@ -182,14 +182,11 @@
   <div class="col-12 mb-2">
   <input type="text" id="servizio-search" class="form-control" placeholder="Cerca servizio...">
 </div>
-  <div class="col-7">
-    <select class="form-select" id="servizio-iniziale">
-      <option value="">Scegli servizio...</option>
-      {% for servizio in servizi %}
-      <option value="{{ servizio.id }}">{{ servizio.servizio_nome }}</option>
-      {% endfor %}
-    </select>
-  </div>
+<div class="col-12 mb-2 position-relative">
+  <input type="text" id="servizio-search" class="form-control" placeholder="Cerca servizio..." autocomplete="off">
+  <div id="servizio-suggestions" class="list-group position-absolute w-100" style="z-index:1000; display:none;"></div>
+  <input type="hidden" id="servizio-id-selezionato">
+</div>
   <div class="col-4">
   <div id="risultati_operatore" class="list-group" style="display:none; position:relative; z-index:10;"></div>
   <div id="select_operatore_wrapper" style="margin-top:8px; display:none;">
@@ -780,42 +777,42 @@ document.addEventListener('DOMContentLoaded', function() {
 <script>
 document.getElementById('servizio-search').addEventListener('input', function() {
   const q = this.value.trim();
-  const select = document.getElementById('servizio-iniziale');
-  select.innerHTML = '<option value="">Scegli servizio...</option>';
-
-  if (q.length >= 3) {
-    fetch(`/search-servizi?q=${encodeURIComponent(q)}`)
-      .then(response => response.json())
-      .then(data => {
-        data.forEach(s => {
-          const opt = document.createElement('option');
-          opt.value = s.id;
-          opt.textContent = s.servizio_nome;
-          select.appendChild(opt);
-        });
-        select.size = Math.min(data.length + 1, 8);
-        // Focus rimane sull'input
-        document.getElementById('servizio-search').focus();
-      })
-      .catch(() => {
-        servizi.forEach(s => {
-          const opt = document.createElement('option');
-          opt.value = s.id;
-          opt.textContent = s.servizio_nome;
-          select.appendChild(opt);
-        });
-        select.size = servizi.length + 1;
-        document.getElementById('servizio-search').focus();
+  const suggestions = document.getElementById('servizio-suggestions');
+  suggestions.innerHTML = '';
+  if (q.length < 3) {
+    suggestions.style.display = 'none';
+    document.getElementById('servizio-id-selezionato').value = '';
+    return;
+  }
+  fetch(`/search-servizi?q=${encodeURIComponent(q)}`)
+    .then(response => response.json())
+    .then(data => {
+      if (data.length === 0) {
+        suggestions.style.display = 'none';
+        return;
+      }
+      data.forEach(s => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'list-group-item list-group-item-action';
+        item.textContent = s.servizio_nome;
+        item.onclick = function() {
+          document.getElementById('servizio-search').value = s.servizio_nome;
+          document.getElementById('servizio-id-selezionato').value = s.id;
+          suggestions.style.display = 'none';
+          // Qui puoi gestire la selezione del servizio (es: mostra operatore)
+        };
+        suggestions.appendChild(item);
       });
-  } else {
-    servizi.forEach(s => {
-      const opt = document.createElement('option');
-      opt.value = s.id;
-      opt.textContent = s.servizio_nome;
-      select.appendChild(opt);
+      suggestions.style.display = 'block';
     });
-    select.size = 1;
-    document.getElementById('servizio-search').focus();
+});
+
+// Chiudi i suggerimenti se clicchi fuori
+document.addEventListener('click', function(e) {
+  if (!document.getElementById('servizio-search').contains(e.target) &&
+      !document.getElementById('servizio-suggestions').contains(e.target)) {
+    document.getElementById('servizio-suggestions').style.display = 'none';
   }
 });
 </script>
