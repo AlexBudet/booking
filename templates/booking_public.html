@@ -90,10 +90,10 @@
 }
 
 body {
-  background-color: #191818;
+  background-color: #100f0f;
   background-image:
-    radial-gradient(circle 0.1em at 0.04cm 0.04cm, #6d6b65 80%, rgba(0,0,0,0.1) 100%);
-  background-size: 0.5cm 0.5cm;
+    radial-gradient(circle 0.05em at 0.1cm 0.1cm, #6d6b65 80%, rgba(0,0,0,0.1) 100%);
+  background-size: 0.4cm 0.4cm;
   color: rgb(211, 199, 204);
 }
 
@@ -727,6 +727,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // Mostra tutti i servizi al focus
   servizioIniziale.addEventListener('focus', function() {
     showSuggestions(servizi);
+      document.getElementById('select_operatore_wrapper').style.display = ''; 
   });
 
   // Filtra servizi dalla terza lettera
