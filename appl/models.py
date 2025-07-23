@@ -166,6 +166,10 @@ class BusinessInfo(db.Model):
     vat_percentage = db.Column(db.Float, default=22.0)
     printer_ip = db.Column(db.String(64), default="192.168.1.155")
     whatsapp_message = db.Column(db.Text, nullable=True)
+    booking_max_durata = db.Column(db.Integer, default=0)  # durata massima in minuti (0 = nessun limite)
+    booking_max_prezzo = db.Column(db.Float, default=0.0)  # prezzo massimo (0 = nessun limite)
+    booking_rule_type = db.Column(db.String(20), default="none")  # none, warning, block
+    booking_rule_message = db.Column(db.String(500), default="")  # messaggio personalizzato
 
     @property
     def closing_days_list(self):
