@@ -387,7 +387,6 @@ Per quanto non espressamente previsto nelle presenti CGV, si applica la legge it
 <script>
 const servizi = {{ servizi_json|tojson }};
 const operatori = {{ operatori_json|tojson }};
-const inviaCodiceBtn = document.getElementById('inviaCodiceBtn');
 
 // Nascondi la select operatore inizialmente
 document.getElementById('select_operatore_wrapper').style.display = 'none';
@@ -863,7 +862,6 @@ if (!blockPrezzo && maxPrezzo > 0 && totalePrezzo > maxPrezzo) {
     aggiungiBtn.style.display = 'none';
     aggiornaTotaleServizi();
     mostraDataSePronto();
-  });
 
   // Rimuovi pseudoblocco
   pseudoblocchi.addEventListener('click', function(e) {
@@ -875,7 +873,6 @@ if (!blockPrezzo && maxPrezzo > 0 && totalePrezzo > maxPrezzo) {
       mostraDataSePronto();
     }
   });
-});
 
 // Funzioni globali
 window.getServiziSelezionati = function() {
@@ -932,6 +929,7 @@ window.mostraDataSePronto = function() {
     document.getElementById('data_wrapper').style.display = 'none';
     document.getElementById('ora_wrapper').style.display = 'none';
     document.getElementById('dati-cliente').style.display = 'none';
+    const inviaCodiceBtn = document.getElementById('inviaCodiceBtn');
     inviaCodiceBtn.style.display = 'none';
   }
 };
