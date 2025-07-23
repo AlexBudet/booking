@@ -92,9 +92,9 @@
 body {
   background-color: #191818;
   background-image:
-    radial-gradient(circle 0.05em at 0.05cm 0.05cm, #6d6b65 80%, rgba(0,0,0,0.1) 100%);
-  background-size: 2px 2px;
-  color: rgb(208, 186, 194);
+    radial-gradient(circle 0.1em at 0.1cm 0.1cm, #6d6b65 80%, rgba(0,0,0,0.1) 100%);
+  background-size: 0.5cm 0.5cm;
+  color: rgb(243, 233, 237);
 }
 
 .container-booking {
@@ -192,14 +192,11 @@ body {
   <input type="hidden" id="csrf_token" name="csrf_token" value="{{ csrf_token() }}">
 
 <div class="row align-items-end mb-2" id="selezione-iniziale-servizio">
-  <div class="col-7 position-relative mb-2">
-    <select class="form-select" id="servizio-iniziale">
-      <option value="">Scegli servizio...</option>
-      {% for servizio in servizi %}
-      <option value="{{ servizio.id }}">{{ servizio.servizio_nome }}</option>
-      {% endfor %}
-    </select>
-  </div>
+<div class="col-7 position-relative mb-2">
+  <input type="text" id="servizio-iniziale" class="form-control" placeholder="Cerca un servizio..." autocomplete="off">
+  <div id="servizio-suggestions" class="list-group position-absolute w-100" style="z-index:1000; display:none;"></div>
+  <input type="hidden" id="servizio-id-selezionato">
+</div>
   <div class="col-4 mb-2">
     <div id="risultati_operatore" class="list-group" style="display:none; position:relative; z-index:10;"></div>
     <div id="select_operatore_wrapper">
@@ -695,24 +692,74 @@ document.getElementById('bookingForm').addEventListener('submit', function(e) {
 </script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+  const servizi = {{ servizi_json|tojson }};
   const servizioIniziale = document.getElementById('servizio-iniziale');
-  const operatoreIniziale = document.getElementById('operatore');
+  const servizioIdSelezionato = document.getElementById('servizio-id-selezionato');
   const aggiungiBtn = document.getElementById('aggiungi-servizio');
+  const suggestions = document.getElementById('servizio-suggestions');
   const pseudoblocchi = document.getElementById('pseudoblocchi-servizi');
 
-  if (!servizioIniziale || !aggiungiBtn) return; // Evita errori se non trovati
+  if (!servizioIniziale || !aggiungiBtn) return;
 
   aggiungiBtn.style.display = 'none';
-  servizioIniziale.addEventListener('change', function() {
-    aggiungiBtn.style.display = this.value ? '' : 'none';
+
+  // Mostra tutti i servizi al focus
+  servizioIniziale.addEventListener('focus', function() {
+    showSuggestions(servizi);
+  });
+
+  // Filtra servizi dalla terza lettera
+  servizioIniziale.addEventListener('input', function() {
+    const q = this.value.trim().toLowerCase();
+    if (q.length < 3) {
+      showSuggestions(servizi);
+    } else {
+      const filtrati = servizi.filter(s => s.servizio_nome.toLowerCase().includes(q));
+      showSuggestions(filtrati);
+    }
+    servizioIdSelezionato.value = '';
+    aggiungiBtn.style.display = 'none';
+  });
+
+  function showSuggestions(lista) {
+    suggestions.innerHTML = '';
+    lista.forEach(s => {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'list-group-item list-group-item-action';
+      item.textContent = s.servizio_nome;
+      item.onclick = function() {
+        servizioIniziale.value = s.servizio_nome;
+        servizioIdSelezionato.value = s.id;
+        suggestions.style.display = 'none';
+        aggiungiBtn.style.display = '';
+        servizioIniziale.dispatchEvent(new Event('change'));
+      };
+      suggestions.appendChild(item);
+    });
+    suggestions.style.display = lista.length ? 'block' : 'none';
+  }
+
+  document.addEventListener('click', function(e) {
+    if (!servizioIniziale.contains(e.target) && !suggestions.contains(e.target)) {
+      suggestions.style.display = 'none';
+    }
+  });
+
+  servizioIniziale.addEventListener('blur', function() {
+    setTimeout(() => {
+      if (servizioIdSelezionato.value) aggiungiBtn.style.display = '';
+      else aggiungiBtn.style.display = 'none';
+    }, 200);
   });
 
   // Aggiungi servizio
   aggiungiBtn.addEventListener('click', function() {
-    const servizioId = servizioIniziale.value;
-    const operatoreId = operatoreIniziale.value;
-    const servizioTxt = servizioIniziale.options[servizioIniziale.selectedIndex].text;
-    const operatoreTxt = operatoreIniziale.options[operatoreIniziale.selectedIndex]?.text || '';
+const servizioId = document.getElementById('servizio-id-selezionato').value;
+const operatoreId = operatoreIniziale.value;
+const servizioObj = servizi.find(s => String(s.id) === String(servizioId));
+const servizioTxt = servizioObj ? servizioObj.servizio_nome : servizioIniziale.value;
+const operatoreTxt = operatoreIniziale.options[operatoreIniziale.selectedIndex]?.text || '';
 
     if (!servizioId) {
       alert('Seleziona un servizio!');
@@ -720,7 +767,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // --- PATCH: blocco durata/prezzo ---
-    const servizioObj = servizi.find(s => s.id == servizioId);
     const serviziSelezionati = getServiziSelezionati();
     let totaleDurata = 0;
     let totalePrezzo = 0;
@@ -887,45 +933,6 @@ document.addEventListener('DOMContentLoaded', function() {
       el.addEventListener('change', hideAlerts);
     }
   });
-});
-</script>
-<script>
-  document.getElementById('servizio-search').addEventListener('focus', function() {
-  const suggestions = document.getElementById('servizio-suggestions');
-  suggestions.innerHTML = '';
-  servizi.forEach(s => {
-    const item = document.createElement('button');
-    item.type = 'button';
-    item.className = 'list-group-item list-group-item-action';
-    item.textContent = s.servizio_nome;
-    item.onclick = function() {
-      document.getElementById('servizio-search').value = s.servizio_nome;
-      document.getElementById('servizio-id-selezionato').value = s.id;
-      suggestions.style.display = 'none';
-      // Puoi aggiungere qui la logica per mostrare operatori associati
-    };
-    suggestions.appendChild(item);
-  });
-  suggestions.style.display = 'block';
-});
-document.getElementById('servizio-search').addEventListener('input', function() {
-  const q = this.value.trim().toLowerCase();
-  const select = document.getElementById('servizio-iniziale');
-  select.innerHTML = '<option value="">Scegli servizio...</option>';
-  servizi.filter(s => s.servizio_nome.toLowerCase().includes(q)).forEach(s => {
-    const opt = document.createElement('option');
-    opt.value = s.id;
-    opt.textContent = s.servizio_nome;
-    select.appendChild(opt);
-  });
-  if (!q) {
-    servizi.forEach(s => {
-      const opt = document.createElement('option');
-      opt.value = s.id;
-      opt.textContent = s.servizio_nome;
-      select.appendChild(opt);
-    });
-  }
 });
 </script>
 <script>
