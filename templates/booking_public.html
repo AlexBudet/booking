@@ -749,8 +749,8 @@ document.getElementById('servizio-iniziale').addEventListener('focus', function(
       item.className = 'list-group-item list-group-item-action';
       item.textContent = s.servizio_nome;
       item.onclick = function() {
-        servizioIniziale.value = s.id;
-        servizioIdSelezionato.value = s.id;
+        servizioIniziale.value = s.servizio_nome;   // Mostra il nome nel campo input
+        servizioIdSelezionato.value = s.id;         // Salva l'id nel campo nascosto
         suggestions.style.display = 'none';
         aggiungiBtn.style.display = '';
         servizioIniziale.dispatchEvent(new Event('change'));
