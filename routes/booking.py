@@ -608,11 +608,13 @@ def prenota():
             business_info = BusinessInfo.query.first()
             admin_email = business_info.email if business_info and business_info.email else None
             admin_riepilogo = f"""
-                <h3>nuova prenotazione: {nome},</h3>
+                <h3>nuova prenotazione: {nome} {cognome}</h3>
+                <div style="font-size:1.3em;">
                 <ul>
                     {appuntamenti_html}
                 </ul>
-                <div style="padding:12px; background:#f2f2f2; margin:20px 0; border-radius:8px;">
+                </div>
+                <div style="padding:12px; background:#f2f2f2; margin:20px 0; border-radius:8px; font-size:1.3em;">
                 <b>Totale durata:</b> {totale_durata} min &nbsp; | &nbsp; <b>Totale costo:</b> €{totale_prezzo:.2f}
                 </div>
             """
