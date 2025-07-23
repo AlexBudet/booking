@@ -629,6 +629,13 @@ document.addEventListener('DOMContentLoaded', function() {
       alert("Blocco prezzo: " + msgPrezzo);
       return; // Annulla aggiunta
     }
+
+    if (!blockDurata && maxDurata > 0 && totaleDurata > maxDurata) {
+  alert("Attenzione: " + msgDurata);
+}
+if (!blockPrezzo && maxPrezzo > 0 && totalePrezzo > maxPrezzo) {
+  alert("Attenzione: " + msgPrezzo);
+}
     // --- FINE PATCH ---
 
     const durata = servizioObj?.servizio_durata ? `${servizioObj.servizio_durata} min` : '';
