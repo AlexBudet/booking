@@ -398,18 +398,17 @@ document.getElementById('servizio-iniziale').addEventListener('change', function
   const operatoriSelect = document.getElementById('operatore');
   operatoriSelect.innerHTML = '<option value="">Operatore</option>';
 
-  if (servizio && servizio.operator_ids.length) {
-    operatori
-      .filter(op => servizio.operator_ids.includes(op.id))
-      .forEach(op => {
-        const opt = document.createElement('option');
-        opt.value = op.id;
-        opt.textContent = op.nome;
-        operatoriSelect.appendChild(opt);
-      });
-    // Mostra la select solo se ci sono operatori associati
-    document.getElementById('select_operatore_wrapper').style.display = '';
-  }
+if (servizio && servizio.operator_ids.length) {
+  operatori
+    .filter(op => servizio.operator_ids.includes(op.id))
+    .forEach(op => {
+      const opt = document.createElement('option');
+      opt.value = op.id;
+      opt.textContent = op.nome;
+      operatoriSelect.appendChild(opt);
+    });
+  document.getElementById('select_operatore_wrapper').style.display = '';
+}
 });
 
 function loadOrari() {
