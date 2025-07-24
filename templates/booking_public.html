@@ -169,18 +169,22 @@ body {
     color: #f4d1de !important;
   }
 
-  /* Solo su mobile: dropdown suggerimenti scrollabile */
+#servizio-suggestions {
+  /* default desktop */
+  position: absolute;
+  width: 100%;
+  z-index: 1000;
+}
 @media (max-width: 767px) {
   #servizio-suggestions {
-    max-height: 45vh;   /* massimo 45% dell’altezza viewport */
-    overflow-y: auto;
-    position: fixed !important; /* opzionale: fissa il dropdown rispetto allo schermo */
-    left: 5vw !important;       /* opzionale: centrato rispetto allo schermo */
-    width: 90vw !important;     /* opzionale: larghezza quasi piena */
+    position: fixed !important;
+    left: 5vw !important;
+    width: 90vw !important;
+    top: 18vw !important;
     z-index: 2000;
-    top: 25vw !important;
   }
 }
+
 @media (max-width: 767px) {
   .container-booking.no-sidebar {
     margin-top: 25vw !important; /* Regola questo valore per il tuo caso */
@@ -216,7 +220,7 @@ body {
   <input type="hidden" id="servizio-id-selezionato">
 </div>
   <div class="col-4 mb-2">
-    <div id="risultati_operatore" class="list-group" style="display:none; position:relative; z-index:10;"></div>
+    <div id="risultati_operatore" class="list-group" style="display:none; z-index:10;"></div>
     <div id="select_operatore_wrapper">
       <select id="operatore" class="form-select">
         <option value="">Operatore</option>
