@@ -1017,5 +1017,22 @@ document.getElementById('link-condizioni').addEventListener('click', function(e)
   modal.show();
 });
 </script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  if (window.innerWidth <= 767) {
+    const container = document.getElementById('container-booking');
+    document.querySelectorAll('input[type="text"], input[type="email"], input[type="tel"], input[type="date"]').forEach(input => {
+      input.addEventListener('focus', function() {
+        container.classList.add('no-sidebar');
+      });
+      input.addEventListener('blur', function() {
+        container.classList.remove('no-sidebar');
+      });
+    });
+  }
+});
+</script>
+</body>
+</html>
 </body>
 </html>
