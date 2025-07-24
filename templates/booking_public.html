@@ -476,7 +476,7 @@ document.getElementById('servizio-iniziale').addEventListener('focus', function(
     item.onclick = function() {
       servizioIniziale.value = s.servizio_nome;   // Mostra il nome nel campo input
       servizioIdSelezionato.value = s.id;         // Salva l'id nel campo nascosto
-      suggestions.style.display = 'none';
+      suggestions.style.display = '';
       aggiungiBtn.style.display = '';
       servizioIniziale.dispatchEvent(new Event('change'));
     };
