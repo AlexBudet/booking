@@ -737,11 +737,19 @@ let operatoreResoVisibile = false;
 
 document.getElementById('servizio-iniziale').addEventListener('focus', function() {
   if (window.innerWidth <= 767) {
+    // Nascondi sidebar
     const sidebar = document.querySelector('.booking-sidebar');
     if (sidebar) sidebar.style.display = 'none';
+    // Nascondi alert/warning
+    ['alert-warning-durata', 'alert-block-durata', 'alert-warning-prezzo', 'alert-block-prezzo', 'alert-privacy-condizioni'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = 'none';
+    });
   }
   // Mostra sempre la droplist
   showSuggestions(servizi);
+  // Assicurati che il focus sia sull'input (per sicurezza)
+  this.focus();
   if (!operatoreResoVisibile) {
     document.getElementById('select_operatore_wrapper').style.display = '';
     operatoreResoVisibile = true;
