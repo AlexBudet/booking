@@ -178,6 +178,9 @@ body {
     width: 90vw !important;
     top: 18vw !important;
     z-index: 2000;
+    top: calc(env(safe-area-inset-top, 0px) + 70px); /* 70px ≈ altezza header+campo, regola se serve */
+    max-height: 85vh;
+    overflow-y: auto;
   }
 }
 
