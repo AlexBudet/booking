@@ -197,6 +197,8 @@ def search_servizi():
 @booking_bp.route('/orari', methods=['GET'])
 def orari_disponibili():
     data_str = request.args.get('data')  # formato: YYYY-MM-DD
+    if not data_str:
+        return jsonify({"error": "Data non specificata"}), 400
     servizi_raw = request.args.getlist('servizi[]')
     servizi_items = []
     servizi_ids = []
