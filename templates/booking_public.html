@@ -12,10 +12,12 @@
       margin: 40px auto;
       background: #fff;
       border-radius: 12px;
+      box-shadow: 0 2px 10px #e0e0e0;
       padding: 2rem;
     }
     .booking-sidebar {
       border-radius: 12px;
+      box-shadow: 0 2px 8px #f0e6d2;
       padding: 1.5rem;
       margin-bottom: 2rem;
     }
@@ -72,7 +74,7 @@
 }
 
 .booking-sidebar {
-  background: #3d3b3b; /* esempio azzurro */
+  background: #1b1b1b; /* esempio azzurro */
   color: rgb(236, 207, 218);
 }
 
@@ -96,9 +98,8 @@ body {
 }
 
 .container-booking {
-  background: #111a1b;
+  background: #5c5a5b;
   color: rgb(238, 219, 226);
-  border: rgb(236, 207, 218) 1px solid;
 }
 
 .servizio-iniziale {
@@ -396,6 +397,306 @@ Per quanto non espressamente previsto nelle presenti CGV, si applica la legge it
   </div>
 
 <script>
+const servizi = {{ servizi_json|tojson }};
+const operatori = {{ operatori_json|tojson }};
+
+// Nascondi la select operatore inizialmente
+document.getElementById('select_operatore_wrapper').style.display = 'none';
+
+// Quando selezioni il servizio
+document.getElementById('servizio-iniziale').addEventListener('change', function() {
+  // Prendi l'id dal campo nascosto!
+  const servizioId = document.getElementById('servizio-id-selezionato').value;
+  const servizio = servizi.find(s => String(s.id) === String(servizioId));
+  const operatoriSelect = document.getElementById('operatore');
+  operatoriSelect.innerHTML = '<option value="">Operatore</option>';
+
+  if (servizio && servizio.operator_ids.length) {
+    operatori
+      .filter(op => servizio.operator_ids.includes(op.id))
+      .forEach(op => {
+        const opt = document.createElement('option');
+        opt.value = op.id;
+        opt.textContent = op.nome;
+        operatoriSelect.appendChild(opt);
+      });
+    document.getElementById('select_operatore_wrapper').style.display = '';
+  }
+});
+
+function loadOrari() {
+  const servizi = getServiziSelezionati();
+  if (!servizi.length) return;
+  const data = document.getElementById('data').value;
+  const oraSelect = document.getElementById('ora');
+  oraSelect.innerHTML = '<option value="">Caricamento orari...</option>';
+
+  // Costruisci la query string con tutti i servizi selezionati
+const params = new URLSearchParams();
+params.append('data', data);
+servizi.forEach(s => {
+  params.append('servizi[]', JSON.stringify({ servizio_id: s.servizio_id, operatore_id: s.operatore_id }));
+});
+
+const operatoriUnici = [...new Set(servizi.map(s => s.operatore_id).filter(op => op))];
+if (operatoriUnici.length === 1 && operatoriUnici[0]) {
+  params.append('operatore_id', operatoriUnici[0]);
+}
+
+  fetch('/orari?' + params.toString())
+    .then(r => r.json())
+    .then(res => {
+      oraSelect.innerHTML = '';
+      const orari = res.orari_disponibili || [];
+      window._operatoriOrariMap = res.operatori_assegnati || {};
+      if (orari.length > 0) {
+        oraSelect.innerHTML = '<option value="">Seleziona un orario</option>';
+        orari.forEach(orario => {
+          const opt = document.createElement('option');
+          opt.value = orario;
+          opt.textContent = orario;
+          oraSelect.appendChild(opt);
+        });
+      } else {
+        oraSelect.innerHTML = '<option value="">Nessun orario disponibile</option>';
+      }
+    })
+    .catch(() => {
+      oraSelect.innerHTML = '<option value="">Errore caricamento orari</option>';
+    });
+}
+
+// 1. All'avvio mostra solo servizio e operatore
+document.getElementById('data_wrapper').style.display = 'none';
+document.getElementById('ora_wrapper').style.display = 'none';
+document.getElementById('dati-cliente').style.display = 'none';
+inviaCodiceBtn.style.display = 'none';
+
+function aggiornaDataLabel() {
+  const dataInput = document.getElementById('data');
+  const dataLabel = document.getElementById('data_label');
+  if (!dataInput.value) {
+    dataLabel.textContent = '';
+    return;
+  }
+  const giorni = ['DOMENICA', 'LUNEDÌ', 'MARTEDÌ', 'MERCOLEDÌ', 'GIOVEDÌ', 'VENERDÌ', 'SABATO'];
+  const [yyyy, mm, dd] = dataInput.value.split('-');
+  const dataObj = new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
+  const giornoSettimana = giorni[dataObj.getDay()];
+  dataLabel.textContent = `${giornoSettimana}`;
+}
+
+// Aggiorna quando cambia la data
+document.getElementById('data').addEventListener('input', aggiornaDataLabel);
+
+// Aggiorna anche quando mostri la data precompilata
+// --- PATCH: mostra la data solo dopo almeno un servizio aggiunto ---
+function mostraDataSePronto() {
+  const servizi = getServiziSelezionati();
+  const almenoUno = servizi.length > 0 && servizi.every(s => s.servizio_id);
+  if (almenoUno) {
+    document.getElementById('data_wrapper').style.display = '';
+    aggiornaDataLabel();
+    scrollToBottom();
+  } else {
+    document.getElementById('data_wrapper').style.display = 'none';
+    document.getElementById('ora_wrapper').style.display = 'none';
+    document.getElementById('dati-cliente').style.display = 'none';
+    inviaCodiceBtn.style.display = 'none';
+  }
+}
+
+// 3. Dopo la selezione della data, mostra gli orari disponibili
+document.getElementById('data').addEventListener('change', function() {
+  if (this.value) {
+    document.getElementById('ora_wrapper').style.display = '';
+    loadOrari();
+    scrollToBottom(); 
+  } else {
+    document.getElementById('ora_wrapper').style.display = 'none';
+    document.getElementById('dati-cliente').style.display = 'none';
+    inviaCodiceBtn.style.display = 'none';
+  }
+});
+
+// 4. Dopo la selezione dell'orario, mostra i campi cliente
+document.getElementById('ora').addEventListener('change', function() {
+  if (this.value) {
+    document.getElementById('dati-cliente').style.display = '';
+    scrollToBottom();
+  } else {
+    document.getElementById('dati-cliente').style.display = 'none';
+    inviaCodiceBtn.style.display = 'none';
+  }
+});
+
+// 5. Solo quando tutti i campi cliente sono compilati, mostra il bottone "Chiedi codice di conferma"
+['nome', 'cognome', 'telefono', 'email'].forEach(id => {
+  document.getElementById(id).addEventListener('input', function() {
+    const nome = document.getElementById('nome').value.trim();
+    const cognome = document.getElementById('cognome').value.trim();
+    const telefono = document.getElementById('telefono').value.trim();
+    const email = document.getElementById('email').value.trim();
+    if (nome && cognome && telefono && email) {
+      inviaCodiceBtn.style.display = '';
+      scrollToBottom();
+    } else {
+      inviaCodiceBtn.style.display = 'none';
+    }
+  });
+});
+
+document.getElementById('inviaCodiceBtn').addEventListener('click', function() {
+  // Prendi i dati dal form
+  const nome = document.getElementById('nome').value.trim();
+  const cognome = document.getElementById('cognome').value.trim();
+  const telefono = document.getElementById('telefono').value.trim();
+  const email = document.getElementById('email').value.trim();
+
+  const csrfToken = document.getElementById('csrf_token').value;
+
+  fetch('/invia-codice', {
+    method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'X-CSRFToken': csrfToken
+  },
+    body: JSON.stringify({ nome, cognome, telefono, email })
+  })
+  .then(r => r.json())
+  .then(res => {
+    if (res.success) {
+      document.getElementById('codice-conferma-wrapper').style.display = '';
+      document.getElementById('inviaCodiceBtn').style.display = 'none';
+      document.getElementById('inviaConfermaPrenotazioneBtn').style.display = '';
+      scrollToBottom();
+    } else {
+      alert(res.error || 'Errore invio codice');
+    }
+  })
+  .catch(() => {
+    alert('Errore di rete durante l\'invio del codice');
+  });
+});
+
+document.getElementById('inviaConfermaPrenotazioneBtn').addEventListener('click', function() {
+  const codice = document.getElementById('codice-conferma').value.trim();
+  if (!codice) {
+    alert('Inserisci il codice di conferma ricevuto via email.');
+    return;
+  }
+  const nome = document.getElementById('nome').value.trim();
+  const cognome = document.getElementById('cognome').value.trim();
+  const telefono = document.getElementById('telefono').value.trim();
+  const email = document.getElementById('email').value.trim();
+  const data = document.getElementById('data').value;
+  const ora = document.getElementById('ora').value;
+  const csrfToken = document.getElementById('csrf_token').value;
+
+  // Raccogli tutti i servizi e operatori selezionati
+  const servizi = getServiziSelezionati();
+
+    let operatori_assegnati = [];
+  if (window._operatoriOrariMap && window._operatoriOrariMap[ora]) {
+    operatori_assegnati = window._operatoriOrariMap[ora];
+  }
+
+fetch('/prenota', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+  body: JSON.stringify({
+    nome, cognome, telefono, email,
+    data, ora,
+    codice_conferma: codice,
+    servizi, // array [{servizio_id, operatore_id}, ...]
+    operatori_assegnati
+  })
+})
+  .then(r => r.json())
+  .then(res => {
+    console.log("Risposta /prenota:", res);
+    const msg = document.getElementById('msg');
+    let divTotale = document.getElementById('totale-servizi');
+if (divTotale) divTotale.style.display = 'none';
+if (res.popup_error) {
+  alert(res.popup_error); // oppure apri la tua modale personalizzata
+  return;
+}
+if (res.popup_warning) {
+  alert(res.popup_warning); // oppure apri la tua modale personalizzata
+  // Non fare return: la prenotazione va avanti anche in caso di warning
+}
+if (res.success && res.prenotazioni && res.prenotazioni.length) {
+  let sommario = '';
+  let totaleDurata = 0;
+  let totalePrezzo = 0;
+  res.prenotazioni.forEach(p => {
+    const durata = parseInt(p.servizio_durata || 0, 10);
+    const prezzo = parseFloat(p.servizio_prezzo || 0);
+    totaleDurata += durata;
+    totalePrezzo += prezzo;
+    sommario += `<div class="mb-3 p-3 border rounded bg-light" style="color: #333;">
+      <strong>Riepilogo appuntamento:</strong><br>
+      <span>🗓 <b>Data:</b> ${p.data} <b>Ora:</b> ${p.ora}</span><br>
+      ${p.operatore_nome ? `<span>👤 <b>con</b> ${p.operatore_nome}</span><br>` : ""}
+      <span>💇 <b>Servizio:</b> ${p.servizio_nome}</span><br>
+      <small>Durata: ${durata} min - Prezzo: €${prezzo.toFixed(2)}</small>
+    </div>`;
+  });
+  sommario += `<div class="alert alert-dark mt-2"><b>Totale durata:</b> ${totaleDurata} min &nbsp; | &nbsp; <b>Totale costo:</b> €${totalePrezzo.toFixed(2)}</div>`;
+  msg.innerHTML = sommario + '<div class="alert alert-success">Prenotazione confermata! Per ulteriori informazioni, contattaci al telefono fisso o scrivici su Whatsapp!.</div>';
+      document.getElementById('bookingForm').reset();
+      document.getElementById('data_wrapper').style.display = 'none';
+      document.getElementById('ora_wrapper').style.display = 'none';
+      document.getElementById('dati-cliente').style.display = 'none';
+      document.getElementById('codice-conferma-wrapper').style.display = 'none';
+      document.getElementById('inviaConfermaPrenotazioneBtn').style.display = 'none';
+    } else {
+      msg.innerHTML = `<div class="alert alert-danger">${res.error || 'Errore'}</div>`;
+    }
+  })
+  .catch(() => {
+    document.getElementById('msg').innerHTML = '<div class="alert alert-danger">Errore di rete.</div>';
+  });
+});
+
+// Invio prenotazione (rimane invariato)
+document.getElementById('bookingForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  const nome = document.getElementById('nome').value.trim();
+  const telefono = document.getElementById('telefono').value.trim();
+  const servizio = document.getElementById('servizio').value;
+  const data = document.getElementById('data').value;
+  const ora = document.getElementById('ora').value;
+  const msg = document.getElementById('msg');
+  msg.textContent = '';
+  fetch('/prenota', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({nome, telefono, servizio_id: servizio, data, ora})
+  })
+  .then(r => r.json())
+  .then(res => {
+    console.log("Risposta /prenota:", res);
+    if (res.success) {
+      msg.innerHTML = '<div class="alert alert-success">Prenotazione registrata! Riceverai conferma via telefono.</div>';
+      document.getElementById('bookingForm').reset();
+      document.getElementById('data_wrapper').style.display = 'none';
+      document.getElementById('ora_wrapper').style.display = 'none';
+      continuaBtn.textContent = 'Continua';
+      continuaBtn.classList.remove('btn-success');
+      continuaBtn.classList.add('btn-primary');
+      continuaBtn.type = 'button';
+    } else {
+      msg.innerHTML = `<div class="alert alert-danger">${res.error || 'Errore'}</div>`;
+    }
+  })
+  .catch(() => {
+    msg.innerHTML = '<div class="alert alert-danger">Errore di rete.</div>';
+  });
+});
+</script>
+<script>
   function scrollToBottom() {
   window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
 }
@@ -434,29 +735,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // Mostra tutti i servizi al focus
 let operatoreResoVisibile = false;
-
-servizioIniziale.addEventListener('focus', function() {
-  document.querySelectorAll('.booking-sidebar').forEach(sidebar => sidebar.style.display = 'none');
-  ['alert-warning-durata', 'alert-block-durata', 'alert-warning-prezzo', 'alert-block-prezzo', 'alert-privacy-condizioni']
-    .forEach(id => {
-      document.querySelectorAll('#' + id).forEach(el => el.style.display = 'none');
-    });
+document.getElementById('servizio-iniziale').addEventListener('focus', function() {
   showSuggestions(servizi);
-  this.focus();
-  if (!operatoreResoVisibile) {
-    document.getElementById('select_operatore_wrapper').style.display = '';
-    operatoreResoVisibile = true;
-  }
-});
-
-servizioIniziale.addEventListener('click', function() {
-  document.querySelectorAll('.booking-sidebar').forEach(sidebar => sidebar.style.display = 'none');
-  ['alert-warning-durata', 'alert-block-durata', 'alert-warning-prezzo', 'alert-block-prezzo', 'alert-privacy-condizioni']
-    .forEach(id => {
-      document.querySelectorAll('#' + id).forEach(el => el.style.display = 'none');
-    });
-  showSuggestions(servizi);
-  this.focus();
   if (!operatoreResoVisibile) {
     document.getElementById('select_operatore_wrapper').style.display = '';
     operatoreResoVisibile = true;
@@ -476,29 +756,24 @@ servizioIniziale.addEventListener('click', function() {
     aggiungiBtn.style.display = 'none';
   });
 
- function showSuggestions(lista) {
-  suggestions.innerHTML = '';
-  lista.forEach(s => {
-    const item = document.createElement('button');
-    item.type = 'button';
-    item.className = 'list-group-item list-group-item-action';
-    item.textContent = s.servizio_nome;
-    item.onclick = function() {
-      servizioIniziale.value = s.servizio_nome;   // Mostra il nome nel campo input
-      servizioIdSelezionato.value = s.id;         // Salva l'id nel campo nascosto
-      suggestions.style.display = '';
-      aggiungiBtn.style.display = '';
-      servizioIniziale.dispatchEvent(new Event('change'));
-    };
-    suggestions.appendChild(item);
-  });
-  // PATCH: mostra la lista se ci sono risultati, sia desktop che mobile
-  if (lista.length > 0) {
-    suggestions.style.display = 'block';
-  } else {
-    suggestions.style.display = 'none';
+  function showSuggestions(lista) {
+    suggestions.innerHTML = '';
+    lista.forEach(s => {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'list-group-item list-group-item-action';
+      item.textContent = s.servizio_nome;
+      item.onclick = function() {
+        servizioIniziale.value = s.servizio_nome;   // Mostra il nome nel campo input
+        servizioIdSelezionato.value = s.id;         // Salva l'id nel campo nascosto
+        suggestions.style.display = 'none';
+        aggiungiBtn.style.display = '';
+        servizioIniziale.dispatchEvent(new Event('change'));
+      };
+      suggestions.appendChild(item);
+    });
+    suggestions.style.display = lista.length ? 'block' : 'none';
   }
-}
 
   document.addEventListener('click', function(e) {
     if (!servizioIniziale.contains(e.target) && !suggestions.contains(e.target)) {
@@ -514,25 +789,17 @@ servizioIniziale.addEventListener('click', function() {
   });
 
   // Aggiungi servizio
-aggiungiBtn.addEventListener('click', function(e) {
-  // Un solo click: mostra la tendina e porta il focus nell'input
-  showSuggestions(servizi);
-  servizioIniziale.focus();
-  servizioIdSelezionato.value = '';
-  aggiungiBtn.style.display = 'none';
-});
+  aggiungiBtn.addEventListener('click', function() {
+const servizioId = document.getElementById('servizio-id-selezionato').value;
+const operatoreId = operatoreIniziale.value;
+const servizioObj = servizi.find(s => String(s.id) === String(servizioId));
+const servizioTxt = servizioObj ? servizioObj.servizio_nome : servizioIniziale.value;
+const operatoreTxt = operatoreIniziale.options[operatoreIniziale.selectedIndex]?.text || '';
 
-  // --- CODICE ORIGINALE ---
-  const servizioId = document.getElementById('servizio-id-selezionato').value;
-  const operatoreId = operatoreIniziale.value;
-  const servizioObj = servizi.find(s => String(s.id) === String(servizioId));
-  const servizioTxt = servizioObj ? servizioObj.servizio_nome : servizioIniziale.value;
-  const operatoreTxt = operatoreIniziale.options[operatoreIniziale.selectedIndex]?.text || '';
-
-  if (!servizioId) {
-    alert('Seleziona un servizio!');
-    return;
-  }
+    if (!servizioId) {
+      alert('Seleziona un servizio!');
+      return;
+    }
 
     // --- PATCH: blocco durata/prezzo ---
     const serviziSelezionati = getServiziSelezionati();
@@ -600,7 +867,6 @@ if (!blockPrezzo && maxPrezzo > 0 && totalePrezzo > maxPrezzo) {
       <button type="button" class="btn btn-sm btn-link text-danger rimuovi-pseudoblocco" title="Rimuovi"><b>&times;</b></button>
     `;
     pseudoblocchi.appendChild(blocco);
-    aggiungiServizioMobileClick = 0; // Reset per mobile
 
     // Reset selezione iniziale
     servizioIniziale.value = '';
@@ -609,6 +875,7 @@ if (!blockPrezzo && maxPrezzo > 0 && totalePrezzo > maxPrezzo) {
     aggiornaTotaleServizi();
     mostraDataSePronto();
     loadOrari();
+  });
 
   // Rimuovi pseudoblocco
   pseudoblocchi.addEventListener('click', function(e) {
@@ -620,6 +887,8 @@ if (!blockPrezzo && maxPrezzo > 0 && totalePrezzo > maxPrezzo) {
       mostraDataSePronto();
     }
   });
+});
+
 
 // Funzioni globali
 window.getServiziSelezionati = function() {
