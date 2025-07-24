@@ -789,17 +789,38 @@ document.getElementById('servizio-iniziale').addEventListener('focus', function(
   });
 
   // Aggiungi servizio
-  aggiungiBtn.addEventListener('click', function() {
-const servizioId = document.getElementById('servizio-id-selezionato').value;
-const operatoreId = operatoreIniziale.value;
-const servizioObj = servizi.find(s => String(s.id) === String(servizioId));
-const servizioTxt = servizioObj ? servizioObj.servizio_nome : servizioIniziale.value;
-const operatoreTxt = operatoreIniziale.options[operatoreIniziale.selectedIndex]?.text || '';
-
-    if (!servizioId) {
-      alert('Seleziona un servizio!');
+aggiungiBtn.addEventListener('click', function(e) {
+  // SOLO SU MOBILE: gestione doppio click
+  if (window.innerWidth <= 767) {
+    aggiungiServizioMobileClick++;
+    if (aggiungiServizioMobileClick === 1) {
+      // Primo click: mostra dropdown, cambia placeholder, niente tastiera
+      servizioIniziale.placeholder = "o digita qui il nome del servizio";
+      showSuggestions(servizi);
+      servizioIniziale.blur();
       return;
     }
+    if (aggiungiServizioMobileClick === 2) {
+      // Secondo click: mostra tastiera
+      servizioIniziale.focus();
+      return;
+    }
+  }
+
+  // Dal terzo click in poi, resetta il contatore e procedi normalmente
+  aggiungiServizioMobileClick = 0;
+
+  // --- CODICE ORIGINALE ---
+  const servizioId = document.getElementById('servizio-id-selezionato').value;
+  const operatoreId = operatoreIniziale.value;
+  const servizioObj = servizi.find(s => String(s.id) === String(servizioId));
+  const servizioTxt = servizioObj ? servizioObj.servizio_nome : servizioIniziale.value;
+  const operatoreTxt = operatoreIniziale.options[operatoreIniziale.selectedIndex]?.text || '';
+
+  if (!servizioId) {
+    alert('Seleziona un servizio!');
+    return;
+  }
 
     // --- PATCH: blocco durata/prezzo ---
     const serviziSelezionati = getServiziSelezionati();
@@ -867,6 +888,7 @@ if (!blockPrezzo && maxPrezzo > 0 && totalePrezzo > maxPrezzo) {
       <button type="button" class="btn btn-sm btn-link text-danger rimuovi-pseudoblocco" title="Rimuovi"><b>&times;</b></button>
     `;
     pseudoblocchi.appendChild(blocco);
+    aggiungiServizioMobileClick = 0; // Reset per mobile
 
     // Reset selezione iniziale
     servizioIniziale.value = '';
