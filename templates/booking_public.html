@@ -174,11 +174,6 @@ body {
 @media (max-width: 767px) {
   #servizio-suggestions {
     position: fixed !important;
-    left: 5vw !important;
-    width: 90vw !important;
-    z-index: 2000;
-    max-height: 75vh;
-    overflow-y: auto;
   }
 }
 
@@ -1041,12 +1036,11 @@ document.addEventListener('DOMContentLoaded', function() {
     const suggestions = document.getElementById('servizio-suggestions');
     if (!input || !suggestions) return;
     const rect = input.getBoundingClientRect();
-    suggestions.style.position = 'fixed';
-    suggestions.style.left = '5vw';
-    suggestions.style.width = '90vw';
+    suggestions.style.left = '3vw';
+    suggestions.style.width = '94vw';
     suggestions.style.zIndex = '2000';
     suggestions.style.top = (rect.bottom + 8) + 'px'; // 8px di spazio sotto il campo
-    suggestions.style.maxHeight = '45vh';
+    suggestions.style.maxHeight = '75vh';
     suggestions.style.overflowY = 'auto';
   }
 
