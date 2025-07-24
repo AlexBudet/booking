@@ -182,6 +182,12 @@ body {
     margin-top: 25vw !important; /* Regola questo valore per il tuo caso */
   }
 }
+
+@media (max-width: 767px) {
+  .container-booking.no-sidebar.drop-active {
+    margin-top: 0 !important;
+  }
+}
 </style>
 </head>
 <body>
@@ -1058,6 +1064,32 @@ document.addEventListener('DOMContentLoaded', function() {
     const observer = new MutationObserver(updateSuggestionsPosition);
     observer.observe(suggestions, { attributes: true, childList: true, subtree: false });
   }
+});
+</script>
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+  const container = document.getElementById('container-booking');
+  const suggestions = document.getElementById('servizio-suggestions');
+
+  function updateDropActive() {
+    if (window.innerWidth > 767) return;
+    if (suggestions && suggestions.style.display === 'block') {
+      container.classList.add('drop-active');
+    } else {
+      container.classList.remove('drop-active');
+    }
+  }
+
+  // Osserva cambiamenti di visibilità della droplist
+  if (suggestions) {
+    const observer = new MutationObserver(updateDropActive);
+    observer.observe(suggestions, { attributes: true, attributeFilter: ['style'] });
+  }
+
+  // Aggiorna anche quando mostri/nascondi la droplist manualmente
+  ['focus', 'input', 'blur'].forEach(ev => {
+    document.getElementById('servizio-iniziale').addEventListener(ev, updateDropActive);
+  });
 });
 </script>
 </body>
