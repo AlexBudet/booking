@@ -808,25 +808,12 @@ document.getElementById('servizio-iniziale').addEventListener('focus', function(
 
   // Aggiungi servizio
 aggiungiBtn.addEventListener('click', function(e) {
-  // SOLO SU MOBILE: gestione doppio click
-  if (window.innerWidth <= 767) {
-    aggiungiServizioMobileClick++;
-    if (aggiungiServizioMobileClick === 1) {
-      // Primo click: mostra dropdown, cambia placeholder, niente tastiera
-      servizioIniziale.placeholder = "o digita qui il nome del servizio";
-      showSuggestions(servizi);
-      servizioIniziale.blur();
-      return;
-    }
-    if (aggiungiServizioMobileClick === 2) {
-      // Secondo click: mostra tastiera
-      servizioIniziale.focus();
-      return;
-    }
-  }
-
-  // Dal terzo click in poi, resetta il contatore e procedi normalmente
-  aggiungiServizioMobileClick = 0;
+  // Un solo click: mostra la tendina e porta il focus nell'input
+  showSuggestions(servizi);
+  servizioIniziale.focus();
+  servizioIdSelezionato.value = '';
+  aggiungiBtn.style.display = 'none';
+});
 
   // --- CODICE ORIGINALE ---
   const servizioId = document.getElementById('servizio-id-selezionato').value;
