@@ -432,7 +432,7 @@ document.getElementById('servizio-iniziale').addEventListener('change', function
 
 function loadOrari() {
   const servizi = getServiziSelezionati();
-  if (!servizi.length) return;
+  if (!servizi.length || !data) return;
   const data = document.getElementById('data').value;
   const oraSelect = document.getElementById('ora');
   oraSelect.innerHTML = '<option value="">Caricamento orari...</option>';
