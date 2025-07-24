@@ -180,6 +180,11 @@ body {
     z-index: 2000;
   }
 }
+@media (max-width: 767px) {
+  .container-booking.no-sidebar {
+    margin-top: 18vw !important; /* Regola questo valore per il tuo caso */
+  }
+}
 </style>
 </head>
 <body>
@@ -737,6 +742,8 @@ let operatoreResoVisibile = false;
 function nascondiSidebarEAvvisi() {
   // Nascondi sidebar
   document.querySelectorAll('.booking-sidebar').forEach(sb => sb.style.display = 'none');
+  // Aggiungi classe per margine top su mobile
+  document.getElementById('container-booking').classList.add('no-sidebar');
   // Nascondi tutti gli alert di warning/blocco/condizioni
   [
     'alert-warning-durata',
