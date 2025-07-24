@@ -236,6 +236,10 @@ def orari_disponibili():
 
     # Carica tutti gli operatori disponibili e relativi turni
     operatori_disponibili = Operator.query.filter_by(is_deleted=False, is_visible=True).all()
+    operatore_id = request.args.get('operatore_id')
+    if operatore_id:
+        operatori_disponibili = [op for op in operatori_disponibili if str(op.id) == str(operatore_id)]
+
     turni_disponibili = OperatorShift.query.filter(
         OperatorShift.operator_id.in_([o.id for o in operatori_disponibili]),
         OperatorShift.shift_date == data
