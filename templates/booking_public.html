@@ -168,6 +168,18 @@ body {
     background-color: #333132 !important;
     color: #f4d1de !important;
   }
+
+  /* Solo su mobile: dropdown suggerimenti scrollabile */
+@media (max-width: 767px) {
+  #servizio-suggestions {
+    max-height: 45vh;   /* massimo 45% dell’altezza viewport */
+    overflow-y: auto;
+    position: fixed !important; /* opzionale: fissa il dropdown rispetto allo schermo */
+    left: 5vw !important;       /* opzionale: centrato rispetto allo schermo */
+    width: 90vw !important;     /* opzionale: larghezza quasi piena */
+    z-index: 2000;
+  }
+}
 </style>
 </head>
 <body>
