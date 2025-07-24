@@ -435,17 +435,27 @@ document.addEventListener('DOMContentLoaded', function() {
   // Mostra tutti i servizi al focus
 let operatoreResoVisibile = false;
 
-document.getElementById('servizio-iniziale').addEventListener('focus', function() {
-  // DEBUG: forza sempre la sidebar a sparire (anche se più sidebar)
+servizioIniziale.addEventListener('focus', function() {
   document.querySelectorAll('.booking-sidebar').forEach(sidebar => sidebar.style.display = 'none');
-  // Nascondi TUTTI gli alert/warning anche se ne hai più di uno
   ['alert-warning-durata', 'alert-block-durata', 'alert-warning-prezzo', 'alert-block-prezzo', 'alert-privacy-condizioni']
     .forEach(id => {
       document.querySelectorAll('#' + id).forEach(el => el.style.display = 'none');
     });
-  // Mostra la droplist SEMPRE
   showSuggestions(servizi);
-  // Focus sull'input sempre
+  this.focus();
+  if (!operatoreResoVisibile) {
+    document.getElementById('select_operatore_wrapper').style.display = '';
+    operatoreResoVisibile = true;
+  }
+});
+
+servizioIniziale.addEventListener('click', function() {
+  document.querySelectorAll('.booking-sidebar').forEach(sidebar => sidebar.style.display = 'none');
+  ['alert-warning-durata', 'alert-block-durata', 'alert-warning-prezzo', 'alert-block-prezzo', 'alert-privacy-condizioni']
+    .forEach(id => {
+      document.querySelectorAll('#' + id).forEach(el => el.style.display = 'none');
+    });
+  showSuggestions(servizi);
   this.focus();
   if (!operatoreResoVisibile) {
     document.getElementById('select_operatore_wrapper').style.display = '';
