@@ -761,24 +761,29 @@ document.getElementById('servizio-iniziale').addEventListener('focus', function(
     aggiungiBtn.style.display = 'none';
   });
 
-  function showSuggestions(lista) {
-    suggestions.innerHTML = '';
-    lista.forEach(s => {
-      const item = document.createElement('button');
-      item.type = 'button';
-      item.className = 'list-group-item list-group-item-action';
-      item.textContent = s.servizio_nome;
-      item.onclick = function() {
-        servizioIniziale.value = s.servizio_nome;   // Mostra il nome nel campo input
-        servizioIdSelezionato.value = s.id;         // Salva l'id nel campo nascosto
-        suggestions.style.display = 'none';
-        aggiungiBtn.style.display = '';
-        servizioIniziale.dispatchEvent(new Event('change'));
-      };
-      suggestions.appendChild(item);
-    });
-    suggestions.style.display = lista.length ? 'block' : 'none';
+ function showSuggestions(lista) {
+  suggestions.innerHTML = '';
+  lista.forEach(s => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'list-group-item list-group-item-action';
+    item.textContent = s.servizio_nome;
+    item.onclick = function() {
+      servizioIniziale.value = s.servizio_nome;   // Mostra il nome nel campo input
+      servizioIdSelezionato.value = s.id;         // Salva l'id nel campo nascosto
+      suggestions.style.display = 'none';
+      aggiungiBtn.style.display = '';
+      servizioIniziale.dispatchEvent(new Event('change'));
+    };
+    suggestions.appendChild(item);
+  });
+  // PATCH: mostra la lista se ci sono risultati, sia desktop che mobile
+  if (lista.length > 0) {
+    suggestions.style.display = 'block';
+  } else {
+    suggestions.style.display = 'none';
   }
+}
 
   document.addEventListener('click', function(e) {
     if (!servizioIniziale.contains(e.target) && !suggestions.contains(e.target)) {
