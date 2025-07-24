@@ -206,6 +206,7 @@ body {
 <div class="row align-items-end mb-2" id="selezione-iniziale-servizio">
 <div class="col-7 position-relative mb-2">
   <input type="text" id="servizio-iniziale" class="form-control" placeholder="Cerca un servizio..." autocomplete="off">
+  <div id="input-servizio-mobile-fake" class="form-control" style="display:none; cursor:pointer; color:#aaa;">oppure scrivi qui</div>
   <div id="servizio-suggestions" class="list-group position-absolute w-100" style="z-index:1000; display:none;"></div>
   <input type="hidden" id="servizio-id-selezionato">
 </div>
@@ -400,6 +401,7 @@ Per quanto non espressamente previsto nelle presenti CGV, si applica la legge it
 const servizi = {{ servizi_json|tojson }};
 const operatori = {{ operatori_json|tojson }};
 let aggiungiServizioMobileClick = 0;
+const isMobile = window.innerWidth <= 767;
 
 // Nascondi la select operatore inizialmente
 document.getElementById('select_operatore_wrapper').style.display = 'none';
@@ -706,11 +708,49 @@ document.getElementById('bookingForm').addEventListener('submit', function(e) {
 document.addEventListener('DOMContentLoaded', function() {
   const servizi = {{ servizi_json|tojson }};
   const servizioIniziale = document.getElementById('servizio-iniziale');
+  const fakeMobileInput = document.getElementById('input-servizio-mobile-fake');
   const servizioIdSelezionato = document.getElementById('servizio-id-selezionato');
   const aggiungiBtn = document.getElementById('aggiungi-servizio');
   const suggestions = document.getElementById('servizio-suggestions');
   const pseudoblocchi = document.getElementById('pseudoblocchi-servizi');
   const operatoreIniziale = document.getElementById('operatore');
+
+    if (isMobile) {
+    servizioIniziale.style.display = 'none';
+    fakeMobileInput.style.display = '';
+  } else {
+    fakeMobileInput.style.display = 'none';
+    servizioIniziale.style.display = '';
+  }
+
+  // Gestione mobile: primo e secondo click
+  if (isMobile) {
+    fakeMobileInput.addEventListener('click', function() {
+      aggiungiServizioMobileClick++;
+      if (aggiungiServizioMobileClick === 1) {
+        // Primo click: apri dropdown, cambia testo, NON aprire tastiera
+        showSuggestions(servizi);
+        fakeMobileInput.textContent = 'oppure scrivi qui';
+        // (Lascia tutto qui, nessun focus vero input)
+      } else if (aggiungiServizioMobileClick === 2) {
+        // Secondo click: mostra input vero, focus, tastiera si apre
+        fakeMobileInput.style.display = 'none';
+        servizioIniziale.style.display = '';
+        servizioIniziale.placeholder = "Cerca un servizio...";
+        servizioIniziale.focus();
+        aggiungiServizioMobileClick = 0;
+      }
+    });
+
+    // Se viene selezionato un servizio dal dropdown, resetta fakeInput
+    suggestions.addEventListener('click', function(e) {
+      if (e.target && e.target.classList.contains('list-group-item')) {
+        fakeMobileInput.style.display = '';
+        servizioIniziale.style.display = 'none';
+        aggiungiServizioMobileClick = 0;
+      }
+    });
+  }
 
     function aggiornaOperatori(servizioId) {
     const servizio = servizi.find(s => String(s.id) === String(servizioId));
