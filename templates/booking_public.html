@@ -166,14 +166,20 @@ body {
   }
 
 #servizio-suggestions {
-  /* default desktop */
   position: absolute;
   width: 100%;
   z-index: 1000;
+  max-height: 300px; /* Limite visibile su desktop */
+  overflow-y: auto;
 }
 @media (max-width: 767px) {
   #servizio-suggestions {
     position: fixed !important;
+    left: 3vw !important;
+    width: 94vw !important;
+    z-index: 2000;
+    max-height: 85vh;
+    overflow-y: auto;
   }
 }
 
@@ -1035,25 +1041,36 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 <script>
-  document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function() {
   function updateSuggestionsPosition() {
-    if (window.innerWidth > 767) return; 
-    
-    
-    // Solo mobile
     const input = document.getElementById('servizio-iniziale');
     const suggestions = document.getElementById('servizio-suggestions');
     if (!input || !suggestions) return;
+
+    if (window.innerWidth > 767) {
+      // Desktop: posizione assoluta sotto il campo
+      const rect = input.getBoundingClientRect();
+      suggestions.style.position = 'absolute';
+      suggestions.style.left = '';
+      suggestions.style.width = '100%';
+      suggestions.style.zIndex = '1000';
+      suggestions.style.top = (input.offsetTop + input.offsetHeight) + 'px';
+      suggestions.style.maxHeight = '300px';
+      suggestions.style.overflowY = 'auto';
+      return;
+    }
+
+    // Mobile: posizione fixed sotto il campo
     const rect = input.getBoundingClientRect();
+    suggestions.style.position = 'fixed';
     suggestions.style.left = '3vw';
     suggestions.style.width = '94vw';
     suggestions.style.zIndex = '2000';
-    suggestions.style.top = (rect.bottom + 8) + 'px'; // 8px di spazio sotto il campo
+    suggestions.style.top = (rect.bottom + 8) + 'px';
     suggestions.style.maxHeight = '85vh';
     suggestions.style.overflowY = 'auto';
   }
 
-  // Aggiorna posizione quando il campo va in focus, la finestra viene scrollata o ridimensionata
   const input = document.getElementById('servizio-iniziale');
   if (input) {
     input.addEventListener('focus', updateSuggestionsPosition);
@@ -1061,7 +1078,6 @@ document.addEventListener('DOMContentLoaded', function() {
     window.addEventListener('resize', updateSuggestionsPosition);
   }
 
-  // Aggiorna anche quando mostri i suggerimenti
   const suggestions = document.getElementById('servizio-suggestions');
   if (suggestions) {
     const observer = new MutationObserver(updateSuggestionsPosition);
