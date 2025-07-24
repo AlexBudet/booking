@@ -1037,7 +1037,10 @@ document.addEventListener('DOMContentLoaded', function() {
 <script>
   document.addEventListener('DOMContentLoaded', function() {
   function updateSuggestionsPosition() {
-    if (window.innerWidth > 767) return; // Solo mobile
+    if (window.innerWidth > 767) return; 
+    
+    
+    // Solo mobile
     const input = document.getElementById('servizio-iniziale');
     const suggestions = document.getElementById('servizio-suggestions');
     if (!input || !suggestions) return;
