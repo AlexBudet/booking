@@ -736,6 +736,15 @@ document.addEventListener('DOMContentLoaded', function() {
   // Mostra tutti i servizi al focus
 let operatoreResoVisibile = false;
 document.getElementById('servizio-iniziale').addEventListener('focus', function() {
+  document.querySelectorAll('.booking-sidebar').forEach(sb => sb.style.display = 'none'); // Nascondi sidebar
+  showSuggestions(servizi);
+  if (!operatoreResoVisibile) {
+    document.getElementById('select_operatore_wrapper').style.display = '';
+    operatoreResoVisibile = true;
+  }
+});
+document.getElementById('servizio-iniziale').addEventListener('click', function() {
+  document.querySelectorAll('.booking-sidebar').forEach(sb => sb.style.display = 'none'); // Nascondi sidebar
   showSuggestions(servizi);
   if (!operatoreResoVisibile) {
     document.getElementById('select_operatore_wrapper').style.display = '';
