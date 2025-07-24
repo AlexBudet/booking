@@ -176,10 +176,8 @@ body {
     position: fixed !important;
     left: 5vw !important;
     width: 90vw !important;
-    top: 18vw !important;
     z-index: 2000;
-    top: calc(env(safe-area-inset-top, 0px) + 70px); /* 70px ≈ altezza header+campo, regola se serve */
-    max-height: 85vh;
+    max-height: 45vh;
     overflow-y: auto;
   }
 }
@@ -1032,6 +1030,39 @@ document.addEventListener('DOMContentLoaded', function() {
         container.classList.remove('no-sidebar');
       });
     });
+  }
+});
+</script>
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+  function updateSuggestionsPosition() {
+    if (window.innerWidth > 767) return; // Solo mobile
+    const input = document.getElementById('servizio-iniziale');
+    const suggestions = document.getElementById('servizio-suggestions');
+    if (!input || !suggestions) return;
+    const rect = input.getBoundingClientRect();
+    suggestions.style.position = 'fixed';
+    suggestions.style.left = '5vw';
+    suggestions.style.width = '90vw';
+    suggestions.style.zIndex = '2000';
+    suggestions.style.top = (rect.bottom + 8) + 'px'; // 8px di spazio sotto il campo
+    suggestions.style.maxHeight = '45vh';
+    suggestions.style.overflowY = 'auto';
+  }
+
+  // Aggiorna posizione quando il campo va in focus, la finestra viene scrollata o ridimensionata
+  const input = document.getElementById('servizio-iniziale');
+  if (input) {
+    input.addEventListener('focus', updateSuggestionsPosition);
+    window.addEventListener('scroll', updateSuggestionsPosition, true);
+    window.addEventListener('resize', updateSuggestionsPosition);
+  }
+
+  // Aggiorna anche quando mostri i suggerimenti
+  const suggestions = document.getElementById('servizio-suggestions');
+  if (suggestions) {
+    const observer = new MutationObserver(updateSuggestionsPosition);
+    observer.observe(suggestions, { attributes: true, childList: true, subtree: false });
   }
 });
 </script>
