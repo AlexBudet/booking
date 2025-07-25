@@ -239,8 +239,8 @@ body {
   border-bottom: none;
 }
 .servizi-subcat-header {
-  border-bottom: 1px solid #3b2c36;
-  border-top: 1px solid #3b2c36;
+  border-bottom: 0.3px solid #3b2c36;
+  border-top: 0.3px solid #3b2c36;
   font-size: 0.8em;
   background-color: #eaced6;
   color: black;
@@ -856,35 +856,14 @@ document.getElementById('modal-servizio-input').addEventListener('input', functi
   }
 });
 
-function showModalSuggestions(lista, query = "") {
+ffunction showModalSuggestions(lista, query = "") {
   const modalSuggestions = document.getElementById('modal-servizio-suggestions');
   modalSuggestions.innerHTML = '';
 
-  // Se query è vuota, mostra raggruppati per sottocategoria
   if (!query) {
-    // Raggruppa per sottocategoria
-    const gruppi = {};
-    lista.forEach(s => {
-      const cat = s.sottocategoria || "Altro";
-      if (!gruppi[cat]) gruppi[cat] = [];
-      gruppi[cat].push(s);
-    });
-
+    // ...raggruppamento per sottocategoria come già fatto...
     Object.keys(gruppi).sort().forEach(cat => {
-      // Crea header sottocategoria
-      const header = document.createElement('div');
-      header.className = 'servizi-subcat-header d-flex align-items-center justify-content-between px-2 py-2';
-      header.style.cursor = 'default';
-      header.innerHTML = `
-        <span>${cat}</span>
-        <button type="button" class="btn btn-sm btn-link toggle-subcat" data-cat="${cat}" style="color:#fff; font-size:1.2em; text-decoration:none;">−</button>
-      `;
-      modalSuggestions.appendChild(header);
-
-      // Crea lista servizi per questa sottocategoria
-      const serviziList = document.createElement('div');
-      serviziList.className = 'servizi-subcat-list';
-      serviziList.dataset.cat = cat;
+      // ...header...
       gruppi[cat].forEach(s => {
         const item = document.createElement('button');
         item.type = 'button';
@@ -894,31 +873,19 @@ function showModalSuggestions(lista, query = "") {
           document.getElementById('servizio-iniziale').value = s.servizio_nome;
           document.getElementById('servizio-id-selezionato').value = s.id;
           document.getElementById('modalServizi').style.display = 'none';
-          setTimeout(function() {
-            document.getElementById('servizio-iniziale').dispatchEvent(new Event('change'));
-            document.getElementById('aggiungi-servizio').click();
-          }, 200);
+
+          // Mostra select operatore e bottone aggiungi-servizio
+          document.getElementById('select_operatore_wrapper').style.display = '';
+          document.getElementById('aggiungi-servizio').style.display = '';
+
+          // Popola la select operatori
+          aggiornaOperatori(s.id);
         };
         serviziList.appendChild(item);
       });
       modalSuggestions.appendChild(serviziList);
     });
-
-    // Handler per collapse/expand
-    modalSuggestions.querySelectorAll('.toggle-subcat').forEach(btn => {
-      btn.addEventListener('click', function(e) {
-        const cat = btn.dataset.cat;
-        const list = modalSuggestions.querySelector(`.servizi-subcat-list[data-cat="${cat}"]`);
-        if (list.style.display === 'none') {
-          list.style.display = '';
-          btn.textContent = '−';
-        } else {
-          list.style.display = 'none';
-          btn.textContent = '+';
-        }
-      });
-    });
-
+    // ...collapse handler...
   } else {
     // Ricerca: mostra solo servizi trovati, senza sottocategoria
     lista.forEach(s => {
@@ -930,10 +897,13 @@ function showModalSuggestions(lista, query = "") {
         document.getElementById('servizio-iniziale').value = s.servizio_nome;
         document.getElementById('servizio-id-selezionato').value = s.id;
         document.getElementById('modalServizi').style.display = 'none';
-        setTimeout(function() {
-          document.getElementById('servizio-iniziale').dispatchEvent(new Event('change'));
-          document.getElementById('aggiungi-servizio').click();
-        }, 200);
+
+        // Mostra select operatore e bottone aggiungi-servizio
+        document.getElementById('select_operatore_wrapper').style.display = '';
+        document.getElementById('aggiungi-servizio').style.display = '';
+
+        // Popola la select operatori
+        aggiornaOperatori(s.id);
       };
       modalSuggestions.appendChild(item);
     });
