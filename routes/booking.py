@@ -156,7 +156,7 @@ def booking_page():
             "servizio_nome": s.servizio_nome,
             "servizio_durata": s.servizio_durata,
             "servizio_prezzo": s.servizio_prezzo,
-            "sottocategoria": getattr(s, "sottocategoria", None) or getattr(s, "categoria", None) or "Altro",
+            "sottocategoria": s.servizio_sottocategoria.nome,
             "operator_ids": [op.id for op in s.operators]
         }
         for s in servizi
@@ -191,7 +191,7 @@ def search_servizi():
         {
             "id": s.id,
             "servizio_nome": s.servizio_nome,
-            "sottocategoria": s.servizio_sottocategoria.nome if s.servizio_sottocategoria else "Altro"
+            "sottocategoria": s.servizio_sottocategoria.nome
         }
         for s in risultati
     ])
