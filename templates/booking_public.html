@@ -889,12 +889,17 @@ function showModalSuggestions(lista) {
     item.type = 'button';
     item.className = 'list-group-item list-group-item-action';
     item.textContent = s.servizio_nome;
-    item.onclick = function() {
-      document.getElementById('servizio-iniziale').value = s.servizio_nome;
-      document.getElementById('servizio-id-selezionato').value = s.id;
-      bootstrap.Modal.getInstance(document.getElementById('modalServizi')).hide();
-      document.getElementById('servizio-iniziale').dispatchEvent(new Event('change'));
-    };
+item.onclick = function() {
+  document.getElementById('servizio-iniziale').value = s.servizio_nome;
+  document.getElementById('servizio-id-selezionato').value = s.id;
+  document.getElementById('servizio-iniziale').focus();
+  const modalEl = document.getElementById('modalServizi');
+  const modalInstance = bootstrap.Modal.getInstance(modalEl);
+  if (modalInstance) modalInstance.hide();
+  setTimeout(function() {
+    document.getElementById('servizio-iniziale').dispatchEvent(new Event('change'));
+  }, 300);
+};
     container.appendChild(item);
   });
 }
