@@ -211,7 +211,7 @@ body {
   width: 1.5em;
   height: 1.5em;
   line-height: 1.1em;
-  color: #fff;
+  color: #3b3939;
   opacity: 0.8;
   margin-top: -0.2em;
   margin-left: 0.5em;
@@ -220,7 +220,7 @@ body {
 }
 .close-x-custom:hover {
   opacity: 1;
-  color: #ffb6d5;
+  color: #754b5c;
 }
 </style>
 </head>
@@ -302,13 +302,13 @@ body {
 
 <!-- Modal Ricerca Servizi -->
 <div class="modal fade" id="modalServizi" tabindex="-1" aria-labelledby="modalServiziLabel" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered modal-lg align-items-start" style="max-width: 90vw; margin-top: 5vh;">
-    <div class="modal-content" style="height: 85vh; min-height: 320px;">
+<div class="modal-dialog modal-fullscreen m-0" style="max-width:100vw; margin:0;">
+    <div class="modal-content" style="height: 100vh; min-height: 320px;">
       <div class="modal-header d-flex align-items-center" style="border-bottom: none;">
         <input type="text" id="modal-servizio-input" class="form-control" placeholder="Cerca un servizio..." autocomplete="off" autofocus>
         <button type="button" class="close-x-custom ms-2" data-bs-dismiss="modal" aria-label="Chiudi">×</button>
       </div>
-      <div class="modal-body p-0" style="overflow-y: auto; max-height: calc(85vh);">
+      <div class="modal-body p-0" style="overflow-y: auto">
         <div id="modal-servizio-suggestions" class="list-group"></div>
       </div>
     </div>
