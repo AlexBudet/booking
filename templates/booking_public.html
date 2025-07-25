@@ -861,9 +861,30 @@ function showModalSuggestions(lista, query = "") {
   modalSuggestions.innerHTML = '';
 
   if (!query) {
-    // ...raggruppamento per sottocategoria come già fatto...
+    // Raggruppa per sottocategoria
+    const gruppi = {};
+    lista.forEach(s => {
+      const cat = s.sottocategoria || "Altro";
+      if (!gruppi[cat]) gruppi[cat] = [];
+      gruppi[cat].push(s);
+    });
+
     Object.keys(gruppi).sort().forEach(cat => {
-      // ...header...
+      // Header sottocategoria
+      const header = document.createElement('div');
+      header.className = 'servizi-subcat-header d-flex align-items-center justify-content-between px-2 py-2';
+      header.style.cursor = 'default';
+      header.innerHTML = `
+        <span>${cat}</span>
+        <button type="button" class="btn btn-sm btn-link toggle-subcat" data-cat="${cat}" style="color:#fff; font-size:1.2em; text-decoration:none;">−</button>
+      `;
+      modalSuggestions.appendChild(header);
+
+      // Lista servizi per sottocategoria
+      const serviziList = document.createElement('div');
+      serviziList.className = 'servizi-subcat-list';
+      serviziList.dataset.cat = cat;
+
       gruppi[cat].forEach(s => {
         const item = document.createElement('button');
         item.type = 'button';
@@ -873,19 +894,30 @@ function showModalSuggestions(lista, query = "") {
           document.getElementById('servizio-iniziale').value = s.servizio_nome;
           document.getElementById('servizio-id-selezionato').value = s.id;
           document.getElementById('modalServizi').style.display = 'none';
-
-          // Mostra select operatore e bottone aggiungi-servizio
           document.getElementById('select_operatore_wrapper').style.display = '';
           document.getElementById('aggiungi-servizio').style.display = '';
-
-          // Popola la select operatori
           aggiornaOperatori(s.id);
         };
         serviziList.appendChild(item);
       });
       modalSuggestions.appendChild(serviziList);
     });
-    // ...collapse handler...
+
+    // Collapse handler
+    modalSuggestions.querySelectorAll('.toggle-subcat').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const cat = btn.dataset.cat;
+        const list = modalSuggestions.querySelector(`.servizi-subcat-list[data-cat="${cat}"]`);
+        if (list.style.display === 'none') {
+          list.style.display = '';
+          btn.textContent = '−';
+        } else {
+          list.style.display = 'none';
+          btn.textContent = '+';
+        }
+      });
+    });
+
   } else {
     // Ricerca: mostra solo servizi trovati, senza sottocategoria
     lista.forEach(s => {
@@ -897,12 +929,8 @@ function showModalSuggestions(lista, query = "") {
         document.getElementById('servizio-iniziale').value = s.servizio_nome;
         document.getElementById('servizio-id-selezionato').value = s.id;
         document.getElementById('modalServizi').style.display = 'none';
-
-        // Mostra select operatore e bottone aggiungi-servizio
         document.getElementById('select_operatore_wrapper').style.display = '';
         document.getElementById('aggiungi-servizio').style.display = '';
-
-        // Popola la select operatori
         aggiornaOperatori(s.id);
       };
       modalSuggestions.appendChild(item);
