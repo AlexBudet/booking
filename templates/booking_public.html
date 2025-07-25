@@ -285,8 +285,9 @@ body {
 <div class="modal fade" id="modalServizi" tabindex="-1" aria-labelledby="modalServiziLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered modal-lg" style="max-width: 600px;">
     <div class="modal-content" style="height: 80vh; min-height: 400px;">
-      <div class="modal-header" style="border-bottom: none;">
+      <div class="modal-header d-flex align-items-center" style="border-bottom: none;">
         <input type="text" id="modal-servizio-input" class="form-control" placeholder="Cerca un servizio..." autocomplete="off" autofocus>
+        <button type="button" class="btn-close ms-2" data-bs-dismiss="modal" aria-label="Chiudi"></button>
       </div>
       <div class="modal-body p-0" style="overflow-y: auto; max-height: calc(80vh - 60px);">
         <div id="modal-servizio-suggestions" class="list-group"></div>
