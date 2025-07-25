@@ -853,7 +853,7 @@ document.getElementById('modal-servizio-input').addEventListener('input', functi
   }
 });
 
-function showModalSuggestions(lista) {
+function showModalSuggestions(lista, query = "") {
   const modalSuggestions = document.getElementById('modal-servizio-suggestions');
   modalSuggestions.innerHTML = '';
 
