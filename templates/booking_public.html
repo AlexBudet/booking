@@ -194,6 +194,15 @@ body {
     margin-top: 0 !important;
   }
 }
+
+#modal-servizio-input {
+  border-radius: 8px;
+  font-size: 1.1em;
+}
+#modal-servizio-suggestions {
+  max-height: 100%;
+  overflow-y: auto;
+}
 </style>
 </head>
 <body>
@@ -220,7 +229,6 @@ body {
 <div class="row align-items-end mb-2" id="selezione-iniziale-servizio">
 <div class="col-7 position-relative mb-2">
   <input type="text" id="servizio-iniziale" class="form-control" placeholder="Cerca un servizio..." autocomplete="off">
-  <div id="servizio-suggestions" class="list-group w-100" style="z-index:1000; display:none;"></div>
   <input type="hidden" id="servizio-id-selezionato">
 </div>
   <div class="col-4 mb-2">
@@ -271,6 +279,20 @@ body {
   <a href="#" id="link-condizioni" style="text-decoration:underline;">le condizioni di vendita</a>.
   <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Chiudi"></button>
 </div>
+</div>
+
+<!-- Modal Ricerca Servizi -->
+<div class="modal fade" id="modalServizi" tabindex="-1" aria-labelledby="modalServiziLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg" style="max-width: 600px;">
+    <div class="modal-content" style="height: 80vh; min-height: 400px;">
+      <div class="modal-header" style="border-bottom: none;">
+        <input type="text" id="modal-servizio-input" class="form-control" placeholder="Cerca un servizio..." autocomplete="off" autofocus>
+      </div>
+      <div class="modal-body p-0" style="overflow-y: auto; max-height: calc(80vh - 60px);">
+        <div id="modal-servizio-suggestions" class="list-group"></div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Modal Privacy -->
@@ -768,37 +790,26 @@ function nascondiSidebarEAvvisi() {
 }
 
 document.getElementById('servizio-iniziale').addEventListener('focus', function() {
-  nascondiSidebarEAvvisi();
-  showSuggestions(servizi);
-  if (!operatoreResoVisibile) {
-    document.getElementById('select_operatore_wrapper').style.display = '';
-    operatoreResoVisibile = true;
-  }
-});
-document.getElementById('servizio-iniziale').addEventListener('click', function() {
-  nascondiSidebarEAvvisi();
-  showSuggestions(servizi);
-  if (!operatoreResoVisibile) {
-    document.getElementById('select_operatore_wrapper').style.display = '';
-    operatoreResoVisibile = true;
-  }
+  var modal = new bootstrap.Modal(document.getElementById('modalServizi'));
+  modal.show();
+  document.getElementById('modal-servizio-input').value = '';
+  showModalSuggestions(servizi);
+  setTimeout(() => document.getElementById('modal-servizio-input').focus(), 300);
 });
 
-  // Filtra servizi dalla terza lettera
-  servizioIniziale.addEventListener('input', function() {
-    const q = this.value.trim().toLowerCase();
-    if (q.length < 3) {
-      showSuggestions(servizi);
-    } else {
-      const filtrati = servizi.filter(s => s.servizio_nome.toLowerCase().includes(q));
-      showSuggestions(filtrati);
-    }
-    servizioIdSelezionato.value = '';
-    aggiungiBtn.style.display = 'none';
-  });
-
-  function showSuggestions(lista) {
-    suggestions.innerHTML = '';
+// Ricerca live nel modal
+document.getElementById('modal-servizio-input').addEventListener('input', function() {
+  const q = this.value.trim().toLowerCase();
+  if (q.length < 3) {
+    showModalSuggestions(servizi);
+  } else {
+    const filtrati = servizi.filter(s => s.servizio_nome.toLowerCase().includes(q));
+    showModalSuggestions(filtrati);
+  }
+});
+  function showModalSuggestions(lista) {
+    const modalSuggestions = document.getElementById('modal-servizio-suggestions');
+    modalSuggestions.innerHTML = '';
     lista.forEach(s => {
       const item = document.createElement('button');
       item.type = 'button';
@@ -807,14 +818,52 @@ document.getElementById('servizio-iniziale').addEventListener('click', function(
       item.onclick = function() {
         servizioIniziale.value = s.servizio_nome;   // Mostra il nome nel campo input
         servizioIdSelezionato.value = s.id;         // Salva l'id nel campo nascosto
-        suggestions.style.display = 'none';
+        aggiornaOperatori(s.id);                    // Aggiorna operatori disponibili
+        modalSuggestions.style.display = 'none';
         aggiungiBtn.style.display = '';
         servizioIniziale.dispatchEvent(new Event('change'));
       };
-      suggestions.appendChild(item);
+      modalSuggestions.appendChild(item);
     });
-    suggestions.style.display = lista.length ? 'block' : 'none';
+    modalSuggestions.style.display = lista.length ? 'block' : 'none';
   }
+
+document.getElementById('servizio-iniziale').addEventListener('focus', function() {
+  var modal = new bootstrap.Modal(document.getElementById('modalServizi'));
+  modal.show();
+  document.getElementById('modal-servizio-input').value = '';
+  showModalSuggestions(servizi);
+  setTimeout(() => document.getElementById('modal-servizio-input').focus(), 300);
+});
+
+// Ricerca live nel modal
+document.getElementById('modal-servizio-input').addEventListener('input', function() {
+  const q = this.value.trim().toLowerCase();
+  if (q.length < 3) {
+    showModalSuggestions(servizi);
+  } else {
+    const filtrati = servizi.filter(s => s.servizio_nome.toLowerCase().includes(q));
+    showModalSuggestions(filtrati);
+  }
+});
+
+function showModalSuggestions(lista) {
+  const container = document.getElementById('modal-servizio-suggestions');
+  container.innerHTML = '';
+  lista.forEach(s => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'list-group-item list-group-item-action';
+    item.textContent = s.servizio_nome;
+    item.onclick = function() {
+      document.getElementById('servizio-iniziale').value = s.servizio_nome;
+      document.getElementById('servizio-id-selezionato').value = s.id;
+      bootstrap.Modal.getInstance(document.getElementById('modalServizi')).hide();
+      document.getElementById('servizio-iniziale').dispatchEvent(new Event('change'));
+    };
+    container.appendChild(item);
+  });
+}
 
   document.addEventListener('click', function(e) {
     if (!servizioIniziale.contains(e.target) && !suggestions.contains(e.target)) {
