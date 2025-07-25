@@ -308,12 +308,12 @@ body {
 
 <!-- Modal Ricerca Servizi custom senza bootstrap -->
 <div id="modalServizi" style="display:none; position:fixed; z-index:10000; left:0; top:0; width:100vw; height:100vh; background:rgba(18,16,24,0.97);">
-  <div style="width:100vw; max-width:650px; margin:0 auto; background:#333132; height:100vh; position:relative;">
-    <div class="modal-header d-flex align-items-center modal-search-sticky" style="position:sticky; top:0; background:#333132; z-index:1; border-bottom:none; padding:10px;">
+  <div style="width:100vw; max-width:650px; margin:0 auto; background:#333132; height:100vh; display: flex; flex-direction: column; overflow: hidden;">
+    <div class="modal-header d-flex align-items-center modal-search-sticky" style="position:sticky;top:0;z-index:2; background:#333132; border-bottom:none; padding:10px;">
       <input type="text" id="modal-servizio-input" class="form-control" placeholder="Cerca un servizio..." autocomplete="off" autofocus style="flex:1; margin-right:6px;">
-<button type="button" class="close-x-custom ms-2" id="closeModalServizi">×</button>
+      <button type="button" class="close-x-custom ms-2" id="closeModalServizi">×</button>
     </div>
-    <div class="modal-body p-0" style="overflow-y: auto; height:calc(100vh - 50px);">
+    <div class="modal-body p-0" style="overflow-y:auto; flex:1;">
       <div id="modal-servizio-suggestions" class="list-group"></div>
     </div>
   </div>
