@@ -222,11 +222,21 @@ body {
   opacity: 1;
   color: #754b5c;
 }
+#modalServizi-scrollable {
+  flex: 1 1 0%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+}
 .modal-search-sticky {
   position: sticky;
   top: 0;
   z-index: 20;
-  background: #e9dbe2 !important
+  background: #333132 !important;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.07);
+  border-bottom: none;
 }
 </style>
 </head>
@@ -308,7 +318,7 @@ body {
 
 <!-- Modal Ricerca Servizi custom senza bootstrap -->
 <div id="modalServizi" style="display:none; position:fixed; z-index:10000; left:0; top:0; width:100vw; height:100vh; background:rgba(18,16,24,0.97);">
-  <div id="modalServizi-outer" style="width:100vw; max-width:650px; margin:0 auto; background:#333132; height:100vh; display: flex; flex-direction: column;">
+<div id="modalServizi-outer" style="width:100vw; max-width:650px; margin:0 auto; background:#333132; height:100vh; display: flex; flex-direction: column;">
     <div id="modalServizi-scrollable" style="flex:1 1 0%; overflow-y:auto; display:flex; flex-direction:column; min-height:0; -webkit-overflow-scrolling:touch;">
       <div class="modal-header d-flex align-items-center modal-search-sticky" style="position:sticky; top:0; z-index:20; background:#333132; border-bottom:none; padding:10px;">
         <input type="text" id="modal-servizio-input" class="form-control" placeholder="Cerca un servizio..." autocomplete="off" autofocus style="flex:1; margin-right:6px;">
