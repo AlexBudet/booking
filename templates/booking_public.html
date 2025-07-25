@@ -211,7 +211,7 @@ body {
   width: 1.5em;
   height: 1.5em;
   line-height: 1.1em;
-  color: #3b3939;
+  color: #9d9696;
   opacity: 0.8;
   margin-top: -0.2em;
   margin-left: 0.5em;
@@ -220,7 +220,7 @@ body {
 }
 .close-x-custom:hover {
   opacity: 1;
-  color: #754b5c;
+  color: #a6657f;
 }
 #modalServizi-scrollable {
   flex: 1 1 0%;
@@ -834,6 +834,7 @@ function nascondiSidebarEAvvisi() {
 
 // --- APERTURA MODAL CUSTOM ---
 document.getElementById('servizio-iniziale').addEventListener('focus', function() {
+  nascondiSidebarEAvvisi();
   document.getElementById('modalServizi').style.display = 'block';
   document.getElementById('modal-servizio-input').value = '';
   showModalSuggestions(servizi);
