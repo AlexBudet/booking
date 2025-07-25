@@ -236,7 +236,6 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 .modal-header-custom-sticky {
-  position: sticky;
   top: 0;
   z-index: 30;
   background: #333132;
@@ -328,13 +327,13 @@ body {
 </div>
 
 <!-- Modal Ricerca Servizi custom senza bootstrap -->
-<div id="modalServizi" style="display:none; position:fixed; z-index:10000; left:0; top:0; width:100vw; height:100vh; background:rgba(18,16,24,0.97);">
-  <div id="modalServizi-outer" style="height:100%; display:flex; flex-direction:column;">
-    <div id="modalServizi-scrollable" style="flex:1 1 0%; overflow-y:auto; display:flex; flex-direction:column; min-height:0;">
-<div class="modal-header-custom-sticky" style="position:sticky; top:0; z-index:30; background:#333132; padding:10px; display:flex; align-items:center;">
-  <input type="text" id="modal-servizio-input" class="form-control" placeholder="Cerca un servizio..." autocomplete="off" autofocus style="flex:1; margin-right:6px;">
-  <button type="button" class="close-x-custom ms-2" id="closeModalServizi" aria-label="Chiudi">×</button>
-</div>
+<div id="modalServizi" style="display:block; position:sticky; left:0; top:0; width:100vw; height:100vh; background:rgba(18,16,24,0.97); z-index:10000;">
+  <div id="modalServizi-outer" style="height:100%; width:100vw; max-width:650px; margin:0 auto; background:#333132; display:flex; flex-direction:column;">
+    <div id="modalServizi-scrollable" style="flex:1 1 0%; overflow-y:auto; min-height:0; display:flex; flex-direction:column;">
+      <div class="modal-header-custom-sticky" style="position:sticky; top:0; z-index:30; background:#333132; padding:10px; display:flex; align-items:center;">
+        <input type="text" id="modal-servizio-input" class="form-control" placeholder="Cerca un servizio..." autocomplete="off" autofocus style="flex:1; margin-right:6px;">
+        <button type="button" class="close-x-custom ms-2" id="closeModalServizi" aria-label="Chiudi">×</button>
+      </div>
       <div class="modal-body p-0" style="flex:1 1 0%; min-height:0;">
         <div id="modal-servizio-suggestions" class="list-group"></div>
       </div>
