@@ -857,7 +857,7 @@ function showModalSuggestions(lista, query = "") {
   const modalSuggestions = document.getElementById('modal-servizio-suggestions');
   modalSuggestions.innerHTML = '';
 
-    // Se query è vuota, mostra raggruppati per sottocategoria
+  // Se query è vuota, mostra raggruppati per sottocategoria
   if (!query) {
     // Raggruppa per sottocategoria
     const gruppi = {};
@@ -918,25 +918,26 @@ function showModalSuggestions(lista, query = "") {
         }
       });
     });
-  } else {
 
-  lista.forEach(s => {
-    const item = document.createElement('button');
-    item.type = 'button';
-    item.className = 'list-group-item list-group-item-action';
-    item.textContent = s.servizio_nome;
-item.onclick = function() {
-  document.getElementById('servizio-iniziale').value = s.servizio_nome;
-  document.getElementById('servizio-id-selezionato').value = s.id;
-  document.getElementById('modalServizi').style.display = 'none';
-  setTimeout(function() {
-    document.getElementById('servizio-iniziale').dispatchEvent(new Event('change'));
-    // Simula click su aggiungi-servizio
-    document.getElementById('aggiungi-servizio').click();
-  }, 200);
-};
-    modalSuggestions.appendChild(item);
-  });
+  } else {
+    // Ricerca: mostra solo servizi trovati, senza sottocategoria
+    lista.forEach(s => {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'list-group-item list-group-item-action';
+      item.textContent = s.servizio_nome;
+      item.onclick = function() {
+        document.getElementById('servizio-iniziale').value = s.servizio_nome;
+        document.getElementById('servizio-id-selezionato').value = s.id;
+        document.getElementById('modalServizi').style.display = 'none';
+        setTimeout(function() {
+          document.getElementById('servizio-iniziale').dispatchEvent(new Event('change'));
+          document.getElementById('aggiungi-servizio').click();
+        }, 200);
+      };
+      modalSuggestions.appendChild(item);
+    });
+  }
 }
 
   // Aggiungi servizio
