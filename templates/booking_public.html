@@ -222,37 +222,19 @@ body {
   opacity: 1;
   color: #754b5c;
 }
-  #modalServizi {
-    display: none;
-    position: fixed;
-    z-index: 10000;
-    left: 0; top: 0;
-    width: 100vw; height: 100vh;
-    background: rgba(18,16,24,0.97);
-  }
-  #modalServizi-outer {
-    width: 100vw;
-    max-width: 650px;
-    margin: 0 auto;
-    background: #333132;
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
-  }
   #modalServizi-scrollable {
     flex: 1 1 0%;
     overflow-y: auto;
-    height: 100vh;
     -webkit-overflow-scrolling: touch;
     position: relative;
   }
-  .modal-header-sticky {
+  .modal-search-sticky {
     position: sticky;
     top: 0;
-    z-index: 10;
-    background: #333132;
+    z-index: 20;
+    background: #333132 !important;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.07);
     border-bottom: none;
-    padding: 10px;
   }
 </style>
 </head>
@@ -336,9 +318,9 @@ body {
 <div id="modalServizi">
   <div id="modalServizi-outer">
     <div id="modalServizi-scrollable">
-      <div class="modal-header d-flex align-items-center modal-header-sticky">
-        <input type="text" id="modal-servizio-input" class="form-control" placeholder="Cerca un servizio..." autocomplete="off" autofocus style="flex:1; margin-right:6px;">
-        <button type="button" class="close-x-custom ms-2" id="closeModalServizi">×</button>
+      <div class="modal-header d-flex align-items-center modal-search-sticky">
+        <input type="text" id="modal-servizio-input" class="form-control" placeholder="Cerca un servizio..." autocomplete="off" autofocus>
+        <button type="button" class="close-x-custom ms-2" id="closeModalServizi" aria-label="Chiudi">×</button>
       </div>
       <div class="modal-body p-0">
         <div id="modal-servizio-suggestions" class="list-group"></div>
