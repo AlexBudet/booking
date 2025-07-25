@@ -28,6 +28,17 @@ service_operator = db.Table(
     db.Column('operator_id', db.Integer, db.ForeignKey('operatori.id'), primary_key=True)
 )
 
+class Subcategory(db.Model):
+    __tablename__ = 'sottocategorie'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    nome = db.Column(db.String(50), nullable=False)
+    categoria = db.Column(Enum(ServiceCategory), nullable=False)  # Usa Enum di SQLAlchemy
+    is_deleted = db.Column(db.Boolean, default=False)
+
+    def __repr__(self):
+        return f"<Subcategory {self.nome}>"
+
 class Operator(db.Model):
     __tablename__ = 'operatori'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)

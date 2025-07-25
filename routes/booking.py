@@ -3,7 +3,7 @@ import random
 import string
 import json
 from flask import Blueprint, request, jsonify, render_template, session
-from appl.models import Appointment, AppointmentSource, Service, Operator, OperatorShift, Client, BusinessInfo, db
+from appl.models import Appointment, AppointmentSource, Service, Operator, OperatorShift, Client, BusinessInfo, Subcategory, db
 from datetime import datetime, timezone, timedelta, time
 from sqlalchemy import and_, cast, DateTime, or_
 from pytz import timezone as pytz_timezone
@@ -156,7 +156,7 @@ def booking_page():
             "servizio_nome": s.servizio_nome,
             "servizio_durata": s.servizio_durata,
             "servizio_prezzo": s.servizio_prezzo,
-            # Ricostruisci la lista degli operatori associati
+            "sottocategoria": getattr(s, "sottocategoria", None) or getattr(s, "categoria", None) or "Altro",
             "operator_ids": [op.id for op in s.operators]
         }
         for s in servizi
