@@ -204,12 +204,23 @@ body {
   overflow-y: auto;
 }
 
-.btn-close.btn-close-small {
-  width: 0.8em !important;
-  height: 0.8em !important;
-  padding: 0.25em !important;
-  margin-top: -0.3em !important;
-  font-size: 0.8em !important;
+.close-x-custom {
+  background: none;
+  border: none;
+  font-size: 1.1em;
+  width: 1.5em;
+  height: 1.5em;
+  line-height: 1.1em;
+  color: #fff;
+  opacity: 0.8;
+  margin-top: -0.2em;
+  margin-left: 0.5em;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.close-x-custom:hover {
+  opacity: 1;
+  color: #ffb6d5;
 }
 </style>
 </head>
@@ -295,7 +306,7 @@ body {
     <div class="modal-content" style="height: 85vh; min-height: 320px;">
       <div class="modal-header d-flex align-items-center" style="border-bottom: none;">
         <input type="text" id="modal-servizio-input" class="form-control" placeholder="Cerca un servizio..." autocomplete="off" autofocus>
-       <button type="button" class="btn-close btn-close-small ms-2" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+        <button type="button" class="close-x-custom ms-2" data-bs-dismiss="modal" aria-label="Chiudi">×</button>
       </div>
       <div class="modal-body p-0" style="overflow-y: auto; max-height: calc(85vh);">
         <div id="modal-servizio-suggestions" class="list-group"></div>
