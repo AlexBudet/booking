@@ -191,7 +191,7 @@ def search_servizi():
         {
             "id": s.id,
             "servizio_nome": s.servizio_nome,
-            "sottocategoria": getattr(s, "sottocategoria", None) or getattr(s, "categoria", None) or "Altro"
+            "sottocategoria": s.servizio_sottocategoria.nome if s.servizio_sottocategoria else "Altro"
         }
         for s in risultati
     ])
