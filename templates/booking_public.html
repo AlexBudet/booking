@@ -838,8 +838,14 @@ document.getElementById('modal-servizio-input').addEventListener('input', functi
 item.onclick = function() {
   document.getElementById('servizio-iniziale').value = s.servizio_nome;
   document.getElementById('servizio-id-selezionato').value = s.id;
-  // PATCH: chiudi il modal simulando un click sulla X (che ha data-bs-dismiss="modal")
-  document.querySelector('#modalServizi .close-x-custom').click();
+
+  // PRIMA sposta il focus fuori dal modal
+  document.getElementById('servizio-iniziale').focus();
+
+  // Chiudi il modal solo tramite API Bootstrap, MAI simulando click!
+  const modalInstance = bootstrap.Modal.getInstance(document.getElementById('modalServizi'));
+  if (modalInstance) modalInstance.hide();
+
   // Dopo la chiusura, aggiorna il campo
   setTimeout(function() {
     document.getElementById('servizio-iniziale').dispatchEvent(new Event('change'));
