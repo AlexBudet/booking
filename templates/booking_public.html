@@ -838,16 +838,19 @@ document.getElementById('modal-servizio-input').addEventListener('input', functi
 item.onclick = function() {
   document.getElementById('servizio-iniziale').value = s.servizio_nome;
   document.getElementById('servizio-id-selezionato').value = s.id;
-  // PATCH: sposta il focus fuori dal modal prima di chiudere
-  document.activeElement.blur();
-  // Ora chiudi il modal
-  bootstrap.Modal.getInstance(document.getElementById('modalServizi')).hide();
-  // PATCH: rimuovi eventuali backdrop rimasti
+  // PATCH: sposta il focus su un campo fuori dal modal PRIMA di chiudere
   setTimeout(function() {
-    document.body.classList.remove('modal-open');
-    document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
-  }, 300);
-  document.getElementById('servizio-iniziale').dispatchEvent(new Event('change'));
+    // Sposta il focus su un campo visibile fuori dal modal (es: il campo servizio-iniziale)
+    document.getElementById('servizio-iniziale').focus();
+    // Ora chiudi il modal
+    bootstrap.Modal.getInstance(document.getElementById('modalServizi')).hide();
+    // Rimuovi eventuali backdrop rimasti dopo la chiusura
+    setTimeout(function() {
+      document.body.classList.remove('modal-open');
+      document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+    }, 300);
+    document.getElementById('servizio-iniziale').dispatchEvent(new Event('change'));
+  }, 10);
 };
       modalSuggestions.appendChild(item);
     });
