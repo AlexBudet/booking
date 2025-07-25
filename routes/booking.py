@@ -183,14 +183,16 @@ def booking_page():
 @booking_bp.route('/search-servizi')
 def search_servizi():
     q = request.args.get('q', '', type=str)
-    # filtro case‐insensitive sui nomi dei servizi
     risultati = Service.query \
         .filter(Service.servizio_nome.ilike(f"%{q}%")) \
         .order_by(Service.servizio_nome) \
         .all()
-    # restituisco JSON con id e nome
     return jsonify([
-        {"id": s.id, "servizio_nome": s.servizio_nome}
+        {
+            "id": s.id,
+            "servizio_nome": s.servizio_nome,
+            "sottocategoria": getattr(s, "sottocategoria", None) or getattr(s, "categoria", None) or "Altro"
+        }
         for s in risultati
     ])
 
