@@ -499,7 +499,7 @@ document.getElementById('servizio-iniziale').addEventListener('change', function
   const servizioId = document.getElementById('servizio-id-selezionato').value;
   const servizio = servizi.find(s => String(s.id) === String(servizioId));
   const operatoriSelect = document.getElementById('operatore');
-  operatoriSelect.innerHTML = '<option value="">Operatore</option>';
+  operatoriSelect.innerHTML = '<option value="">Qualsiasi</option>';
 
   if (servizio && servizio.operator_ids.length) {
     operatori
@@ -804,7 +804,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function aggiornaOperatori(servizioId) {
     const servizio = servizi.find(s => String(s.id) === String(servizioId));
     const operatoriSelect = document.getElementById('operatore');
-    operatoriSelect.innerHTML = '<option value="">Qualsiasi</option>';
+    operatoriSelect.innerHTML = '<option value="" selected disabled>Operatore</option>';
 
     if (servizio && servizio.operator_ids && servizio.operator_ids.length) {
       operatori
@@ -818,6 +818,16 @@ document.addEventListener('DOMContentLoaded', function() {
       document.getElementById('select_operatore_wrapper').style.display = '';
     }
   }
+
+  // Al focus sul select, cambia la prima option in "Qualsiasi"
+document.getElementById('operatore').addEventListener('focus', function() {
+  const firstOption = this.options[0];
+  if (firstOption && firstOption.text === "Operatore") {
+    firstOption.text = "Qualsiasi";
+    firstOption.disabled = false;
+    firstOption.selected = true;
+  }
+});
 
   if (!servizioIniziale || !aggiungiBtn) return;
 
