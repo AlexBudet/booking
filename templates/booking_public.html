@@ -819,6 +819,19 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   }
 
+  const operatoreSelect = document.getElementById('operatore');
+function cambiaPlaceholderOperatore() {
+  const firstOption = operatoreSelect.options[0];
+  if (firstOption && firstOption.text === "Operatore") {
+    firstOption.text = "Qualsiasi";
+    firstOption.disabled = false;
+  }
+}
+operatoreSelect.addEventListener('focus', cambiaPlaceholderOperatore);
+operatoreSelect.addEventListener('mousedown', cambiaPlaceholderOperatore);
+operatoreSelect.addEventListener('touchstart', cambiaPlaceholderOperatore); // mobile
+operatoreSelect.addEventListener('change', cambiaPlaceholderOperatore);     // fallback mobile
+
   // Al focus sul select, cambia la prima option in "Qualsiasi"
 document.getElementById('operatore').addEventListener('focus', function() {
   const firstOption = this.options[0];
