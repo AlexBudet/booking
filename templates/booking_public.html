@@ -499,7 +499,7 @@ document.getElementById('servizio-iniziale').addEventListener('change', function
   const servizioId = document.getElementById('servizio-id-selezionato').value;
   const servizio = servizi.find(s => String(s.id) === String(servizioId));
   const operatoriSelect = document.getElementById('operatore');
-  operatoriSelect.innerHTML = '<option value="">Qualsiasi</option>';
+  operatoriSelect.innerHTML = '<option value="">Operatore</option>';
 
   if (servizio && servizio.operator_ids.length) {
     operatori
