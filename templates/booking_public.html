@@ -240,7 +240,7 @@ body {
   flex-direction: column;
   min-height: 0;
   -webkit-overflow-scrolling: touch;
-}
+}Q
 .modal-search-sticky {
   position: sticky;
   top: 0;
@@ -499,7 +499,7 @@ document.getElementById('servizio-iniziale').addEventListener('change', function
   const servizioId = document.getElementById('servizio-id-selezionato').value;
   const servizio = servizi.find(s => String(s.id) === String(servizioId));
   const operatoriSelect = document.getElementById('operatore');
-  operatoriSelect.innerHTML = '<option value="">Operatore</option>';
+  operatoriSelect.innerHTML = '<option value="">Qualsiasi</option>';
 
   if (servizio && servizio.operator_ids.length) {
     operatori
