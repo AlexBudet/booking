@@ -376,6 +376,15 @@ def orari_disponibili():
             if datetime.combine(data, datetime.strptime(o, "%H:%M").time()) >= now
         ]
 
+    # Filtro: se la data è oggi, mostra solo orari >= ora attuale
+    oggi_str = datetime.now().strftime('%Y-%m-%d')
+    if data_str == oggi_str:
+        ora_attuale = datetime.now().hour * 60 + datetime.now().minute
+        orari_disponibili = [
+            o for o in orari_disponibili
+            if (int(o.split(':')[0]) * 60 + int(o.split(':')[1])) >= ora_attuale
+        ]
+
     return jsonify({
         "orari_disponibili": orari,
         "operatori_assegnati": slot_operatori,
