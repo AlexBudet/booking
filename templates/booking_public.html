@@ -627,12 +627,12 @@ document.getElementById('ora').addEventListener('change', function() {
     const cognome = document.getElementById('cognome').value.trim();
     const telefono = document.getElementById('telefono').value.trim();
     const email = document.getElementById('email').value.trim();
-    if (nome && cognome && telefono && email) {
-      inviaCodiceBtn.style.display = '';
-      scrollToBottom();
-    } else {
-      inviaCodiceBtn.style.display = 'none';
-    }
+if (nome && cognome && telefono && email) {
+  inviaCodiceBtn.style.display = '';
+  // scrollToBottom(); // Commenta o rimuovi questa riga!
+} else {
+  inviaCodiceBtn.style.display = 'none';
+}
   });
 });
 
