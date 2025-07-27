@@ -524,16 +524,16 @@ function loadOrari() {
   oraSelect.innerHTML = '<option value="">Caricamento orari...</option>';
 
   // Costruisci la query string con tutti i servizi selezionati
-const params = new URLSearchParams();
-params.append('data', data);
-servizi.forEach(s => {
-  params.append('servizi[]', JSON.stringify({ servizio_id: s.servizio_id, operatore_id: s.operatore_id }));
-});
+  const params = new URLSearchParams();
+  params.append('data', data);
+  servizi.forEach(s => {
+    params.append('servizi[]', JSON.stringify({ servizio_id: s.servizio_id, operatore_id: s.operatore_id }));
+  });
 
-const operatoriUnici = [...new Set(servizi.map(s => s.operatore_id).filter(op => op))];
-if (operatoriUnici.length === 1 && operatoriUnici[0]) {
-  params.append('operatore_id', operatoriUnici[0]);
-}
+  const operatoriUnici = [...new Set(servizi.map(s => s.operatore_id).filter(op => op))];
+  if (operatoriUnici.length === 1 && operatoriUnici[0]) {
+    params.append('operatore_id', operatoriUnici[0]);
+  }
 
   fetch('/orari?' + params.toString())
     .then(r => r.json())
