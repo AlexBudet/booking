@@ -620,6 +620,11 @@ document.getElementById('ora').addEventListener('change', function() {
   }
 });
 
+// Rileva Safari mobile
+function isSafariMobile() {
+  return /^((?!chrome|android).)*safari/i.test(navigator.userAgent) && /iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
 ['nome', 'cognome', 'telefono', 'email'].forEach(id => {
   document.getElementById(id).addEventListener('input', function() {
     const nome = document.getElementById('nome').value.trim();
@@ -627,7 +632,10 @@ document.getElementById('ora').addEventListener('change', function() {
     const telefono = document.getElementById('telefono').value.trim();
     const email = document.getElementById('email').value.trim();
     if (nome && cognome && telefono && email) {
-      document.activeElement.blur();
+      // Esegui blur solo se NON sei su Safari mobile
+      if (!isSafariMobile()) {
+        document.activeElement.blur();
+      }
       setTimeout(() => {
         inviaCodiceBtn.style.display = '';
         // scrollToBottom();
