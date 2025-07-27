@@ -738,7 +738,7 @@ def invia_codice():
         subject='SunBooking - Il tuo codice di conferma',
         html_content=f"""
             <p>Ciao {nome},</p>
-            <p>Il tuo codice di conferma è: <b>{codice}</b></p>
+            <p>Il tuo codice di conferma one-time-code è: <b>{codice}</b></p>
             <p>Inseriscilo nella pagina di prenotazione per completare la conferma.</p><br><br>
             <p>Ignora questa email se non hai effettuato tu la prenotazione.</p><br><br>
             <p>Grazie!</p>
