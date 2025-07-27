@@ -631,15 +631,20 @@ function isSafariMobile() {
     const cognome = document.getElementById('cognome').value.trim();
     const telefono = document.getElementById('telefono').value.trim();
     const email = document.getElementById('email').value.trim();
+    // Mostra il bottone solo se tutti i campi sono pieni
     if (nome && cognome && telefono && email) {
-      // Esegui blur solo se NON sei su Safari mobile
-      if (!isSafariMobile()) {
-        document.activeElement.blur();
-      }
-      setTimeout(() => {
+      // Solo se il bottone era nascosto, fai il blur (così solo la prima volta)
+      if (inviaCodiceBtn.style.display === 'none') {
+        if (!isSafariMobile()) {
+          document.activeElement.blur();
+        }
+        setTimeout(() => {
+          inviaCodiceBtn.style.display = '';
+          // scrollToBottom();
+        }, 150);
+      } else {
         inviaCodiceBtn.style.display = '';
-        // scrollToBottom();
-      }, 150);
+      }
     } else {
       inviaCodiceBtn.style.display = 'none';
     }
