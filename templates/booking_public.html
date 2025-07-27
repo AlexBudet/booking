@@ -517,7 +517,7 @@ document.getElementById('servizio-iniziale').addEventListener('change', function
 
 function loadOrari() {
   const servizi = getServiziSelezionati();
-  const data = document.getElementById('data').value;
+  const data = document.getElementById('data').setAttribute('min', new Date().toISOString().split('T')[0]);
   if (!servizi.length || !data) return;
   const oraSelect = document.getElementById('ora');
   oraSelect.innerHTML = '<option value="">Caricamento orari...</option>';
@@ -564,7 +564,7 @@ document.getElementById('dati-cliente').style.display = 'none';
 inviaCodiceBtn.style.display = 'none';
 
 function aggiornaDataLabel() {
-  const dataInput = document.getElementById('data');
+  const dataInput = document.getElementById('data').setAttribute('min', new Date().toISOString().split('T')[0]);
   const dataLabel = document.getElementById('data_label');
   if (!dataInput.value) {
     dataLabel.textContent = '';
@@ -696,7 +696,7 @@ document.getElementById('inviaConfermaPrenotazioneBtn').addEventListener('click'
   const cognome = document.getElementById('cognome').value.trim();
   const telefono = document.getElementById('telefono').value.trim();
   const email = document.getElementById('email').value.trim();
-  const data = document.getElementById('data').value;
+  const data = document.getElementById('data').setAttribute('min', new Date().toISOString().split('T')[0]);
   const ora = document.getElementById('ora').value;
   const csrfToken = document.getElementById('csrf_token').value;
 
