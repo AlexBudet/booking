@@ -620,7 +620,6 @@ document.getElementById('ora').addEventListener('change', function() {
   }
 });
 
-// 5. Solo quando tutti i campi cliente sono compilati, mostra il bottone "Chiedi codice di conferma"
 ['nome', 'cognome', 'telefono', 'email'].forEach(id => {
   document.getElementById(id).addEventListener('input', function() {
     const nome = document.getElementById('nome').value.trim();
@@ -632,7 +631,7 @@ document.getElementById('ora').addEventListener('change', function() {
       setTimeout(() => {
         inviaCodiceBtn.style.display = '';
         // scrollToBottom();
-      }, 150); // 150ms di delay
+      }, 150);
     } else {
       inviaCodiceBtn.style.display = 'none';
     }
