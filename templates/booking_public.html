@@ -517,45 +517,57 @@ document.getElementById('servizio-iniziale').addEventListener('change', function
 
 function loadOrari() {
   const servizi = getServiziSelezionati();
-  const dataInput = document.getElementById('data');
-  dataInput.setAttribute('min', new Date().toISOString().split('T')[0]);
-  if (!servizi.length || !dataInput.value) return;
+  const data = document.getElementById('data').value;
+  if (!servizi.length || !data) return;
   const oraSelect = document.getElementById('ora');
   oraSelect.innerHTML = '<option value="">Caricamento orari...</option>';
 
   // Costruisci la query string con tutti i servizi selezionati
-  const params = new URLSearchParams();
-  params.append('data', data);
-  servizi.forEach(s => {
-    params.append('servizi[]', JSON.stringify({ servizio_id: s.servizio_id, operatore_id: s.operatore_id }));
+const params = new URLSearchParams();
+params.append('data', data);
+servizi.forEach(s => {
+  params.append('servizi[]', JSON.stringify({ servizio_id: s.servizio_id, operatore_id: s.operatore_id }));
+});
+
+const operatoriUnici = [...new Set(servizi.map(s => s.operatore_id).filter(op => op))];
+if (operatoriUnici.length === 1 && operatoriUnici[0]) {
+  params.append('operatore_id', operatoriUnici[0]);
+}
+
+fetch('/orari?' + params.toString())
+  .then(r => r.json())
+  .then(res => {
+    oraSelect.innerHTML = '';
+    let orari = res.orari_disponibili || [];
+    window._operatoriOrariMap = res.operatori_assegnati || {};
+
+    // FILTRO: se la data selezionata è oggi, mostra solo orari >= ora attuale
+    const dataSelezionata = document.getElementById('data').value;
+    const oggi = new Date();
+    const oggiStr = oggi.toISOString().split('T')[0];
+    if (dataSelezionata === oggiStr) {
+      const oraAttuale = oggi.getHours() * 60 + oggi.getMinutes();
+      orari = orari.filter(orario => {
+        const [hh, mm] = orario.split(':').map(Number);
+        return (hh * 60 + mm) >= oraAttuale;
+      });
+    }
+
+    if (orari.length > 0) {
+      oraSelect.innerHTML = '<option value="">Seleziona un orario</option>';
+      orari.forEach(orario => {
+        const opt = document.createElement('option');
+        opt.value = orario;
+        opt.textContent = orario;
+        oraSelect.appendChild(opt);
+      });
+    } else {
+      oraSelect.innerHTML = '<option value="">Nessun orario disponibile</option>';
+    }
+  })
+  .catch(() => {
+    oraSelect.innerHTML = '<option value="">Errore caricamento orari</option>';
   });
-
-  const operatoriUnici = [...new Set(servizi.map(s => s.operatore_id).filter(op => op))];
-  if (operatoriUnici.length === 1 && operatoriUnici[0]) {
-    params.append('operatore_id', operatoriUnici[0]);
-  }
-
-  fetch('/orari?' + params.toString())
-    .then(r => r.json())
-    .then(res => {
-      oraSelect.innerHTML = '';
-      const orari = res.orari_disponibili || [];
-      window._operatoriOrariMap = res.operatori_assegnati || {};
-      if (orari.length > 0) {
-        oraSelect.innerHTML = '<option value="">Seleziona un orario</option>';
-        orari.forEach(orario => {
-          const opt = document.createElement('option');
-          opt.value = orario;
-          opt.textContent = orario;
-          oraSelect.appendChild(opt);
-        });
-      } else {
-        oraSelect.innerHTML = '<option value="">Nessun orario disponibile</option>';
-      }
-    })
-    .catch(() => {
-      oraSelect.innerHTML = '<option value="">Errore caricamento orari</option>';
-    });
 }
 
 // 1. All'avvio mostra solo servizio e operatore
@@ -566,7 +578,6 @@ inviaCodiceBtn.style.display = 'none';
 
 function aggiornaDataLabel() {
   const dataInput = document.getElementById('data');
-  dataInput.setAttribute('min', new Date().toISOString().split('T')[0]);
   const dataLabel = document.getElementById('data_label');
   if (!dataInput.value) {
     dataLabel.textContent = '';
@@ -698,7 +709,7 @@ document.getElementById('inviaConfermaPrenotazioneBtn').addEventListener('click'
   const cognome = document.getElementById('cognome').value.trim();
   const telefono = document.getElementById('telefono').value.trim();
   const email = document.getElementById('email').value.trim();
-  const data = document.getElementById('data').setAttribute('min', new Date().toISOString().split('T')[0]);
+  const data = document.getElementById('data').value;
   const ora = document.getElementById('ora').value;
   const csrfToken = document.getElementById('csrf_token').value;
 
