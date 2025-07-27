@@ -541,7 +541,7 @@ fetch('/orari?' + params.toString())
     let orari = res.orari_disponibili || [];
     window._operatoriOrariMap = res.operatori_assegnati || {};
 
-    // Filtro frontend: solo per la data di oggi, mostra orari >= ora attuale
+    // Filtro SOLO sugli orari se la data è oggi
     const dataSelezionata = document.getElementById('data').value;
     const oggi = new Date();
     const oggiStr = oggi.toISOString().split('T')[0];
