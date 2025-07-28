@@ -495,13 +495,16 @@ const operatori = {{ operatori_json|tojson }};
 document.getElementById('select_operatore_wrapper').style.display = 'none';
 
 // Quando selezioni il servizio
-document.getElementById('servizio-iniziale').addEventListener('change', function() {
-  // Prendi l'id dal campo nascosto!
+document.getElementById('servizio-iniziale').addEventListener('change', function () {
   const servizioId = document.getElementById('servizio-id-selezionato').value;
   const servizio = servizi.find(s => String(s.id) === String(servizioId));
+
+  // Pulisci e resetta select operatori
   const operatoriSelect = document.getElementById('operatore');
   operatoriSelect.innerHTML = '<option value="">Qualsiasi</option>';
+  document.getElementById('select_operatore_wrapper').style.display = 'none';
 
+  // Mostra gli operatori validi per il servizio (se presenti)
   if (servizio && servizio.operator_ids.length) {
     operatori
       .filter(op => servizio.operator_ids.includes(op.id))
@@ -513,7 +516,15 @@ document.getElementById('servizio-iniziale').addEventListener('change', function
       });
     document.getElementById('select_operatore_wrapper').style.display = '';
   }
+
+  // Mostra la sezione data
+  document.getElementById('data_wrapper').style.display = 'block';
+
+  // Nascondi gli orari precedenti (da ricaricare)
+  document.getElementById('ora_wrapper').style.display = 'none';
+  document.getElementById('ora').innerHTML = '<option value="">Seleziona un orario</option>';
 });
+
 
 function loadOrari() {
   const servizi = getServiziSelezionati();
@@ -533,7 +544,7 @@ function loadOrari() {
   if (operatoriUnici.length === 1 && operatoriUnici[0]) {
     params.append('operatore_id', operatoriUnici[0]);
   }
-  
+
 fetch('/orari?' + params.toString())
   .then(r => r.json())
   .then(res => {
