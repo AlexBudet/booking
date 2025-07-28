@@ -336,42 +336,50 @@ def orari_disponibili():
 
     # Prova solo slot dove un singolo operatore può coprire TUTTI i servizi richiesti in sequenza
     for op in operatori_disponibili:
+# Sostituisci il ciclo che inizia con:
+# for op in operatori_disponibili:
+#     for start, end in intervalli:
+#         ...
+
         for start, end in intervalli:
             slot = datetime.combine(data, start)
             fine = datetime.combine(data, end)
             while slot + durata <= fine:
-                slot_corrente = slot
-                operatori_catena = []
-                ok = True
+                operatori_idonei = []
+                for op in operatori_disponibili:
+                    slot_corrente_temp = slot
+                    ok = True
+                    for servizio_item in servizi_items:
+                        servizio_id = int(servizio_item.get("servizio_id"))
+                        durata_servizio = next((s.servizio_durata or 30 for s in servizi if s.id == servizio_id), 30)
+                        durata_td = timedelta(minutes=durata_servizio)
+                        inizio = slot_corrente_temp
+                        fine_servizio = slot_corrente_temp + durata_td
 
-                for servizio_item in servizi_items:
-                    servizio_id = int(servizio_item.get("servizio_id"))
-                    durata_servizio = next((s.servizio_durata or 30 for s in servizi if s.id == servizio_id), 30)
-                    durata_td = timedelta(minutes=durata_servizio)
-                    inizio = slot_corrente
-                    fine_servizio = slot_corrente + durata_td
-
-                    # Filtra operatori abilitati e disponibili
-                    operatori_possibili = [
-                        op for op in operatori_disponibili
-                        if op.id in servizi_operatori[servizio_id]
-                        and operatore_disponibile(op.id, inizio, fine_servizio)[0]
-                    ]
-                    if not operatori_possibili:
-                        ok = False
-                        break
-
-                    # Se c'è preferenza, usa quella, altrimenti scegli random
-                    operatore_preferito = servizio_item.get("operatore_id")
-                    if operatore_preferito and int(operatore_preferito) in [op.id for op in operatori_possibili]:
-                        op_scelto = next(op for op in operatori_possibili if op.id == int(operatore_preferito))
-                    else:
-                        op_scelto = random.choice(operatori_possibili)
-
-                    operatori_catena.append(op_scelto.id)
-                    slot_corrente = fine_servizio
-
-                if ok:
+                        # L'operatore deve essere abilitato e disponibile per ogni servizio della catena
+                        if op.id not in servizi_operatori[servizio_id]:
+                            ok = False
+                            break
+                        disponibile, _ = operatore_disponibile(op.id, inizio, fine_servizio)
+                        if not disponibile:
+                            ok = False
+                            break
+                        slot_corrente_temp = fine_servizio
+                    if ok:
+                        operatori_idonei.append(op)
+                if operatori_idonei:
+                    # Se c'è preferenza utente per un operatore, usa quella
+                    preferenze = [servizio_item.get("operatore_id") for servizio_item in servizi_items]
+                    preferenze = [int(x) for x in preferenze if x]
+                    op_scelto = None
+                    if preferenze:
+                        # Se tutte le preferenze sono uguali e l'operatore è idoneo, rispetta la preferenza
+                        if all(x == preferenze[0] for x in preferenze) and any(op.id == preferenze[0] for op in operatori_idonei):
+                            op_scelto = next(op for op in operatori_idonei if op.id == preferenze[0])
+                    if not op_scelto:
+                        # Altrimenti scegli random tra gli idonei
+                        op_scelto = random.choice(operatori_idonei)
+                    operatori_catena = [op_scelto.id] * len(servizi_items)
                     orari.append(slot.strftime("%H:%M"))
                     slot_operatori[slot.strftime("%H:%M")] = operatori_catena
                 slot += slot_step
