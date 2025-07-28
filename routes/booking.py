@@ -336,10 +336,6 @@ def orari_disponibili():
 
     # Prova solo slot dove un singolo operatore può coprire TUTTI i servizi richiesti in sequenza
     for op in operatori_disponibili:
-# Sostituisci il ciclo che inizia con:
-# for op in operatori_disponibili:
-#     for start, end in intervalli:
-#         ...
 
         for start, end in intervalli:
             slot = datetime.combine(data, start)
@@ -413,6 +409,7 @@ def prenota():
     codice_conferma = data.get('codice_conferma')
     dummy_client = Client.get_dummy_booking()
     booking_session_id = str(uuid.uuid4())
+    operatori_assegnati = data.get('operatori_assegnati')
 
     # Verifica codice conferma
     if 'codice_conferma' in session:
@@ -550,6 +547,7 @@ def prenota():
                 durata_td = timedelta(minutes=durata_servizio)
                 inizio = slot_corrente
                 fine_servizio = slot_corrente + durata_td
+                operatore_id = operatori_assegnati[idx] 
 
                 operatore_scelto = servizio_item.get("operatore_id")
                 if operatore_scelto:
