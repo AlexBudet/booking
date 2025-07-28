@@ -26,18 +26,6 @@ def to_rome(dt):
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(pytz_timezone('Europe/Rome'))
 
-def operatori_booking_web_count(operatori_ids, data):
-    counts = Counter()
-    appointments = Appointment.query.filter(
-        Appointment.operator_id.in_(operatori_ids),
-        Appointment.start_time >= datetime.combine(data, time.min),
-        Appointment.start_time < datetime.combine(data + timedelta(days=1), time.min),
-        Appointment.source == AppointmentSource.web
-    ).all()
-    for app in appointments:
-        counts[app.operator_id] += 1
-    return counts
-
 def is_calendar_closed(op_id, inizio, fine, turni_per_operatore, all_apps):
     """
     Restituisce True se la cella (intervallo orario per operatore) NON è selezionabile per prenotazioni.
@@ -346,9 +334,6 @@ def orari_disponibili():
     durata = timedelta(minutes=durata_totale)
     slot_step = timedelta(minutes=15)
 
-    operatori_ids = [op.id for op in operatori_disponibili]
-    web_counts = operatori_booking_web_count(operatori_ids, data)
-
     # Prova solo slot dove un singolo operatore può coprire TUTTI i servizi richiesti in sequenza
     for op in operatori_disponibili:
         for start, end in intervalli:
@@ -358,8 +343,6 @@ def orari_disponibili():
                 slot_corrente = slot
                 operatori_catena = []
                 ok = True
-                
-                local_web_counts = web_counts.copy()  # aggiungi questa riga subito prima del ciclo for servizio_item
 
                 for servizio_item in servizi_items:
                     servizio_id = int(servizio_item.get("servizio_id"))
@@ -378,12 +361,14 @@ def orari_disponibili():
                         ok = False
                         break
 
-                    # Scegli quello con meno booking web (usando il conteggio LOCALE)
-                    min_count = min([local_web_counts.get(op.id, 0) for op in operatori_possibili])
-                    operatori_min = [op for op in operatori_possibili if local_web_counts.get(op.id, 0) == min_count]
-                    op_scelto = random.choice(operatori_min)
+                    # Se c'è preferenza, usa quella, altrimenti scegli random
+                    operatore_preferito = servizio_item.get("operatore_id")
+                    if operatore_preferito and int(operatore_preferito) in [op.id for op in operatori_possibili]:
+                        op_scelto = next(op for op in operatori_possibili if op.id == int(operatore_preferito))
+                    else:
+                        op_scelto = random.choice(operatori_possibili)
+
                     operatori_catena.append(op_scelto.id)
-                    local_web_counts[op_scelto.id] = local_web_counts.get(op_scelto.id, 0) + 1  # aggiorna conteggio locale
                     slot_corrente = fine_servizio
 
                 if ok:
