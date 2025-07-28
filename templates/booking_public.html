@@ -494,17 +494,20 @@ const operatori = {{ operatori_json|tojson }};
 // Nascondi la select operatore inizialmente
 document.getElementById('select_operatore_wrapper').style.display = 'none';
 
-// Quando selezioni il servizio
-document.getElementById('servizio-iniziale').addEventListener('change', function () {
+document.getElementById('servizio-iniziale').addEventListener('change', function() {
+  // Prendi l'id dal campo nascosto
   const servizioId = document.getElementById('servizio-id-selezionato').value;
-  const servizio = servizi.find(s => String(s.id) === String(servizioId));
 
-  // Pulisci e resetta select operatori
+  // Mostra il campo data e resetta il campo orario
+  document.getElementById('data_wrapper').style.display = '';
+  document.getElementById('ora_wrapper').style.display = 'none';
+  const oraSelect = document.getElementById('ora');
+  oraSelect.innerHTML = '<option value="">Seleziona una data e un servizio</option>';
+
+  // Popola la select operatori
+  const servizio = servizi.find(s => String(s.id) === String(servizioId));
   const operatoriSelect = document.getElementById('operatore');
   operatoriSelect.innerHTML = '<option value="">Qualsiasi</option>';
-  document.getElementById('select_operatore_wrapper').style.display = 'none';
-
-  // Mostra gli operatori validi per il servizio (se presenti)
   if (servizio && servizio.operator_ids.length) {
     operatori
       .filter(op => servizio.operator_ids.includes(op.id))
@@ -516,20 +519,13 @@ document.getElementById('servizio-iniziale').addEventListener('change', function
       });
     document.getElementById('select_operatore_wrapper').style.display = '';
   }
-
-  // Mostra la sezione data
-  document.getElementById('data_wrapper').style.display = 'block';
-
-  // Nascondi gli orari precedenti (da ricaricare)
-  document.getElementById('ora_wrapper').style.display = 'none';
-  document.getElementById('ora').innerHTML = '<option value="">Seleziona un orario</option>';
 });
-
 
 function loadOrari() {
   const servizi = getServiziSelezionati();
   const data = document.getElementById('data').value;
   if (!servizi.length || !data) return;
+
   const oraSelect = document.getElementById('ora');
   oraSelect.innerHTML = '<option value="">Caricamento orari...</option>';
 
@@ -537,39 +533,45 @@ function loadOrari() {
   const params = new URLSearchParams();
   params.append('data', data);
   servizi.forEach(s => {
-    params.append('servizi[]', JSON.stringify({ servizio_id: s.servizio_id, operatore_id: s.operatore_id }));
+    params.append('servizi[]', JSON.stringify({
+      servizio_id: s.servizio_id,
+      operatore_id: s.operatore_id
+    }));
   });
 
-  const operatoriUnici = [...new Set(servizi.map(s => s.operatore_id).filter(op => op))];
-  if (operatoriUnici.length === 1 && operatoriUnici[0]) {
+  const operatoriUnici = [...new Set(
+    servizi.map(s => s.operatore_id).filter(op => op)
+  )];
+  if (operatoriUnici.length === 1) {
     params.append('operatore_id', operatoriUnici[0]);
   }
 
-fetch('/orari?' + params.toString())
-  .then(r => r.json())
-  .then(res => {
-    oraSelect.innerHTML = '';
-    const orari = res.orari_disponibili || [];
-    window._operatoriOrariMap = res.operatori_assegnati || {};
+  fetch('/orari?' + params.toString())
+    .then(r => r.json())
+    .then(res => {
+      // Mostra il pannello orari
+      document.getElementById('ora_wrapper').style.display = '';
+      oraSelect.innerHTML = '';
 
-    console.log(">>> ORARI DISPONIBILI:", orari);
-    console.log(">>> OPERATORI ASSEGNATI:", window._operatoriOrariMap);
+      const orari = res.orari_disponibili || [];
+      window._operatoriOrariMap = res.operatori_assegnati || {};
 
-    if (orari.length > 0) {
-      oraSelect.innerHTML = '<option value="">Seleziona un orario</option>';
-      orari.forEach(orario => {
-        const opt = document.createElement('option');
-        opt.value = orario;
-        opt.textContent = orario;
-        oraSelect.appendChild(opt);
-      });
-    } else {
-      oraSelect.innerHTML = '<option value="">Nessun orario disponibile</option>';
-    }
-  })
-  .catch(() => {
-    oraSelect.innerHTML = '<option value="">Errore caricamento orari</option>';
-  });
+      if (orari.length > 0) {
+        oraSelect.innerHTML = '<option value="">Seleziona un orario</option>';
+        orari.forEach(orario => {
+          const opt = document.createElement('option');
+          opt.value = orario;
+          opt.textContent = orario;
+          oraSelect.appendChild(opt);
+        });
+      } else {
+        oraSelect.innerHTML = '<option value="">Nessun orario disponibile</option>';
+      }
+    })
+    .catch(() => {
+      oraSelect.innerHTML = '<option value="">Errore caricamento orari</option>';
+    });
+}
 
 // 1. All'avvio mostra solo servizio e operatore
 document.getElementById('data_wrapper').style.display = 'none';
