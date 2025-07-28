@@ -533,29 +533,32 @@ function loadOrari() {
   if (operatoriUnici.length === 1 && operatoriUnici[0]) {
     params.append('operatore_id', operatoriUnici[0]);
   }
+  
+fetch('/orari?' + params.toString())
+  .then(r => r.json())
+  .then(res => {
+    oraSelect.innerHTML = '';
+    const orari = res.orari_disponibili || [];
+    window._operatoriOrariMap = res.operatori_assegnati || {};
 
-  fetch('/orari?' + params.toString())
-    .then(r => r.json())
-    .then(res => {
-      oraSelect.innerHTML = '';
-      const orari = res.orari_disponibili || [];
-      window._operatoriOrariMap = res.operatori_assegnati || {};
-      if (orari.length > 0) {
-        oraSelect.innerHTML = '<option value="">Seleziona un orario</option>';
-        orari.forEach(orario => {
-          const opt = document.createElement('option');
-          opt.value = orario;
-          opt.textContent = orario;
-          oraSelect.appendChild(opt);
-        });
-      } else {
-        oraSelect.innerHTML = '<option value="">Nessun orario disponibile</option>';
-      }
-    })
-    .catch(() => {
-      oraSelect.innerHTML = '<option value="">Errore caricamento orari</option>';
-    });
-}
+    console.log(">>> ORARI DISPONIBILI:", orari);
+    console.log(">>> OPERATORI ASSEGNATI:", window._operatoriOrariMap);
+
+    if (orari.length > 0) {
+      oraSelect.innerHTML = '<option value="">Seleziona un orario</option>';
+      orari.forEach(orario => {
+        const opt = document.createElement('option');
+        opt.value = orario;
+        opt.textContent = orario;
+        oraSelect.appendChild(opt);
+      });
+    } else {
+      oraSelect.innerHTML = '<option value="">Nessun orario disponibile</option>';
+    }
+  })
+  .catch(() => {
+    oraSelect.innerHTML = '<option value="">Errore caricamento orari</option>';
+  });
 
 // 1. All'avvio mostra solo servizio e operatore
 document.getElementById('data_wrapper').style.display = 'none';
