@@ -2,6 +2,7 @@
 import random
 import string
 import json
+from collections import Counter
 from flask import Blueprint, request, jsonify, render_template, session
 from appl.models import Appointment, AppointmentSource, Service, Operator, OperatorShift, Client, BusinessInfo, Subcategory, db
 from datetime import datetime, timezone, timedelta, time
@@ -23,6 +24,21 @@ def to_rome(dt):
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(pytz_timezone('Europe/Rome'))
+
+def operatori_booking_web_count(operatori_ids, data):
+    """
+    Restituisce un dict {operatore_id: numero_prenotazioni_web} per la data specificata.
+    """
+    counts = Counter()
+    appointments = Appointment.query.filter(
+        Appointment.operator_id.in_(operatori_ids),
+        Appointment.start_time >= datetime.combine(data, time.min),
+        Appointment.start_time < datetime.combine(data + timedelta(days=1), time.min),
+        Appointment.source == AppointmentSource.web
+    ).all()
+    for app in appointments:
+        counts[app.operator_id] += 1
+    return counts
 
 def is_calendar_closed(op_id, inizio, fine, turni_per_operatore, all_apps):
     """
@@ -333,38 +349,44 @@ def orari_disponibili():
     slot_step = timedelta(minutes=15)
 
     # Prova solo slot dove un singolo operatore può coprire TUTTI i servizi richiesti in sequenza
-    for op in operatori_disponibili:
-        for start, end in intervalli:
-            slot = datetime.combine(data, start)
-            fine = datetime.combine(data, end)
-            while slot + durata <= fine:
-                slot_corrente = slot
-                operatori_catena = []
-                ok = True
-                for servizio_item in servizi_items:
-                    servizio_id = int(servizio_item.get("servizio_id"))
-                    durata_servizio = next((s.servizio_durata or 30 for s in servizi if s.id == servizio_id), 30)
-                    durata_td = timedelta(minutes=durata_servizio)
-                    inizio = slot_corrente
-                    fine_servizio = slot_corrente + durata_td
+    operatori_ids = [op.id for op in operatori_disponibili]
+    web_counts = operatori_booking_web_count(operatori_ids, data)
 
-                    # Cerca un operatore disponibile per questo servizio
-                    trovato = False
-                    for op in operatori_disponibili:
-                        risultato, motivo = operatore_disponibile(op.id, inizio, fine_servizio)
-                        if risultato and op.id in [op_id for op_id in servizi_operatori[servizio_id]]:
-                            operatori_catena.append(op.id)
-                            trovato = True
-                            break
-                    if not trovato:
-                        ok = False
-                        break
-                    slot_corrente = fine_servizio
+    for start, end in intervalli:
+        slot = datetime.combine(data, start)
+        fine = datetime.combine(data, end)
+        while slot + durata <= fine:
+            slot_corrente = slot
+            operatori_catena = []
+            ok = True
+            for servizio_item in servizi_items:
+                servizio_id = int(servizio_item.get("servizio_id"))
+                durata_servizio = next((s.servizio_durata or 30 for s in servizi if s.id == servizio_id), 30)
+                durata_td = timedelta(minutes=durata_servizio)
+                inizio = slot_corrente
+                fine_servizio = slot_corrente + durata_td
 
-                if ok:
-                    orari.append(slot.strftime("%H:%M"))
-                    slot_operatori[slot.strftime("%H:%M")] = operatori_catena
-                slot += slot_step
+                # Filtra operatori abilitati e disponibili
+                operatori_possibili = [
+                    op for op in operatori_disponibili
+                    if op.id in servizi_operatori[servizio_id]
+                    and operatore_disponibile(op.id, inizio, fine_servizio)[0]
+                ]
+                if not operatori_possibili:
+                    ok = False
+                    break
+
+                # Scegli quello con meno booking web
+                min_count = min([web_counts.get(op.id, 0) for op in operatori_possibili])
+                operatori_min = [op for op in operatori_possibili if web_counts.get(op.id, 0) == min_count]
+                op_scelto = operatori_min[0]
+                operatori_catena.append(op_scelto.id)
+                slot_corrente = fine_servizio
+
+            if ok:
+                orari.append(slot.strftime("%H:%M"))
+                slot_operatori[slot.strftime("%H:%M")] = operatori_catena
+            slot += slot_step
 
     orari = sorted(list(set(orari)))
 
