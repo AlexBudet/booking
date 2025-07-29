@@ -381,13 +381,12 @@ def orari_disponibili():
     orari = sorted(list(set(orari)))
 
     # FILTRO: escludi orari già passati se la data è oggi
-    now = datetime.now().replace(second=0, microsecond=0)
+    now = datetime.now(pytz_timezone('Europe/Rome')).replace(second=0, microsecond=0)
     if data == now.date():
         orari = [
             o for o in orari
-            if datetime.combine(data, datetime.strptime(o, "%H:%M").time()) >= now
+            if datetime.combine(data, datetime.strptime(o, "%H:%M").time()) >= now.replace(tzinfo=None)
         ]
-
         slot_operatori = {o: slot_operatori[o] for o in orari}
 
     # FILTRO: escludi completamente le date precedenti a oggi
