@@ -5,7 +5,7 @@ import json
 from collections import Counter
 from flask import Blueprint, request, jsonify, render_template, session
 from appl.models import Appointment, AppointmentSource, Service, Operator, OperatorShift, Client, BusinessInfo, Subcategory, db
-from datetime import datetime, timezone, timedelta, time
+from datetime import date, datetime, timezone, timedelta, time
 from sqlalchemy import and_, cast, DateTime, or_
 from pytz import timezone as pytz_timezone
 import sendgrid
@@ -179,7 +179,8 @@ def booking_page():
         operatori=operatori,
         servizi_json=servizi_json,
         operatori_json=operatori_json,
-        business_info=business_info
+        business_info=business_info,
+        oggi=date.today().isoformat() 
     )
 
 @booking_bp.route('/search-servizi')
