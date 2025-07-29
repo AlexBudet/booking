@@ -387,6 +387,16 @@ def orari_disponibili():
             if datetime.combine(data, datetime.strptime(o, "%H:%M").time()) >= now
         ]
 
+        slot_operatori = {o: slot_operatori[o] for o in orari}
+
+    # FILTRO: escludi completamente le date precedenti a oggi
+    if data < now.date():
+        return jsonify({
+            "orari_disponibili": [],
+            "operatori_assegnati": {},
+            "debug": debug_info + ["Data selezionata già passata"]
+        })
+
     return jsonify({
         "orari_disponibili": orari,
         "operatori_assegnati": slot_operatori,
