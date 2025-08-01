@@ -653,12 +653,6 @@ if (nome && cognome && telefono && email) {
   // Solo se il bottone era nascosto, mostra subito il bottone
   if (inviaCodiceBtn.style.display === 'none') {
     inviaCodiceBtn.style.display = '';
-    // Poi fai il blur per chiudere la tastiera (solo se non Safari)
-    if (!isSafariMobile()) {
-      setTimeout(() => {
-        document.activeElement.blur();
-      }, 50); // piccolo delay per sicurezza
-    }
     // scrollToBottom(); // se vuoi, puoi rimetterlo qui
   } else {
     inviaCodiceBtn.style.display = '';
