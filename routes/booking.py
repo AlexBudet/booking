@@ -3,7 +3,7 @@ import random
 import string
 import json
 from collections import Counter
-from flask import Blueprint, request, jsonify, render_template, session
+from flask import Blueprint, request, jsonify, render_template, render_template_string, session
 from appl.models import Appointment, AppointmentSource, Service, Operator, OperatorShift, Client, BusinessInfo, Subcategory, db
 from datetime import date, datetime, timezone, timedelta, time
 from sqlalchemy import and_, cast, DateTime, or_
@@ -15,6 +15,8 @@ from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 from dotenv import load_dotenv
 import uuid
+from markupsafe import escape
+
 
 # Carica le variabili d'ambiente dal file .env
 load_dotenv()
@@ -560,9 +562,9 @@ def prenota():
         fine = slot_corrente + durata_td
         operatore_id = operatori_assegnati[idx]
         servizio = servizi_map.get(servizio_id)
-        note = f"PRENOTATO DA BOOKING ONLINE - Nome: {nome}, Cognome: {cognome}, Telefono: {telefono}, Email: {email}"
+        note = f"PRENOTATO DA BOOKING ONLINE - Nome: {escape(nome)}, Cognome: {escape(cognome)}, Telefono: {escape(telefono)}, Email: {escape(email)}"
         operatore = Operator.query.get(operatore_id)
-        operatore_nome = f"{operatore.user_nome} {operatore.user_cognome}" if operatore else ""
+        operatore_nome = f"{escape(operatore.user_nome)} {escape(operatore.user_cognome)}" if operatore else ""
         nuovo = Appointment(
             client_id=dummy_client.id,
             operator_id=operatore_id,
@@ -604,27 +606,36 @@ def prenota():
                 totale_prezzo += prezzo
                 appuntamenti_html += f"""
                     <li>
-                        <b>Data:</b> {r['data']}<br>
-                        <b>Ora:</b> {r['ora']}<br>
-                        {f"<b>Operatore:</b> {r['operatore_nome']}<br>" if r['operatore_nome'] else ""}
-                        <b>Servizio:</b> {r['servizio_nome']}<br>
+                        <b>Data:</b> {escape(r['data'])}<br>
+                        <b>Ora:</b> {escape(r['ora'])}<br>
+                        {f"<b>Operatore:</b> {escape(r['operatore_nome'])}<br>" if r['operatore_nome'] else ""}
+                        <b>Servizio:</b> {escape(r['servizio_nome'])}<br>
                         <small>
                             Durata: {durata} min<br>
                             Prezzo: {prezzo:.2f} €
                         </small>
                     </li>
                 """
-            riepilogo = f"""
-                <p>Ciao {nome},</p>
-                <p>La tua prenotazione è stata confermata!</p>
-                <ul>
-                    {appuntamenti_html}
-                </ul>
-                <div style="padding:12px; background:#f2f2f2; margin:20px 0; border-radius:8px;">
-                <b>Totale durata:</b> {totale_durata} min &nbsp; | &nbsp; <b>Totale costo:</b> €{totale_prezzo:.2f}
-                </div>
-                <p>Grazie per aver scelto Sun Express 3!</p>
+            template = """
+            <p>Ciao {{ nome }},</p>
+            <p>La tua prenotazione è stata confermata!</p>
+            <ul>
+                {{ appuntamenti_html|safe }}
+            </ul>
+            <div style="padding:12px; background:#f2f2f2; margin:20px 0; border-radius:8px;">
+            <b>Totale durata:</b> {{ totale_durata }} min &nbsp; | &nbsp; <b>Totale costo:</b> €{{ totale_prezzo }}
+            </div>
+            <p>Grazie per aver scelto Sun Express 3!</p>
             """
+
+            riepilogo = render_template_string(
+                template,
+                nome=escape(nome),
+                appuntamenti_html=appuntamenti_html,
+                totale_durata=escape(str(totale_durata)),
+                totale_prezzo=escape(f"{totale_prezzo:.2f}")
+            )
+
             message = Mail(
                 from_email='noreply@sunexpressbeauty.com',
                 to_emails=email,
@@ -636,21 +647,29 @@ def prenota():
             # Invio email all'admin
             business_info = BusinessInfo.query.first()
             admin_email = business_info.email if business_info and business_info.email else None
-            admin_riepilogo = f"""
-                <h3>nuova prenotazione: {nome} {cognome}</h3>
-                <div style="font-size:1.3em;">
-                <ul>
-                    {appuntamenti_html}
-                </ul>
-                </div>
-                <div style="padding:12px; background:#f2f2f2; margin:20px 0; border-radius:8px; font-size:1.3em;">
-                <b>Totale durata:</b> {totale_durata} min &nbsp; | &nbsp; <b>Totale costo:</b> €{totale_prezzo:.2f}
-                </div>
+            admin_template = """
+            <h3>nuova prenotazione: {{ nome }} {{ cognome }}</h3>
+            <div style="font-size:1.3em;">
+            <ul>
+                {{ appuntamenti_html|safe }}
+            </ul>
+            </div>
+            <div style="padding:12px; background:#f2f2f2; margin:20px 0; border-radius:8px; font-size:1.3em;">
+            <b>Totale durata:</b> {{ totale_durata }} min &nbsp; | &nbsp; <b>Totale costo:</b> €{{ totale_prezzo }}
+            </div>
             """
+            admin_riepilogo = render_template_string(
+                admin_template,
+                nome=escape(nome),
+                cognome=escape(cognome),
+                appuntamenti_html=appuntamenti_html,
+                totale_durata=escape(str(totale_durata)),
+                totale_prezzo=escape(f"{totale_prezzo:.2f}")
+            )
             admin_message = Mail(
                 from_email='noreply@sunexpressbeauty.com',
-                to_emails=admin_email,
-                subject=f'Nuova prenotazione - {nome}',
+                to_emails=escape(admin_email),
+                subject=f'Nuova prenotazione - {escape(nome)}',
                 html_content=admin_riepilogo
             )
             sg.send(admin_message)
@@ -705,11 +724,11 @@ def invia_codice():
     # Prepara il messaggio
     message = Mail(
         from_email='noreply@sunexpressbeauty.com',
-        to_emails=email,
+        to_emails=escape(email),
         subject='SunBooking - Il tuo codice di conferma',
         html_content=f"""
-            <p>Ciao {nome},</p>
-            <p>Il tuo codice di conferma one-time-code è: <b>{codice}</b></p>
+            <p>Ciao {escape(nome)},</p>
+            <p>Il tuo codice di conferma one-time-code è: <b>{escape(codice)}</b></p>
             <p>Inseriscilo nella pagina di prenotazione per completare la conferma.</p><br><br>
             <p>Ignora questa email se non hai effettuato tu la prenotazione.</p><br><br>
             <p>Grazie!</p>

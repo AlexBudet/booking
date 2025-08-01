@@ -488,6 +488,15 @@ Per quanto non espressamente previsto nelle presenti CGV, si applica la legge it
   </div>
 
 <script>
+  function escapeHtml(text) {
+  return String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 const servizi = {{ servizi_json|tojson }};
 const operatori = {{ operatori_json|tojson }};
 
@@ -754,9 +763,9 @@ if (res.success && res.prenotazioni && res.prenotazioni.length) {
     totalePrezzo += prezzo;
     sommario += `<div class="mb-3 p-3 border rounded bg-light" style="color: #333;">
       <strong>Riepilogo appuntamento:</strong><br>
-      <span>🗓 <b>Data:</b> ${p.data} <b>Ora:</b> ${p.ora}</span><br>
-      ${p.operatore_nome ? `<span>👤 <b>con</b> ${p.operatore_nome}</span><br>` : ""}
-      <span>💇 <b>Servizio:</b> ${p.servizio_nome}</span><br>
+      <span>🗓 <b>Data:</b> ${escapeHtml(p.data)} <b>Ora:</b> ${escapeHtml(p.ora)}</span><br>
+      ${p.operatore_nome ? `<span>👤 <b>con</b> ${escapeHtml(p.operatore_nome)}</span><br>` : ""}
+      <span>💇 <b>Servizio:</b> ${escapeHtml(p.servizio_nome)}</span><br>
       <small>Durata: ${durata} min - Prezzo: €${prezzo.toFixed(2)}</small>
     </div>`;
   });
