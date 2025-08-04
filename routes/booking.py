@@ -1,15 +1,16 @@
 # filepath: /Users/alessio.budettagmail.com/Documents/SunBooking/appl/routes/booking.py
-import secrets
+import random
 import string
 import json
 from collections import Counter
-from venv import logger
 from flask import Blueprint, request, jsonify, render_template, render_template_string, session
 from appl.models import Appointment, AppointmentSource, Service, Operator, OperatorShift, Client, BusinessInfo, Subcategory, db
 from datetime import date, datetime, timezone, timedelta, time
 from sqlalchemy import and_, cast, DateTime, or_
 from pytz import timezone as pytz_timezone
+import sendgrid
 import os
+import random
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 from dotenv import load_dotenv
@@ -214,8 +215,7 @@ def orari_disponibili():
             sid = int(item["servizio_id"])
             servizi_ids.append(sid)
             servizi_items.append(item)
-        except Exception as e:
-            logger.warning(f"Errore durante il parsing servizio: {e}")
+        except Exception:
             continue
 
     if not servizi_ids:
@@ -373,7 +373,7 @@ def orari_disponibili():
                     if all(x == preferenze[0] for x in preferenze) and any(op.id == preferenze[0] for op in operatori_idonei):
                         op_scelto = next(op for op in operatori_idonei if op.id == preferenze[0])
                 if not op_scelto:
-                    op_scelto = secrets.choice(operatori_idonei)
+                    op_scelto = random.choice(operatori_idonei)
 
                 operatori_catena = [op_scelto.id] * len(servizi_items)
                 orari.append(slot.strftime("%H:%M"))
@@ -717,7 +717,7 @@ def invia_codice():
         return jsonify({"success": False, "error": "Indirizzo email non valido"}), 400
 
     # Genera codice di conferma
-    codice = ''.join(secrets.choice(string.digits) for _ in range(6))
+    codice = ''.join(random.choices(string.digits, k=6))
     session['codice_conferma'] = codice
     session['email_conferma'] = email
 
