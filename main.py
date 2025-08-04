@@ -5,6 +5,7 @@ from routes.booking import booking_bp
 from flask_wtf import CSRFProtect
 from sqlalchemy import create_engine
 from sqlalchemy.orm import scoped_session, sessionmaker
+from flask import abort
 
 app = Flask(__name__)
 csrf = CSRFProtect(app)
@@ -16,13 +17,12 @@ TENANT_DATABASES = {
     "salone1": os.environ.get("SQLALCHEMY_DATABASE_URI_1"),
 }
 
-@app.before_request
-def set_tenant_db():
-    tenant = request.path.strip("/").split("/")[0]
-    db_uri = TENANT_DATABASES.get(tenant)
-    if not db_uri:
-        return "Tenant non trovato", 404
-    engine = create_engine(db_uri)
+@app.url_value_preprocessor
+def pull_tenant(endpoint, values):
+    tenant = values.pop("tenant", None)
+    if not tenant or tenant not in TENANT_DATABASES:
+        abort(404, description="Tenant non trovato")
+    engine = create_engine(TENANT_DATABASES[tenant])
     session_factory = sessionmaker(bind=engine)
     g.db_session = scoped_session(session_factory)
     g.tenant = tenant
@@ -33,7 +33,7 @@ def remove_session(exception=None):
     if db_session:
         db_session.remove()
 
-app.register_blueprint(booking_bp)
+app.register_blueprint(booking_bp, url_prefix="/<tenant>/booking")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
