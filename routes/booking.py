@@ -9,7 +9,6 @@ from appl.models import Appointment, AppointmentSource, Service, Operator, Opera
 from datetime import date, datetime, timezone, timedelta, time
 from sqlalchemy import and_, cast, DateTime, or_
 from pytz import timezone as pytz_timezone
-import sendgrid
 import os
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
