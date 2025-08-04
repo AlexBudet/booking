@@ -14,9 +14,6 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
 # Dizionario tenant → URI (puoi caricarlo da file)
 TENANT_DATABASES = {
     "salone1": os.environ.get("SQLALCHEMY_DATABASE_URI_1"),
-    "salone2": os.environ.get("SQLALCHEMY_DATABASE_URI_2"),
-    "salone3": os.environ.get("SQLALCHEMY_DATABASE_URI_3"),
-    # aggiungi altri tenant
 }
 
 @app.before_request
