@@ -19,13 +19,19 @@ TENANT_DATABASES = {
 
 @app.url_value_preprocessor
 def pull_tenant(endpoint, values):
-    tenant = values.pop("tenant", None)
+    # Se non ci sono valori di URL (es. per static, favicon, ecc.), esci subito
+    if not values or "tenant" not in values:
+        return
+
+    tenant = values.pop("tenant")
     if not tenant or tenant not in TENANT_DATABASES:
         abort(404, description="Tenant non trovato")
+
     engine = create_engine(TENANT_DATABASES[tenant])
     session_factory = sessionmaker(bind=engine)
     g.db_session = scoped_session(session_factory)
     g.tenant = tenant
+
 
 @app.teardown_request
 def remove_session(exception=None):
