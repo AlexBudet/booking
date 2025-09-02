@@ -835,8 +835,8 @@ document.addEventListener('DOMContentLoaded', function() {
         .forEach(op => {
           const opt = document.createElement('option');
           opt.value = op.id;
-          // FIX: Usa sia nome che cognome
-          opt.textContent = `${op.nome} ${op.cognome}`; 
+          // Usa solo il nome
+          opt.textContent = `${op.nome}`; 
           operatoriSelect.appendChild(opt);
         });
       // Mostra la select
