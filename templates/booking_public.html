@@ -309,7 +309,7 @@ body {
       <select id="operatore" class="form-select">
         <option value="">Operatore</option>
         {% for operatore in operatori %}
-        <option value="{{ operatore.id }}">{{ operatore.user_nome }} {{ operatore.user_cognome }}</option>
+        <option value="{{ operatore.id }}">{{ operatore.user_nome }}</option>
         {% endfor %}
       </select>
     </div>
@@ -835,7 +835,7 @@ document.addEventListener('DOMContentLoaded', function() {
         .forEach(op => {
           const opt = document.createElement('option');
           opt.value = op.id;
-          // Usa solo il nome
+          // FIX: Usa sia nome che cognome
           opt.textContent = `${op.nome}`; 
           operatoriSelect.appendChild(opt);
         });
