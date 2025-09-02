@@ -6,7 +6,7 @@ import json
 from collections import Counter
 from flask import Blueprint, g, request, jsonify, render_template, render_template_string, session
 from flask_wtf.csrf import generate_csrf
-from flask import g
+from appl.models import Appointment, AppointmentSource, Service, Operator, OperatorShift, Client, BusinessInfo, Subcategory, db
 from datetime import date, datetime, timezone, timedelta, time
 from sqlalchemy import and_, cast, DateTime, or_
 from pytz import timezone as pytz_timezone
@@ -17,35 +17,25 @@ import smtplib
 from email.message import EmailMessage
 import uuid
 from markupsafe import escape
-from sqlalchemy.orm import joinedload
 
-def get_reflected_class(name):
-    base = getattr(g, "db_base", None)
-    return getattr(base.classes, name, None) if base else None
-
-def invia_email_smtp(to_email, subject, html_content, tenant_id, from_email=None):
-    # Ora tenant_id è disponibile come parametro
-    smtp_host = os.environ.get(f'EMAIL{tenant_id}_HOST')
-    smtp_port = int(os.environ.get(f'EMAIL{tenant_id}_PORT', '587'))
-    smtp_user = os.environ.get(f'EMAIL{tenant_id}_USER')
-    smtp_pass = os.environ.get(f'EMAIL{tenant_id}_PASS')
-    smtp_use_ssl = os.environ.get(f'EMAIL{tenant_id}_USE_TLS', 'true').lower() == 'true'
-    
+def invia_email_smtp(to_email, subject, html_content, from_email=None):
+    smtp_host = os.environ.get('SMTP_HOST')
+    smtp_port = int(os.environ.get('SMTP_PORT', '587'))
+    smtp_user = os.environ.get('SMTP_USER')
+    smtp_pass = os.environ.get('SMTP_PASS')
+    smtp_use_ssl = os.environ.get('SMTP_USE_SSL', 'true').lower() == 'true'
     print("DEBUG SMTP CONFIG:")
     print("SMTP_HOST:", smtp_host)
     print("SMTP_PORT:", smtp_port)
     print("SMTP_USER:", smtp_user)
     print("SMTP_USE_SSL:", smtp_use_ssl)
-    
     if not smtp_host or not smtp_user or not smtp_pass:
         return False
-    
     msg = EmailMessage()
     msg['Subject'] = subject
     msg['From'] = from_email if from_email else smtp_user
     msg['To'] = to_email
     msg.set_content(html_content, subtype='html')
-    
     try:
         if smtp_use_ssl:
             with smtplib.SMTP_SSL(smtp_host, smtp_port) as smtp:
@@ -116,10 +106,9 @@ def scegli_operatori_automatici(servizi_ids, data_str, ora_str, operatori_possib
     3. Se neanche a cascata è possibile assegnare tutti i servizi, restituisce [None] * len(servizi_ids).
     """
 
-    Service = get_reflected_class('servizi')
-    servizi_objs = g.db_session.query(Service).options(joinedload(Service.operatori)).filter(Service.id.in_(servizi_ids)).all()
+    servizi_objs = g.db_session.query(Service).filter(Service.id.in_(servizi_ids)).all()
     servizi_map = {s.id: s for s in servizi_objs}
-    servizi_operatori_abilitati = {s.id: [op.id for op in s.operatori] for s in servizi_objs}
+    servizi_operatori_abilitati = {s.id: [op.id for op in s.operators] for s in servizi_objs}
     servizi_durate = [servizi_map[sid].servizio_durata or 30 for sid in servizi_ids]
 
     # Filtra gli operatori che sono almeno abilitati per uno dei servizi richiesti
@@ -193,11 +182,9 @@ booking_bp = Blueprint('booking', __name__)
 @booking_bp.route('/')
 @booking_bp.route('/booking')
 def booking_page(tenant_id):
-    Service = get_reflected_class('servizi')
-    Operator = get_reflected_class('operatori')
-    BusinessInfo = get_reflected_class('business_info')
+    # Il tenant_id viene preso dall'URL grazie al prefisso dinamico nel blueprint
     oggi = date.today().strftime('%Y-%m-%d')
-    servizi = g.db_session.query(Service).options(joinedload(Service.operatori)).order_by(Service.servizio_nome).all()
+    servizi = g.db_session.query(Service).order_by(Service.servizio_nome).all()
     operatori = g.db_session.query(Operator).order_by(Operator.user_nome).all()
     business_info = g.db_session.query(BusinessInfo).first()
 
@@ -206,7 +193,7 @@ def booking_page(tenant_id):
         'servizio_nome': s.servizio_nome, 
         'servizio_durata': s.servizio_durata,
         'servizio_prezzo': str(s.servizio_prezzo),
-        'operator_ids': [op.id for op in s.operatori],
+        'operator_ids': [op.id for op in s.operators],
         'sottocategoria': s.servizio_sottocategoria.nome if s.servizio_sottocategoria else None
     } for s in servizi]
     
@@ -231,9 +218,8 @@ def booking_page(tenant_id):
 
 @booking_bp.route('/search-servizi')
 def search_servizi(tenant_id):
-    Service = get_reflected_class('servizi')
-    Subcategory = get_reflected_class('sottocategorie')
     q = request.args.get('q', '', type=str)
+    # base filter: solo servizi visibili online e non cancellati
     query = g.db_session.query(Service).filter(Service.is_visible_online == True, Service.is_deleted == False)
     if q:
         query = query.filter(Service.servizio_nome.ilike(f"%{q}%"))
@@ -257,11 +243,6 @@ def search_servizi(tenant_id):
 
 @booking_bp.route('/orari', methods=['GET'])
 def orari_disponibili(tenant_id):
-    Service = get_reflected_class('servizi')
-    Operator = get_reflected_class('operatori')
-    OperatorShift = get_reflected_class('operator_shifts')
-    Appointment = get_reflected_class('appuntamenti')
-    BusinessInfo = get_reflected_class('business_info')
     data_str = request.args.get('data')  # formato: YYYY-MM-DD
     if not data_str:
         return jsonify({"error": "Data non specificata"}), 400
@@ -280,11 +261,11 @@ def orari_disponibili(tenant_id):
     if not servizi_ids:
         return jsonify({"error": "Servizi non trovati"}), 404
 
-    servizi = g.db_session.query(Service).options(joinedload(Service.operatori)).filter(Service.id.in_(servizi_ids)).all()
+    servizi = g.db_session.query(Service).filter(Service.id.in_(servizi_ids)).all()
     if not servizi:
         return jsonify({"error": "Servizi non trovati"}), 404
-
-    servizi_operatori = {s.id: [op.id for op in s.operatori] for s in servizi}
+    
+    servizi_operatori = {s.id: [op.id for op in s.operators] for s in servizi}
 
     data = datetime.strptime(data_str, "%Y-%m-%d").date()
     business_info = g.db_session.query(BusinessInfo).first()
@@ -466,12 +447,6 @@ def orari_disponibili(tenant_id):
 
 @booking_bp.route('/prenota', methods=['POST'])
 def prenota(tenant_id):
-    Service = get_reflected_class('servizi')
-    Operator = get_reflected_class('operatori')
-    OperatorShift = get_reflected_class('operator_shifts')
-    Appointment = get_reflected_class('appuntamenti')
-    Client = get_reflected_class('clienti')
-    BusinessInfo = get_reflected_class('business_info')
     data = request.get_json()
     nome = data.get('nome')
     cognome = data.get('cognome')
@@ -516,9 +491,9 @@ def prenota(tenant_id):
 
     # --- PATCH: Usa la stessa logica di orari_disponibili per validare slot e operatori ---
     servizi_ids = [int(s.get("servizio_id")) for s in servizi]
-    servizi_objs = g.db_session.query(Service).options(joinedload(Service.operatori)).filter(Service.id.in_(servizi_ids)).all()
+    servizi_objs = g.db_session.query(Service).filter(Service.id.in_(servizi_ids)).all()
     servizi_map = {s.id: s for s in servizi_objs}
-    servizi_operatori = {s.id: [op.id for op in s.operatori] for s in servizi_objs}
+    servizi_operatori = {s.id: [op.id for op in s.operators] for s in servizi_objs}
 
     data = datetime.strptime(data_str, "%Y-%m-%d").date()
     business_info = g.db_session.query(BusinessInfo).first()
@@ -653,7 +628,7 @@ def prenota(tenant_id):
             start_time=inizio,
             _duration=servizio.servizio_durata,
             note=note,
-            source="web",
+            source=AppointmentSource.web,
             booking_session_id=booking_session_id
         )
         g.db_session.add(nuovo)
@@ -736,7 +711,6 @@ def prenota(tenant_id):
             to_email=email,
             subject='SunBooking - Conferma appuntamento!',
             html_content=riepilogo,
-            tenant_id=tenant_id,
             from_email=from_addr
         )
 
@@ -770,7 +744,6 @@ def prenota(tenant_id):
                 to_email=admin_email,
                 subject=f'Nuova prenotazione - {escape(nome)}',
                 html_content=admin_riepilogo,
-                tenant_id=tenant_id,
                 from_email=admin_from
             )
 
@@ -783,10 +756,6 @@ def prenota(tenant_id):
 
 @booking_bp.route('/invia-codice', methods=['POST'])
 def invia_codice(tenant_id):
-
-    BusinessInfo = get_reflected_class('business_info')
-    business_info = g.db_session.query(BusinessInfo).first()
-    business_name = business_info.business_name if business_info and business_info.business_name else "SunBooking"
 
     last_sent = session.get('last_code_sent_at', 0)
     if datetime.now().timestamp() - last_sent < 60:
@@ -821,10 +790,9 @@ def invia_codice(tenant_id):
 
     success = invia_email_smtp(
         to_email=email,
-        subject='Il tuo codice di conferma',
+        subject='SunBooking - Il tuo codice di conferma',
         html_content=html_content,
-        tenant_id=tenant_id,  # <-- per distinguere tra i vari tenant
-        from_email=os.environ.get(f'EMAIL{tenant_id}_USER', 'noreply@sunexpressbeauty.com')
+        from_email=os.environ.get('SMTP_USER', 'noreply@sunexpressbeauty.com')
     )
     if success:
         return jsonify({"success": True})
