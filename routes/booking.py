@@ -117,9 +117,9 @@ def scegli_operatori_automatici(servizi_ids, data_str, ora_str, operatori_possib
     """
 
     Service = get_reflected_class('servizi')
-    servizi_objs = g.db_session.query(Service).filter(Service.id.in_(servizi_ids)).all()
+    servizi_objs = g.db_session.query(Service).options(joinedload(Service.operatori)).filter(Service.id.in_(servizi_ids)).all()
     servizi_map = {s.id: s for s in servizi_objs}
-    servizi_operatori_abilitati = {s.id: [op.id for op in s.operators] for s in servizi_objs}
+    servizi_operatori_abilitati = {s.id: [op.id for op in s.operatori] for s in servizi_objs}
     servizi_durate = [servizi_map[sid].servizio_durata or 30 for sid in servizi_ids]
 
     # Filtra gli operatori che sono almeno abilitati per uno dei servizi richiesti
@@ -197,7 +197,7 @@ def booking_page(tenant_id):
     Operator = get_reflected_class('operatori')
     BusinessInfo = get_reflected_class('business_info')
     oggi = date.today().strftime('%Y-%m-%d')
-    servizi = g.db_session.query(Service).order_by(Service.servizio_nome).all()
+    servizi = g.db_session.query(Service).options(joinedload(Service.operatori)).order_by(Service.servizio_nome).all()
     operatori = g.db_session.query(Operator).order_by(Operator.user_nome).all()
     business_info = g.db_session.query(BusinessInfo).first()
 
@@ -206,7 +206,7 @@ def booking_page(tenant_id):
         'servizio_nome': s.servizio_nome, 
         'servizio_durata': s.servizio_durata,
         'servizio_prezzo': str(s.servizio_prezzo),
-        'operator_ids': [op.id for op in s.operators],
+        'operator_ids': [op.id for op in s.operatori],
         'sottocategoria': s.servizio_sottocategoria.nome if s.servizio_sottocategoria else None
     } for s in servizi]
     
@@ -280,11 +280,11 @@ def orari_disponibili(tenant_id):
     if not servizi_ids:
         return jsonify({"error": "Servizi non trovati"}), 404
 
-    servizi = g.db_session.query(Service).filter(Service.id.in_(servizi_ids)).all()
+    servizi = g.db_session.query(Service).options(joinedload(Service.operatori)).filter(Service.id.in_(servizi_ids)).all()
     if not servizi:
         return jsonify({"error": "Servizi non trovati"}), 404
-    
-    servizi_operatori = {s.id: [op.id for op in s.operators] for s in servizi}
+
+    servizi_operatori = {s.id: [op.id for op in s.operatori] for s in servizi}
 
     data = datetime.strptime(data_str, "%Y-%m-%d").date()
     business_info = g.db_session.query(BusinessInfo).first()
@@ -516,9 +516,9 @@ def prenota(tenant_id):
 
     # --- PATCH: Usa la stessa logica di orari_disponibili per validare slot e operatori ---
     servizi_ids = [int(s.get("servizio_id")) for s in servizi]
-    servizi_objs = g.db_session.query(Service).filter(Service.id.in_(servizi_ids)).all()
+    servizi_objs = g.db_session.query(Service).options(joinedload(Service.operatori)).filter(Service.id.in_(servizi_ids)).all()
     servizi_map = {s.id: s for s in servizi_objs}
-    servizi_operatori = {s.id: [op.id for op in s.operators] for s in servizi_objs}
+    servizi_operatori = {s.id: [op.id for op in s.operatori] for s in servizi_objs}
 
     data = datetime.strptime(data_str, "%Y-%m-%d").date()
     business_info = g.db_session.query(BusinessInfo).first()
