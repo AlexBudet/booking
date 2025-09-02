@@ -26,7 +26,7 @@ def _tenant_index(tenant_id):
 def _smtp_config_for_tenant(tenant_id):
     """
     Restituisce dict con host, port, user, pass, use_ssl, from_email per il tenant.
-    Usa solo variabili SMTP{N}_* e fallback generico SMTP_* (nessun EMAIL*).
+    Usa SOLO variabili SMTP{N}_* specifiche per tenant (nessun fallback generico).
     """
     idx = _tenant_index(tenant_id)
 
@@ -38,13 +38,7 @@ def _smtp_config_for_tenant(tenant_id):
     use_ssl_raw = os.environ.get(f"SMTP{idx}_USE_SSL") if idx else None
     from_email = os.environ.get(f"SMTP{idx}_FROM") if idx else None
 
-    # fallback generico SMTP_*
-    host = host or os.environ.get("SMTP_HOST")
-    port = port or os.environ.get("SMTP_PORT")
-    user = user or os.environ.get("SMTP_USER")
-    pwd = pwd or os.environ.get("SMTP_PASS")
-    use_ssl_raw = use_ssl_raw or os.environ.get("SMTP_USE_SSL")
-    from_email = from_email or os.environ.get("SMTP_FROM") or user
+    # RIMUOVI TUTTI I FALLBACK GENERICI (non usare mai SMTP_*)
 
     # parsing sicuro della porta
     try:
