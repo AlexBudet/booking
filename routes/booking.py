@@ -1,5 +1,4 @@
 # filepath: /Users/alessio.budettagmail.com/Documents/SunBooking/appl/routes/booking.py
-from cmath import e
 import random
 import string
 import json
@@ -184,7 +183,10 @@ booking_bp = Blueprint('booking', __name__)
 def booking_page(tenant_id):
     # Il tenant_id viene preso dall'URL grazie al prefisso dinamico nel blueprint
     oggi = date.today().strftime('%Y-%m-%d')
-    servizi = g.db_session.query(Service).order_by(Service.servizio_nome).all()
+    servizi = g.db_session.query(Service).filter(
+        Service.servizio_durata != 0,
+        ~Service.servizio_nome.ilike('dummy')
+    ).order_by(Service.servizio_nome).all()
     operatori = g.db_session.query(Operator).order_by(Operator.user_nome).all()
     business_info = g.db_session.query(BusinessInfo).first()
 
@@ -199,8 +201,7 @@ def booking_page(tenant_id):
     
     operatori_json = [{
         'id': op.id, 
-        'nome': op.user_nome, 
-        'cognome': op.user_cognome
+        'nome': op.user_nome
     } for op in operatori]
 
     csrf_token = generate_csrf()
