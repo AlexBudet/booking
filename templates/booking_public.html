@@ -1,0 +1,1240 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <title>Prenota il tuo appuntamento</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <style>
+    .container-booking {
+      max-width: 600px;
+      margin: 40px auto;
+      border-radius: 12px;
+      padding: 2rem;
+      border: 1px solid #87647c !important; /* esempio: viola chiaro */
+    }
+    .booking-sidebar {
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+    }
+@media (max-width: 767px) {
+  .container-booking {
+    max-width: 100%;
+    margin: 0;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 1rem;
+  }
+  .booking-sidebar {
+    width: 90vw;                 /* Larga il 90% della viewport */
+    max-width: 98vw;
+    margin: 12px auto 18px auto; /* Centrata con un po' di spazio sopra e sotto */
+    min-width: unset;
+    font-size: calc(1.1rem + 0.7vw); /* Font size proporzionale allo schermo */
+    position: static;             /* NON fixed */
+    left: 0;
+    top: 0;
+    height: auto;
+    z-index: auto;
+    border-right: none;
+    padding: 1.2rem 0.8rem;
+  }
+  .desktop-only { display: none !important; }
+  .mobile-full { width: 100% !important; }
+}
+
+#codice-conferma {
+  border: 1px solid #444 !important;
+}
+
+#aggiungi-servizio {
+  margin-top: 10px;
+  margin-bottom: 10px;
+  background-color: #332f32;
+  color: #f0eeee;
+  width: 95%;
+}
+
+#aggiungi-servizio:hover {
+  background-color: #7b787a;
+  color: #ffffff;
+}
+
+#pseudoblocchi-servizi {
+  margin-top: 10px;
+}
+
+.rimuovi-pseudoblocco {
+  text-decoration: none !important;
+}
+
+.booking-sidebar {
+  background: #1b1b1b; /* esempio azzurro */
+  color: rgb(236, 207, 218);
+}
+
+  /* Cambia colore pseudoblocchi */
+#pseudoblocchi-servizi .alert-secondary {
+  background-color: #421d30 !important;
+  color: #f4d1de !important;
+}
+#pseudoblocchi-servizi .alert-secondary b,
+#pseudoblocchi-servizi .alert-secondary span,
+#pseudoblocchi-servizi .alert-secondary small {
+  color: #f7e9f3 !important;
+}
+
+body {
+  background-color: #100f0f;
+  background-image:
+    radial-gradient(circle 0.05em at 0.1cm 0.1cm, #494949 80%, rgba(0,0,0,0.1) 100%);
+  background-size: 0.6cm 0.6cm;
+  color: rgb(211, 199, 204);
+}
+
+.container-booking {
+  background: #161516;
+  color: rgb(238, 219, 226);
+}
+
+.servizio-iniziale {
+  width: 100%;
+  height: 38px;
+  border-radius: 8px;
+  background-color: #1f1f1f;
+  color: #f0eeee;
+  padding: 0.375rem 0.75rem;
+  font-size: 1rem;
+  line-height: 1.5;
+  border: 1px solid #ced4da;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+  .form-select {
+  background-color: #444 !important;
+  color: #eaced6 !important;
+  border-color: #87647c !important;
+  /* Freccetta chiara */
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;charset=UTF-8,<svg width='16' height='16' xmlns='http://www.w3.org/2000/svg'><path fill='%23eaced6' d='M4 6l4 4 4-4'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 1.2em;
+  padding-right: 2.5em;
+}
+
+    .form-control, .form-select, .form-control:focus, .form-select:focus {
+    background-color: #444 !important;
+    color: #eaced6 !important;
+    border-color: #87647c !important;
+  }
+  .form-control::placeholder {
+    color: #bbaeb3 !important;
+    opacity: 1;
+  }
+  select.form-select option {
+    background-color: #444 !important;
+    color: #eaced6 !important;
+  }
+
+  input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(2);
+  /* oppure: filter: brightness(2); per solo schiarire */
+}
+
+#inviaCodiceBtn {
+  background-color: #87647c !important; /* esempio: viola chiaro */
+  color: #fff !important;
+  border: none !important;
+}
+#inviaCodiceBtn:hover {
+  background-color: #a98ca7 !important;
+}
+
+.alert,
+#pseudoblocchi-servizi .alert {
+  max-width: 96%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+  .modal-content.bg-dark-custom {
+    background-color: #333132 !important;
+    color: #f4d1de !important;
+  }
+
+#servizio-suggestions {
+  position: absolute;
+  width: 100%;
+  z-index: 1000;
+  max-height: 300px; /* Limite visibile su desktop */
+  overflow-y: auto;
+}
+@media (max-width: 767px) {
+  #servizio-suggestions {
+    position: fixed !important;
+    left: 3vw !important;
+    width: 94vw !important;
+    z-index: 2000;
+    max-height: 80vh;
+    overflow-y: auto;
+  }
+}
+
+@media (max-width: 767px) {
+  .container-booking.no-sidebar {
+    margin-top: 25vw !important; /* Regola questo valore per il tuo caso */
+  }
+}
+
+@media (max-width: 767px) {
+  .container-booking.no-sidebar.drop-active {
+    margin-top: 0 !important;
+  }
+}
+
+#modal-servizio-input {
+  border-radius: 8px;
+  font-size: 1.1em;
+}
+#modal-servizio-suggestions {
+  max-height: 100%;
+  overflow-y: auto;
+}
+
+#modal-servizio-suggestions .list-group-item {
+    background-color: #333132 !important;
+    color: #f4d1de !important;
+  border: none;                         /* Opzionale: togli il bordo */
+}
+#modal-servizio-suggestions .list-group-item:hover, 
+#modal-servizio-suggestions .list-group-item:focus {
+  background-color: #644f5f !important; /* Colore hover */
+  color: #fff !important;
+}
+
+.close-x-custom {
+  background: none;
+  border: none;
+  font-size: 1.1em;
+  width: 1.5em;
+  height: 1.5em;
+  line-height: 1.1em;
+  color: #9d9696;
+  opacity: 0.8;
+  margin-top: -0.2em;
+  margin-left: 0.5em;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.close-x-custom:hover {
+  opacity: 1;
+  color: #a6657f;
+}
+#modalServizi-scrollable {
+  flex: 1 1 0%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+}Q
+.modal-search-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: #333132 !important;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.07);
+  border-bottom: none;
+}
+.servizi-subcat-header {
+  border-bottom: 0.3px solid #b09ba9;
+  border-top: 0.3px solid #b09ba9;
+  font-size: 0.8em;
+  background-color: #000000;
+  color: rgb(202, 177, 191);
+}
+
+.toggle-subcat {
+  color: #fff !important;
+  text-decoration: none !important;
+  font-weight: bold;
+  font-size: 1.2em;
+  background: none;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  padding: 0 0.5em;
+  cursor: pointer;
+}
+.toggle-subcat:hover,
+.toggle-subcat:focus {
+  color: #fff !important;
+  text-decoration: none !important;
+  background: none;
+}
+</style>
+</head>
+<body>
+  <div id="container-booking" class="container-booking">
+    <!-- Sidebar info salone, visibile solo su desktop -->
+    <div class="booking-sidebar mb-4">
+      <h3 class="mb-2">PORTALE PRENOTAZIONI</h3>
+<h3 class="mb-2" style="color: #ffffff;">{{ business_info.business_name }}</h3>
+<div class="mb-2">
+  <i class="fa-solid fa-location-dot"></i>
+  {{ business_info.address }}{% if business_info.city %} ({{ business_info.city }}){% endif %}
+</div>
+<div class="mb-2">
+  <i class="fa-solid fa-phone"></i>
+  {{ business_info.phone }}
+</div>
+      <p class="mt-3" style="font-size: 0.95em; color: #e7eace;">
+        Scegli i <b>servizi</b>, la <b>data</b> e l'<b>orario</b>.<br>
+      </p>
+    </div>
+<form id="bookingForm" autocomplete="off">
+<input type="hidden" id="csrf_token" name="csrf_token" value="{{ csrf_token }}">
+<div class="row align-items-end mb-2" id="selezione-iniziale-servizio">
+<div class="col-7 position-relative mb-2">
+  <input type="text" id="servizio-iniziale" class="form-control" placeholder="Cerca un servizio..." autocomplete="off">
+  <input type="hidden" id="servizio-id-selezionato">
+</div>
+  <div class="col-4 mb-2">
+    <div id="risultati_operatore" class="list-group" style="display:none; z-index:10;"></div>
+    <div id="select_operatore_wrapper">
+      <select id="operatore" class="form-select">
+        <option value="">Operatore</option>
+        {% for operatore in operatori %}
+        <option value="{{ operatore.id }}">{{ operatore.user_nome }} {{ operatore.user_cognome }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+  <div class="col-12 mb-2">
+    <button type="button" id="aggiungi-servizio" class="btn btn-outline-secondary btn-sm w-100">+ Aggiungi servizio</button>
+  </div>
+</div>
+
+<div id="pseudoblocchi-servizi"></div>
+
+<div id="regole-prenotazione" class="mb-3">
+  {% if business_info.booking_rule_type_durata == 'warning' and business_info.booking_max_durata %}
+    <div class="alert alert-warning alert-dismissible fade show" role="alert" id="alert-warning-durata">
+      <b>Attenzione:</b> {{ business_info.booking_rule_message_durata }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Chiudi"></button>
+    </div>
+  {% elif business_info.booking_rule_type_durata == 'block' and business_info.booking_max_durata %}
+    <div class="alert alert-danger alert-dismissible fade show" role="alert" id="alert-block-durata">
+      <b>Blocco:</b> {{ business_info.booking_rule_message_durata }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Chiudi"></button>
+    </div>
+  {% endif %}
+  {% if business_info.booking_rule_type_prezzo == 'warning' and business_info.booking_max_prezzo %}
+    <div class="alert alert-warning alert-dismissible fade show" role="alert" id="alert-warning-prezzo">
+      <b>Attenzione:</b> {{ business_info.booking_rule_message_prezzo }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Chiudi"></button>
+    </div>
+  {% elif business_info.booking_rule_type_prezzo == 'block' and business_info.booking_max_prezzo %}
+    <div class="alert alert-danger alert-dismissible fade show" role="alert" id="alert-block-prezzo">
+      <b>Blocco:</b> {{ business_info.booking_rule_message_prezzo }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Chiudi"></button>
+    </div>
+  {% endif %}
+<div class="alert alert-info alert-dismissible fade show" role="alert" id="alert-privacy-condizioni">
+  <b>Attenzione:</b> Proseguendo si accettano
+  <a href="#" id="link-privacy" style="text-decoration:underline;">l'informativa sulla privacy</a>
+  e
+  <a href="#" id="link-condizioni" style="text-decoration:underline;">le condizioni di vendita</a>.
+  <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Chiudi"></button>
+</div>
+</div>
+
+<!-- Modal Ricerca Servizi custom senza bootstrap -->
+<div id="modalServizi" style="display:none; position:fixed; z-index:10000; left:0; top:0; width:100vw; height:80vh; background:rgba(18,16,24,0.97);">
+<div id="modalServizi-outer" style="width:100vw; max-width:650px; margin:0 auto; background:#333132; height:80vh; display: flex; flex-direction: column;">
+    <div id="modalServizi-scrollable" style="flex:1 1 0%; overflow-y:auto; display:flex; flex-direction:column; min-height:0; -webkit-overflow-scrolling:touch;">
+      <div class="modal-header d-flex align-items-center modal-search-sticky" style="position:sticky; top:0; z-index:20; background:#333132; border-bottom:none; padding:10px;">
+        <input type="text" id="modal-servizio-input" class="form-control" placeholder="Cerca un servizio..." autocomplete="off" autofocus style="flex:1; margin-right:6px;">
+        <button type="button" class="close-x-custom ms-2" id="closeModalServizi">×</button>
+      </div>
+      <div class="modal-body p-0" style="flex:1 1 0%; min-height:0;">
+        <div id="modal-servizio-suggestions" class="list-group"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Privacy -->
+<div class="modal fade" id="modalPrivacy" tabindex="-1" aria-labelledby="modalPrivacyLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content bg-dark-custom">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalPrivacyLabel">Informativa sulla Privacy</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+      </div>
+<div class="modal-body" style="white-space:pre-line">
+  INFORMATIVA SUL TRATTAMENTO DEI DATI PERSONALI AI SENSI DELL’ART. 13 DEL D. LGS. 196/2003 (Codice in materia di protezione dei dati personali) e dell’art 13 GDPR
+  Ai sensi dell’art. 13 del Regolamento (UE) 2016/679 (di seguito "GDPR"), recante disposizioni a tutela delle persone fisiche con riguardo al trattamento dei dati personali nonché alla libera circolazione di tali dati, desideriamo informarLa che i dati personali da Lei forniti formeranno oggetto di trattamento nel rispetto della normativa sopra richiamata e degli obblighi di riservatezza cui è tenuto il Titolare del trattamento.
+  Per trattamento di dati personali si intende qualsiasi operazione o insieme di operazioni, compiute con o senza l'ausilio di processi automatizzati e applicate a dati personali o insiemi di dati personali, come la raccolta, la registrazione, l'organizzazione, la strutturazione, la conservazione, l'adattamento o la modifica, l'estrazione, la consultazione, l'uso, la comunicazione mediante trasmissione, diffusione o qualsiasi altra forma di messa a disposizione, il raffronto o l'interconnessione, la limitazione, la cancellazione o la distruzione.
+  La informiamo che i dati forniti saranno trattati nel rispetto delle disposizioni di cui al d.lgs. 196/2003 (Codice in materia di protezione dei dati personali) nonché da quelle dettate dal GDPR.
+
+Tipologia dei dati raccolti, finalità e modalità del trattamento
+I dati trattati sono quelli forniti volontariamente dall’utente tramite il form di registrazione presente sulla piattaforma o durante l’acquisto di prodotti, come nome, indirizzo e-mail, numero di telefono e dati necessari alla gestione del pagamento.
+Non vengono trattati dati relativi alla semplice navigazione sul sito.
+La raccolta e il trattamento di questi dati hanno lo scopo di consentire la registrazione alla piattaforma, la gestione degli acquisti effettuati, l’adempimento di eventuali obblighi contrattuali e precontrattuali, oltre al rispetto degli obblighi previsti da normative nazionali o comunitarie.
+
+Base giuridica del trattamento – obbligatorietà del conferimento e conseguenze del mancato conferimento
+La base giuridica del trattamento è di tipo contrattuale.
+I dati forniti per la registrazione o per l’acquisto vengono trattati con strumenti informatici per le finalità sopra descritte.
+Il conferimento dei dati è obbligatorio per accedere ai servizi offerti. In caso di mancato conferimento, non sarà possibile utilizzare la piattaforma o completare l’acquisto.
+
+Durata del trattamento
+I dati saranno conservati per il tempo strettamente necessario al raggiungimento delle finalità per cui sono stati raccolti.
+
+Destinatari o categorie di destinatari dei dati
+I dati personali saranno trattati esclusivamente da {{ business_info.business_name }} e da personale autorizzato e adeguatamente formato, oppure da Responsabili del Trattamento il cui elenco è disponibile su richiesta all’indirizzo email: {{ business_info.email }}
+
+Trasferimento dei dati verso Paesi terzi o organizzazioni internazionali
+Il Titolare assicura che i dati saranno trattati esclusivamente all’interno dell’Unione Europea.
+
+Periodo di conservazione dei dati personali
+I dati personali saranno conservati per un periodo non superiore a quello necessario al conseguimento delle finalità per cui sono stati raccolti, fatti salvi eventuali obblighi di legge.
+
+Diritti dell’interessato
+Ai sensi degli articoli 15-22 del GDPR, l’interessato ha il diritto di:
+- ottenere conferma dell’esistenza o meno di trattamenti di dati che lo riguardano
+- accedere ai propri dati e conoscere finalità, categorie, destinatari e durata della conservazione
+- richiedere la rettifica o la cancellazione dei dati, la limitazione o l’opposizione al trattamento
+- proporre reclamo al Garante per la Privacy o ad altra autorità competente
+- conoscere l’origine dei dati qualora non siano stati forniti direttamente
+- richiedere la portabilità dei dati in formato strutturato, di uso comune e leggibile da dispositivo automatico
+- revocare il consenso in qualsiasi momento, senza pregiudicare la liceità del trattamento effettuato prima della revoca
+</div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Condizioni di Vendita -->
+<div class="modal fade" id="modalCondizioni" tabindex="-1" aria-labelledby="modalCondizioniLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content bg-dark-custom">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalCondizioniLabel">Condizioni di Vendita</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+      </div>
+      <div class="modal-body" style="white-space:pre-line;">
+        Condizioni generali di vendita (CGV)
+Premesse
+Le presenti Condizioni Generali di Vendita (per brevità anche CGV) regolano l'acquisto, tramite modalità telematiche, dei servizi presentati su questo sito.
+
+Le presenti CGV costituiscono parte integrante ed essenziale del contratto di acquisto di qualsiasi servizio presente sul sito.
+L’invio di un ordine comporta l'accettazione da parte del cliente delle condizioni generali di vendita in essere.
+
+{{ business_info.business_name }} si riserva il diritto di revisionare in qualsiasi momento tali CGV senza alcun preavviso.
+
+Modalità di acquisto on-line:
+
+Il cliente acquirente seleziona il servizio che intende acquistare, indica la quantità, indica giorno e ora di prenotazione e procede seguendo le eventuali istruzioni di pagamento.
+In caso di acquisto o prenotazione di un servizio, il cliente riceverà una mail di conferma con il dettaglio del giorno e dell’ora scelti per usufruire di quanto prenotato.
+I prezzi pubblicati sul sito sono comprensivi di IVA
+
+Il salone si riserva il diritto di modificare, in qualunque momento e senza darne preavviso, i prezzi riportati sul sito.
+
+I dati rilasciati per la prenotazione e l’acquisto dei servizi saranno trattati nel rispetto delle disposizioni in materia di protezione dei dati personali e utilizzati solo ed esclusivamente al fine di prestare il servizio prenotato ed eventualmente già pagato, oltre che per i relativi adempimenti ex lege come da informativa sul trattamento dei dati personali visionabile sul sito.
+Alla prenotazione del servizio, il cliente riceverà conferma della data e dell’ora scelte tramite l'invio di una e-mail sull'account di posta elettronica inserito in fase di prenotazione.
+
+Pagamento:
+I servizi saranno pagati in istituto salvo diverse indicazioni presenti su questo sito.
+
+Responsabilità:
+Il salone non sarà responsabile dell’ eventuale impossibilità di fornire il servizio prenotato qualora tale impossibilità sia dovuta ad un ritardo del cliente o qualora lo stesso non si rechi all’appuntamento per un qualsivoglia motivo.
+Eventuali rimborsi per servizi prenotati e già pagati ma non usufruiti saranno da concordare direttamente con il salone.
+
+Legge applicabile e foro competente
+Per quanto non espressamente previsto nelle presenti CGV, si applica la legge italiana
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="mb-3" id="data_wrapper" style="display:none;">
+  <label for="data" class="form-label">Data*</label>
+  <input type="date" id="data" name="data" class="form-control" min="{{ oggi }}" required>
+  <div id="data_label" class="form-text mt-2" style="font-size:0.9em; font-weight:normal; color:#c2aebc; padding-left:15px;"></div>
+</div>
+<div class="mb-3" id="ora_wrapper" style="display:none;">
+  <label for="ora" class="form-label">Orario*</label>
+  <select class="form-select" id="ora" required>
+    <option value="">Seleziona una data e un servizio</option>
+  </select>
+</div>
+  <div id="dati-cliente" style="display:none; margin-top:20px;">
+  <table style="width:100%; border-collapse:collapse;">
+    <tr>
+      <td style="padding: 6px 0; width: 120px;"><label for="nome" style="margin-bottom:0;">Nome:</label></td>
+      <td><input type="text" id="nome" required class="form-control" autocomplete="given-name"></td>
+    </tr>
+    <tr>
+      <td style="padding: 6px 0;"><label for="cognome" style="margin-bottom:0;">Cognome:</label></td>
+      <td><input type="text" id="cognome" required class="form-control" autocomplete="family-name"></td>
+    </tr>
+    <tr>
+      <td style="padding: 6px 0;"><label for="telefono" style="margin-bottom:0;">Cellulare:</label></td>
+      <td><input type="tel" id="telefono" required class="form-control" autocomplete="tel"></td>
+    </tr>
+    <tr>
+      <td style="padding: 6px 0;"><label for="email" style="margin-bottom:0;">Email:</label></td>
+      <td><input type="email" id="email" required class="form-control" autocomplete="email"></td>
+    </tr>
+  </table>
+  <button type="button" id="inviaCodiceBtn" class="btn btn-success w-100" style="display:none; margin-top:20px;">Invia codice di conferma</button>
+</div>
+<div id="codice-conferma-wrapper" style="display:none; margin-top:20px;">
+  <label>Codice di conferma ricevuto via email:
+    <input type="text" id="codice-conferma" required autocomplete="one-time-code">
+  </label>
+  <button type="button" id="inviaConfermaPrenotazioneBtn" class="btn btn-primary w-100 mt-3" style="display:none;">
+    Conferma prenotazione
+  </button>
+</div>
+    </form>
+    <div id="msg" class="mt-3"></div>
+  </div>
+
+<script>
+  // Dati globali dall'applicazione Flask, resi disponibili a tutti gli script
+  const servizi = {{ servizi_json|tojson }};
+  const operatori = {{ operatori_json|tojson }};
+  const tenantId = {{ tenant_id|tojson }};
+</script>
+
+<script>
+const inviaCodiceBtn = document.getElementById('inviaCodiceBtn');
+
+  function escapeHtml(text) {
+  return String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+}
+
+const csrfToken = (document.getElementById('csrf_token') && document.getElementById('csrf_token').value) || '';
+
+// Nascondi la select operatore inizialmente
+document.getElementById('select_operatore_wrapper').style.display = 'none';
+
+function loadOrari() {
+  const servizi = getServiziSelezionati();
+  const data = document.getElementById('data').value;
+  if (!servizi.length || !data) return;
+
+  const oraSelect = document.getElementById('ora');
+  oraSelect.options.length = 0;
+  const optLoading = document.createElement('option');
+  optLoading.value = '';
+  optLoading.textContent = 'Caricamento orari...';
+  oraSelect.appendChild(optLoading);
+
+  // Costruisci la query string con tutti i servizi selezionati
+  const params = new URLSearchParams();
+  params.append('data', data);
+  servizi.forEach(s => {
+    params.append('servizi[]', JSON.stringify({
+      servizio_id: s.servizio_id,
+      operatore_id: s.operatore_id
+    }));
+  });
+
+  const operatoriUnici = [...new Set(
+    servizi.map(s => s.operatore_id).filter(op => op)
+  )];
+  if (operatoriUnici.length === 1) {
+    params.append('operatore_id', operatoriUnici[0]);
+  }
+
+fetch(`/${tenantId}/orari?` + params.toString())
+    .then(r => r.json())
+    .then(res => {
+      // Mostra il pannello orari
+      document.getElementById('ora_wrapper').style.display = '';
+      oraSelect.innerHTML = '';
+
+      const orari = res.orari_disponibili || [];
+      window._operatoriOrariMap = res.operatori_assegnati || {};
+
+      if (orari.length > 0) {
+        oraSelect.options.length = 0;
+        const firstOpt = document.createElement('option');
+        firstOpt.value = '';
+        firstOpt.textContent = 'Seleziona un orario';
+        oraSelect.appendChild(firstOpt);
+        orari.forEach(orario => {
+          const opt = document.createElement('option');
+          opt.value = orario;
+          opt.textContent = orario;
+          oraSelect.appendChild(opt);        });
+      } else {
+        oraSelect.options.length = 0;
+        const optNone = document.createElement('option');
+        optNone.value = '';
+        optNone.textContent = 'Nessun orario disponibile';
+        oraSelect.appendChild(optNone);
+      }
+    })
+    .catch(() => {
+      oraSelect.options.length = 0;
+      const optErr = document.createElement('option');
+      optErr.value = '';
+      optErr.textContent = 'Errore caricamento orari';
+      oraSelect.appendChild(optErr);
+    });
+}
+
+// 1. All'avvio mostra solo servizio e operatore
+document.getElementById('data_wrapper').style.display = 'none';
+document.getElementById('ora_wrapper').style.display = 'none';
+document.getElementById('dati-cliente').style.display = 'none';
+inviaCodiceBtn.style.display = 'none';
+
+function aggiornaDataLabel() {
+  const dataInput = document.getElementById('data');
+  const dataLabel = document.getElementById('data_label');
+  if (!dataInput.value) {
+    dataLabel.textContent = '';
+    return;
+  }
+  const giorni = ['DOMENICA', 'LUNEDÌ', 'MARTEDÌ', 'MERCOLEDÌ', 'GIOVEDÌ', 'VENERDÌ', 'SABATO'];
+  const [yyyy, mm, dd] = dataInput.value.split('-');
+  const dataObj = new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
+  const giornoSettimana = giorni[dataObj.getDay()];
+  dataLabel.textContent = `${giornoSettimana}`;
+}
+
+// Aggiorna quando cambia la data
+document.getElementById('data').addEventListener('input', aggiornaDataLabel);
+
+// Aggiorna anche quando mostri la data precompilata
+// --- PATCH: mostra la data solo dopo almeno un servizio aggiunto ---
+function mostraDataSePronto() {
+  const servizi = getServiziSelezionati();
+  const almenoUno = servizi.length > 0 && servizi.every(s => s.servizio_id);
+  if (almenoUno) {
+    document.getElementById('data_wrapper').style.display = '';
+    aggiornaDataLabel();
+    scrollToBottom();
+  } else {
+    document.getElementById('data_wrapper').style.display = 'none';
+    document.getElementById('ora_wrapper').style.display = 'none';
+    document.getElementById('dati-cliente').style.display = 'none';
+    inviaCodiceBtn.style.display = 'none';
+  }
+}
+
+// 3. Dopo la selezione della data, mostra gli orari disponibili
+document.getElementById('data').addEventListener('change', function() {
+  if (this.value) {
+    document.getElementById('ora_wrapper').style.display = '';
+    loadOrari();
+    scrollToBottom(); 
+  } else {
+    document.getElementById('ora_wrapper').style.display = 'none';
+    document.getElementById('dati-cliente').style.display = 'none';
+    inviaCodiceBtn.style.display = 'none';
+  }
+});
+
+// 4. Dopo la selezione dell'orario, mostra i campi cliente
+document.getElementById('ora').addEventListener('change', function() {
+  if (this.value) {
+    document.getElementById('dati-cliente').style.display = '';
+    scrollToBottom();
+  } else {
+    document.getElementById('dati-cliente').style.display = 'none';
+    inviaCodiceBtn.style.display = 'none';
+  }
+});
+
+// Rileva Safari mobile
+function isSafariMobile() {
+  return /^((?!chrome|android).)*safari/i.test(navigator.userAgent) && /iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
+['nome', 'cognome', 'telefono', 'email'].forEach(id => {
+  document.getElementById(id).addEventListener('input', function() {
+    const nome = document.getElementById('nome').value.trim();
+    const cognome = document.getElementById('cognome').value.trim();
+    const telefono = document.getElementById('telefono').value.trim();
+    const email = document.getElementById('email').value.trim();
+    // Mostra il bottone solo se tutti i campi sono pieni
+if (nome && cognome && telefono && email) {
+  // Solo se il bottone era nascosto, mostra subito il bottone
+  if (inviaCodiceBtn.style.display === 'none') {
+    inviaCodiceBtn.style.display = '';
+    // scrollToBottom(); // se vuoi, puoi rimetterlo qui
+  } else {
+    inviaCodiceBtn.style.display = '';
+  }
+} else {
+  inviaCodiceBtn.style.display = 'none';
+}
+  });
+});
+
+document.getElementById('inviaCodiceBtn').addEventListener('click', function() {
+  // Prendi i dati dal form
+  const nome = document.getElementById('nome').value.trim();
+  const cognome = document.getElementById('cognome').value.trim();
+  const telefono = document.getElementById('telefono').value.trim();
+  const email = document.getElementById('email').value.trim();
+
+  // Leggi il token CSRF dall'input nascosto nel form
+  const csrfToken = document.getElementById('csrf_token').value;
+
+
+  fetch(`/${tenantId}/invia-codice`, {
+    method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'X-CSRFToken': csrfToken
+  },
+    body: JSON.stringify({ nome, cognome, telefono, email })
+  })
+  .then(r => r.json())
+  .then(res => {
+    if (res.success) {
+      document.getElementById('codice-conferma-wrapper').style.display = '';
+      document.getElementById('inviaCodiceBtn').style.display = 'none';
+      document.getElementById('inviaConfermaPrenotazioneBtn').style.display = '';
+      scrollToBottom();
+    } else {
+      alert(res.error || 'Errore invio codice');
+    }
+  })
+  .catch(() => {
+    alert('Errore di rete durante l\'invio del codice');
+  });
+});
+
+document.getElementById('inviaConfermaPrenotazioneBtn').addEventListener('click', function() {
+  const codice = document.getElementById('codice-conferma').value.trim();
+  if (!codice) {
+    alert('Inserisci il codice di conferma ricevuto via email.');
+    return;
+  }
+  const nome = document.getElementById('nome').value.trim();
+  const cognome = document.getElementById('cognome').value.trim();
+  const telefono = document.getElementById('telefono').value.trim();
+  const email = document.getElementById('email').value.trim();
+  const data = document.getElementById('data').value;
+  const ora = document.getElementById('ora').value;
+  const csrfToken = document.getElementById('csrf_token').value;
+
+  // Raccogli tutti i servizi e operatori selezionati
+  const servizi = getServiziSelezionati();
+
+    let operatori_assegnati = [];
+  if (window._operatoriOrariMap && window._operatoriOrariMap[ora]) {
+    operatori_assegnati = window._operatoriOrariMap[ora];
+  }
+
+fetch(`/${tenantId}/prenota`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+  body: JSON.stringify({
+    nome, cognome, telefono, email,
+    data, ora,
+    codice_conferma: codice,
+    servizi, // array [{servizio_id, operatore_id}, ...]
+    operatori_assegnati
+  })
+})
+  .then(r => r.json())
+  .then(res => {
+    console.log("Risposta /prenota:", res);
+    const msg = document.getElementById('msg');
+    let divTotale = document.getElementById('totale-servizi');
+if (divTotale) divTotale.style.display = 'none';
+if (res.popup_error) {
+  alert(res.popup_error); // oppure apri la tua modale personalizzata
+  return;
+}
+if (res.popup_warning) {
+  alert(res.popup_warning); // oppure apri la tua modale personalizzata
+  // Non fare return: la prenotazione va avanti anche in caso di warning
+}
+if (res.success && res.prenotazioni && res.prenotazioni.length) {
+  let sommario = '';
+  let totaleDurata = 0;
+  let totalePrezzo = 0;
+  res.prenotazioni.forEach(p => {
+    const durata = parseInt(p.servizio_durata || 0, 10);
+    const prezzo = parseFloat(p.servizio_prezzo || 0);
+    totaleDurata += durata;
+    totalePrezzo += prezzo;
+    sommario += `<div class="mb-3 p-3 border rounded bg-light" style="color: #333;">
+      <strong>Riepilogo appuntamento:</strong><br>
+      <span>🗓 <b>Data:</b> ${escapeHtml(p.data)} <b>Ora:</b> ${escapeHtml(p.ora)}</span><br>
+      ${p.operatore_nome ? `<span>👤 <b>con</b> ${escapeHtml(p.operatore_nome)}</span><br>` : ""}
+      <span>💇 <b>Servizio:</b> ${escapeHtml(p.servizio_nome)}</span><br>
+      <small>Durata: ${durata} min - Prezzo: €${prezzo.toFixed(2)}</small>
+    </div>`;
+  });
+  sommario += `<div class="alert alert-dark mt-2"><b>Totale durata:</b> ${totaleDurata} min &nbsp; | &nbsp; <b>Totale costo:</b> €${totalePrezzo.toFixed(2)}</div>`;
+  msg.innerHTML = sommario + '<div class="alert alert-success">Prenotazione confermata! Per ulteriori informazioni, contattaci al telefono fisso o scrivici su Whatsapp!.</div>';
+      document.getElementById('bookingForm').reset();
+      document.getElementById('data_wrapper').style.display = 'none';
+      document.getElementById('ora_wrapper').style.display = 'none';
+      document.getElementById('dati-cliente').style.display = 'none';
+      document.getElementById('codice-conferma-wrapper').style.display = 'none';
+      document.getElementById('inviaConfermaPrenotazioneBtn').style.display = 'none';
+    } else {
+      msg.innerHTML = `<div class="alert alert-danger">${escapeHtml(res.error || 'Errore')}</div>`;
+    }
+  })
+  .catch(() => {
+    document.getElementById('msg').innerHTML = '<div class="alert alert-danger">Errore di rete.</div>';
+  });
+});
+
+</script>
+<script>
+  function scrollToBottom() {
+  window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+}
+</script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const servizioIniziale = document.getElementById('servizio-iniziale');
+  const servizioIdSelezionato = document.getElementById('servizio-id-selezionato');
+  const aggiungiBtn = document.getElementById('aggiungi-servizio');
+  const suggestions = document.getElementById('servizio-suggestions');
+  const pseudoblocchi = document.getElementById('pseudoblocchi-servizi');
+  const operatoreIniziale = document.getElementById('operatore');
+
+  function aggiornaOperatori(servizioId) {
+    const servizio = servizi.find(s => String(s.id) === String(servizioId));
+    const operatoriSelect = document.getElementById('operatore');
+    
+    // Svuota la select in modo sicuro
+    operatoriSelect.options.length = 0;
+
+    // Aggiungi l'opzione "Qualsiasi" come prima scelta
+    const qualsiasiOpt = document.createElement('option');
+    qualsiasiOpt.value = '';
+    qualsiasiOpt.textContent = 'Qualsiasi';
+    operatoriSelect.appendChild(qualsiasiOpt);
+
+    if (servizio && servizio.operator_ids && servizio.operator_ids.length) {
+      // Filtra gli operatori e crea le opzioni
+      operatori
+        .filter(op => servizio.operator_ids.includes(op.id))
+        .forEach(op => {
+          const opt = document.createElement('option');
+          opt.value = op.id;
+          // FIX: Usa sia nome che cognome
+          opt.textContent = `${op.nome} ${op.cognome}`; 
+          operatoriSelect.appendChild(opt);
+        });
+      // Mostra la select
+      document.getElementById('select_operatore_wrapper').style.display = '';
+    } else {
+      // Se il servizio non ha operatori specifici, nascondi la select
+      document.getElementById('select_operatore_wrapper').style.display = 'none';
+    }
+  }
+
+  if (!servizioIniziale || !aggiungiBtn) return;
+
+  aggiungiBtn.style.display = 'none';
+
+let operatoreResoVisibile = false;
+function nascondiSidebarEAvvisi() {
+  // Nascondi sidebar SOLO su mobile
+  if (window.innerWidth <= 767) {
+    document.querySelectorAll('.booking-sidebar').forEach(sb => sb.style.display = 'none');
+    document.getElementById('container-booking').classList.add('no-sidebar');
+  }
+  // Nascondi tutti gli alert di warning/blocco/condizioni
+  [
+    'alert-warning-durata',
+    'alert-block-durata',
+    'alert-warning-prezzo',
+    'alert-block-prezzo',
+    'alert-privacy-condizioni'
+  ].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+}
+
+// --- APERTURA MODAL CUSTOM ---
+document.getElementById('servizio-iniziale').addEventListener('focus', function() {
+  nascondiSidebarEAvvisi();
+  document.getElementById('modalServizi').style.display = 'block';
+  document.getElementById('modal-servizio-input').value = '';
+  showModalSuggestions(servizi);
+  setTimeout(() => document.getElementById('modal-servizio-input').focus(), 150);
+});
+
+// --- CHIUSURA MODAL CUSTOM (pulsante X) ---
+document.getElementById('closeModalServizi').addEventListener('click', function() {
+  document.getElementById('modalServizi').style.display = 'none';
+});
+
+// --- RICERCA LIVE ---
+document.getElementById('modal-servizio-input').addEventListener('input', function() {
+  const q = this.value.trim().toLowerCase();
+  if (q.length < 3) {
+    showModalSuggestions(servizi, "");
+  } else {
+    const filtrati = servizi.filter(s => s.servizio_nome.toLowerCase().includes(q));
+    showModalSuggestions(filtrati, q);
+  }
+});
+
+function showModalSuggestions(lista, query = "") {
+  const modalSuggestions = document.getElementById('modal-servizio-suggestions');
+  modalSuggestions.innerHTML = '';
+
+  if (!query) {
+    const gruppi = {};
+    lista.forEach(s => {
+      const cat = s.sottocategoria || "Altro";
+      if (!gruppi[cat]) gruppi[cat] = [];
+      gruppi[cat].push(s);
+    });
+
+    Object.keys(gruppi).sort().forEach(cat => {
+      const header = document.createElement('div');
+      header.className = 'servizi-subcat-header d-flex align-items-center justify-content-between px-2 py-2';
+      header.style.cursor = 'default';
+      const headerSpan = document.createElement('span');
+      headerSpan.textContent = cat;
+      header.appendChild(headerSpan);
+
+      // Crea serviziList PRIMA del toggleBtn
+      const serviziList = document.createElement('div');
+      serviziList.className = 'servizi-subcat-list';
+      serviziList.dataset.cat = cat;
+      serviziList.style.display = ''; // di default visibile
+
+      const toggleBtn = document.createElement('button');
+      toggleBtn.className = 'toggle-subcat btn btn-sm btn-link';
+      toggleBtn.textContent = '−';
+      toggleBtn.dataset.cat = cat;
+      toggleBtn.addEventListener('click', function() {
+        if (serviziList.style.display === 'none') {
+          serviziList.style.display = '';
+          toggleBtn.textContent = '−';
+        } else {
+          serviziList.style.display = 'none';
+          toggleBtn.textContent = '+';
+        }
+      });
+      header.appendChild(toggleBtn);
+
+      modalSuggestions.appendChild(header);
+
+      gruppi[cat].forEach(s => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'list-group-item list-group-item-action';
+        item.textContent = s.servizio_nome;
+        item.onclick = function() {
+          document.getElementById('servizio-iniziale').value = s.servizio_nome;
+          document.getElementById('servizio-id-selezionato').value = s.id;
+          document.getElementById('modalServizi').style.display = 'none';
+          document.getElementById('select_operatore_wrapper').style.display = '';
+          document.getElementById('aggiungi-servizio').style.display = '';
+          aggiornaOperatori(s.id);
+        };
+        serviziList.appendChild(item);
+      });
+      modalSuggestions.appendChild(serviziList);
+    });
+
+  } else {
+    // Ricerca: mostra solo servizi trovati, senza sottocategoria
+    lista.forEach(s => {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'list-group-item list-group-item-action';
+      item.textContent = s.servizio_nome;
+      item.onclick = function() {
+        document.getElementById('servizio-iniziale').value = s.servizio_nome;
+        document.getElementById('servizio-id-selezionato').value = s.id;
+        document.getElementById('modalServizi').style.display = 'none';
+        document.getElementById('select_operatore_wrapper').style.display = '';
+        document.getElementById('aggiungi-servizio').style.display = '';
+        aggiornaOperatori(s.id);
+      };
+      modalSuggestions.appendChild(item);
+    });
+  }
+}
+
+  // Aggiungi servizio
+  aggiungiBtn.addEventListener('click', function() {
+const servizioId = document.getElementById('servizio-id-selezionato').value;
+const operatoreId = operatoreIniziale.value;
+const servizioObj = servizi.find(s => String(s.id) === String(servizioId));
+const servizioTxt = servizioObj ? servizioObj.servizio_nome : servizioIniziale.value;
+const operatoreTxt = operatoreIniziale.options[operatoreIniziale.selectedIndex]?.text || '';
+
+    if (!servizioId) {
+      alert('Seleziona un servizio!');
+      return;
+    }
+
+    // --- PATCH: blocco durata/prezzo ---
+    const serviziSelezionati = getServiziSelezionati();
+    let totaleDurata = 0;
+    let totalePrezzo = 0;
+    serviziSelezionati.forEach(sel => {
+      const obj = servizi.find(s => String(s.id) === String(sel.servizio_id));
+      if (obj) {
+        totaleDurata += parseInt(obj.servizio_durata || 0, 10);
+        totalePrezzo += parseFloat(obj.servizio_prezzo || 0);
+      }
+    });
+    // Aggiungi anche il servizio che stai per inserire
+    if (servizioObj) {
+      totaleDurata += parseInt(servizioObj.servizio_durata || 0, 10);
+      totalePrezzo += parseFloat(servizioObj.servizio_prezzo || 0);
+    }
+
+const maxDurata = {{ business_info.booking_max_durata|default(0, true) }};
+const maxPrezzo = {{ business_info.booking_max_prezzo|default(0, true) }};
+const blockDurata = "{{ business_info.booking_rule_type_durata|default('none') }}" === "block";
+const blockPrezzo = "{{ business_info.booking_rule_type_prezzo|default('none') }}" === "block";
+const msgDurata = {{ business_info.booking_rule_message_durata|default('', true)|tojson }};
+const msgPrezzo = {{ business_info.booking_rule_message_prezzo|default('', true)|tojson }};
+
+if (blockDurata && maxDurata > 0 && totaleDurata > maxDurata) {
+  alert("Blocco durata: " + msgDurata);
+  // Mostra anche l'alert Bootstrap
+  const alertDiv = document.getElementById('alert-block-durata');
+  if (alertDiv) alertDiv.style.display = '';
+  return; // Annulla aggiunta
+}
+if (blockPrezzo && maxPrezzo > 0 && totalePrezzo > maxPrezzo) {
+  alert("Blocco prezzo: " + msgPrezzo);
+  // Mostra anche l'alert Bootstrap
+  const alertDiv = document.getElementById('alert-block-prezzo');
+  if (alertDiv) alertDiv.style.display = '';
+  return; // Annulla aggiunta
+}
+
+    if (!blockDurata && maxDurata > 0 && totaleDurata > maxDurata) {
+  alert("Attenzione: " + msgDurata);
+}
+if (!blockPrezzo && maxPrezzo > 0 && totalePrezzo > maxPrezzo) {
+  alert("Attenzione: " + msgPrezzo);
+}
+    // --- FINE PATCH ---
+
+    const durata = servizioObj?.servizio_durata ? `${servizioObj.servizio_durata} min` : '';
+    const prezzo = servizioObj?.servizio_prezzo ? `€${servizioObj.servizio_prezzo}` : '';
+
+    const blocco = document.createElement('div');
+    blocco.className = 'alert alert-secondary d-flex align-items-center justify-content-between mb-2';
+
+    // Costruzione DOM sicura (no innerHTML)
+    const infoWrap = document.createElement('span');
+
+    const boldLabel = document.createElement('b');
+    boldLabel.textContent = 'Servizio:';
+    infoWrap.appendChild(boldLabel);
+    infoWrap.appendChild(document.createTextNode(' ' + servizioTxt));
+
+    if (operatoreId) {
+      const opSpan = document.createElement('span');
+      opSpan.className = 'ms-2';
+      const boldCon = document.createElement('b');
+      boldCon.textContent = 'con';
+      opSpan.appendChild(boldCon);
+      opSpan.appendChild(document.createTextNode(' ' + operatoreTxt));
+      infoWrap.appendChild(opSpan);
+    }
+
+    infoWrap.appendChild(document.createElement('br'));
+
+    const small = document.createElement('small');
+    small.className = 'text-muted';
+    small.style.fontSize = '0.85em';
+    const prezzoText = `${durata ? `Durata: ${durata}` : ''}${durata && prezzo ? ' · ' : ''}${prezzo ? `Prezzo: ${prezzo}` : ''}`;
+    small.textContent = prezzoText;
+    infoWrap.appendChild(small);
+
+    // hidden inputs
+    const hidServ = document.createElement('input');
+    hidServ.type = 'hidden'; hidServ.className = 'servizio-id'; hidServ.value = servizioId;
+    const hidOp = document.createElement('input');
+    hidOp.type = 'hidden'; hidOp.className = 'operatore-id'; hidOp.value = operatoreId;
+
+    // remove button
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'btn btn-sm btn-link text-danger rimuovi-pseudoblocco';
+    removeBtn.title = 'Rimuovi';
+    const bTimes = document.createElement('b');
+    bTimes.textContent = '×';
+    removeBtn.appendChild(bTimes);
+
+    // append in ordine
+    blocco.appendChild(infoWrap);
+    blocco.appendChild(hidServ);
+    blocco.appendChild(hidOp);
+    blocco.appendChild(removeBtn);
+
+    pseudoblocchi.appendChild(blocco);
+
+    // Reset selezione iniziale
+    servizioIniziale.value = '';
+    operatoreIniziale.value = '';
+    aggiungiBtn.style.display = 'none';
+    aggiornaTotaleServizi();
+    mostraDataSePronto();
+    loadOrari();
+  });
+
+  // Rimuovi pseudoblocco
+  pseudoblocchi.addEventListener('click', function(e) {
+    // Cerca il bottone anche se il click è sul figlio <b>
+    const btn = e.target.closest('.rimuovi-pseudoblocco');
+    if (btn) {
+      btn.closest('.alert').remove();
+      aggiornaTotaleServizi();
+      mostraDataSePronto();
+    }
+  });
+});
+
+
+// Funzioni globali
+window.getServiziSelezionati = function() {
+  // Conteggia SOLO i blocchi che contengono il campo servizio-id (esclude il div dei totali)
+  return Array.from(document.querySelectorAll('#pseudoblocchi-servizi .alert'))
+    .filter(blocco => blocco.querySelector('.servizio-id'))
+    .map(blocco => ({
+      servizio_id: blocco.querySelector('.servizio-id').value,
+      operatore_id: blocco.querySelector('.operatore-id').value
+    }));
+};
+
+window.aggiornaTotaleServizi = function() {
+  const serviziSelezionati = getServiziSelezionati();
+  let totaleDurata = 0;
+  let totalePrezzo = 0;
+  serviziSelezionati.forEach(sel => {
+    const servizioObj = servizi.find(s => String(s.id) === String(sel.servizio_id));
+    if (servizioObj) {
+      totaleDurata += parseInt(servizioObj.servizio_durata || 0, 10);
+      totalePrezzo += parseFloat(servizioObj.servizio_prezzo || 0);
+    }
+  });
+
+  let divTotale = document.getElementById('totale-servizi');
+  if (!divTotale) {
+    divTotale = document.createElement('div');
+    divTotale.id = 'totale-servizi';
+    divTotale.className = 'alert alert-dark mt-2';
+  }
+  if (serviziSelezionati.length > 0) {
+    // Costruzione DOM sicura (evita innerHTML)
+    divTotale.textContent = '';
+    const boldDur = document.createElement('b');
+    boldDur.textContent = 'Totale durata:';
+    const textDur = document.createTextNode(` ${totaleDurata} min  |  `);
+    const boldPrez = document.createElement('b');
+    boldPrez.textContent = 'Totale costo:';
+    const textPrez = document.createTextNode(` €${totalePrezzo.toFixed(2)}`);
+    divTotale.appendChild(boldDur);
+    divTotale.appendChild(textDur);
+    divTotale.appendChild(boldPrez);
+    divTotale.appendChild(textPrez);
+    divTotale.style.display = '';
+    divTotale.style.display = '';
+
+    // Rimuovi il divTotale se già presente (ovunque sia)
+    if (divTotale.parentNode) divTotale.parentNode.removeChild(divTotale);
+
+    // Appendi SEMPRE in fondo a pseudoblocchi-servizi, DOPO TUTTI i blocchi
+    const container = document.getElementById('pseudoblocchi-servizi');
+    container.appendChild(divTotale);
+  } else {
+    // Se nessun servizio selezionato, rimuovi il div se presente
+    if (divTotale.parentNode) divTotale.parentNode.removeChild(divTotale);
+  }
+};
+
+window.mostraDataSePronto = function() {
+  const servizi = getServiziSelezionati();
+  if (servizi.length > 0) {
+    document.getElementById('data_wrapper').style.display = '';
+    aggiornaDataLabel();
+    scrollToBottom();
+  } else {
+    document.getElementById('data_wrapper').style.display = 'none';
+    document.getElementById('ora_wrapper').style.display = 'none';
+    document.getElementById('dati-cliente').style.display = 'none';
+    const inviaCodiceBtn = document.getElementById('inviaCodiceBtn');
+    inviaCodiceBtn.style.display = 'none';
+  }
+};
+</script>
+
+<script>
+/**
+ * Gestione nascondi alert di blocco/prenotazione
+ */
+document.addEventListener('DOMContentLoaded', function() {
+  function hideAlerts() {
+  ['alert-warning-durata', 'alert-block-durata', 'alert-warning-prezzo', 'alert-block-prezzo', 'alert-privacy-condizioni'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = 'none';
+    });
+  }
+
+  ['servizio-iniziale', 'operatore', 'data', 'ora', 'aggiungi-servizio'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('click', hideAlerts);
+      el.addEventListener('change', hideAlerts);
+    }
+  });
+});
+</script>
+<script>
+document.getElementById('link-privacy').addEventListener('click', function(e) {
+  e.preventDefault();
+  var modal = new bootstrap.Modal(document.getElementById('modalPrivacy'));
+  modal.show();
+});
+document.getElementById('link-condizioni').addEventListener('click', function(e) {
+  e.preventDefault();
+  var modal = new bootstrap.Modal(document.getElementById('modalCondizioni'));
+  modal.show();
+});
+</script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  if (window.innerWidth <= 767) {
+    const container = document.getElementById('container-booking');
+    document.querySelectorAll('input[type="text"], input[type="email"], input[type="tel"], input[type="date"]').forEach(input => {
+      input.addEventListener('focus', function() {
+        container.classList.add('no-sidebar');
+      });
+      input.addEventListener('blur', function() {
+        container.classList.remove('no-sidebar');
+      });
+    });
+  }
+});
+</script>
+</body>
+</html>
