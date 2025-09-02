@@ -26,25 +26,49 @@ def _tenant_index(tenant_id):
 def _smtp_config_for_tenant(tenant_id):
     """
     Restituisce dict con host, port, user, pass, use_ssl, from_email per il tenant.
-    Cerca le variabili SMTP{N}_* prima, poi EMAIL{N}_*, poi fallback generico.
+    Usa solo variabili SMTP{N}_* e fallback generico SMTP_* (nessun EMAIL*).
     """
     idx = _tenant_index(tenant_id)
-    cfg = {}
-    if idx:
-        cfg['host'] = os.environ.get(f"SMTP{idx}_HOST") or os.environ.get(f"EMAIL{idx}_HOST")
-        cfg['port'] = os.environ.get(f"SMTP{idx}_PORT") or os.environ.get(f"EMAIL{idx}_PORT")
-        cfg['user'] = os.environ.get(f"SMTP{idx}_USER") or os.environ.get(f"EMAIL{idx}_USER")
-        cfg['pass'] = os.environ.get(f"SMTP{idx}_PASS") or os.environ.get(f"EMAIL{idx}_PASS")
-        cfg['use_ssl'] = str(os.environ.get(f"SMTP{idx}_USE_SSL") or os.environ.get(f"EMAIL{idx}_USE_SSL") or "false").lower() in ("1","true","yes")
-        cfg['from_email'] = os.environ.get(f"FROM{idx}_EMAIL") or os.environ.get(f"EMAIL{idx}_FROM") or cfg['user']
-    # fallback generico
-    cfg['host'] = cfg.get('host') or os.environ.get("SMTP_HOST") or os.environ.get("EMAIL1_HOST")
-    cfg['port'] = int(cfg.get('port') or os.environ.get("SMTP_PORT", os.environ.get("EMAIL1_PORT", 587)))
-    cfg['user'] = cfg.get('user') or os.environ.get("SMTP_USER") or os.environ.get("EMAIL1_USER")
-    cfg['pass'] = cfg.get('pass') or os.environ.get("SMTP_PASS") or os.environ.get("EMAIL1_PASS")
-    cfg['use_ssl'] = cfg.get('use_ssl') if isinstance(cfg.get('use_ssl'), bool) else str(os.environ.get("SMTP_USE_SSL", "false")).lower() in ("1","true","yes")
-    cfg['from_email'] = cfg.get('from_email') or os.environ.get("SMTP_FROM") or os.environ.get("EMAIL1_FROM") or cfg['user']
-    return cfg
+
+    # specifico per tenant SMTP{N}_*
+    host = os.environ.get(f"SMTP{idx}_HOST") if idx else None
+    port = os.environ.get(f"SMTP{idx}_PORT") if idx else None
+    user = os.environ.get(f"SMTP{idx}_USER") if idx else None
+    pwd = os.environ.get(f"SMTP{idx}_PASS") if idx else None
+    use_ssl_raw = os.environ.get(f"SMTP{idx}_USE_SSL") if idx else None
+    from_email = os.environ.get(f"SMTP{idx}_FROM") if idx else None
+
+    # fallback generico SMTP_*
+    host = host or os.environ.get("SMTP_HOST")
+    port = port or os.environ.get("SMTP_PORT")
+    user = user or os.environ.get("SMTP_USER")
+    pwd = pwd or os.environ.get("SMTP_PASS")
+    use_ssl_raw = use_ssl_raw or os.environ.get("SMTP_USE_SSL")
+    from_email = from_email or os.environ.get("SMTP_FROM") or user
+
+    # parsing sicuro della porta
+    try:
+        port = int(port) if port is not None else 587
+    except Exception:
+        port = 587
+
+    # normalizza use_ssl
+    if isinstance(use_ssl_raw, bool):
+        use_ssl = use_ssl_raw
+    else:
+        use_ssl = str(use_ssl_raw or "false").strip().lower() in ("1", "true", "yes", "on")
+
+    # debug sicuro (NON stampa la password)
+    print(f"DEBUG SMTP RESOLVED: tenant={tenant_id} host={host} port={port} user={user} has_pass={bool(pwd)} use_ssl={use_ssl} from_email={from_email}")
+
+    return {
+        "host": host,
+        "port": port,
+        "user": user,
+        "pass": pwd,
+        "use_ssl": use_ssl,
+        "from_email": from_email
+    }
 
 def invia_email_smtp(to_email, subject, html_content, from_email=None, tenant_id=None):
     cfg = _smtp_config_for_tenant(tenant_id)
