@@ -36,3 +36,6 @@ env/
 *.tmp
 *.swp
 test_output/
+
+# Dati account email
+emails.txt

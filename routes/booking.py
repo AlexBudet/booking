@@ -1,5 +1,4 @@
 # filepath: /Users/alessio.budettagmail.com/Documents/SunBooking/appl/routes/booking.py
-import random
 import string
 import json
 from collections import Counter
@@ -10,48 +9,77 @@ from datetime import date, datetime, timezone, timedelta, time
 from sqlalchemy import and_, cast, DateTime, or_
 from pytz import timezone as pytz_timezone
 import os
+import re
 import random
-from dotenv import load_dotenv
 import smtplib
 from email.message import EmailMessage
 import uuid
 from markupsafe import escape
 
-def invia_email_smtp(to_email, subject, html_content, from_email=None):
-    smtp_host = os.environ.get('SMTP_HOST')
-    smtp_port = int(os.environ.get('SMTP_PORT', '587'))
-    smtp_user = os.environ.get('SMTP_USER')
-    smtp_pass = os.environ.get('SMTP_PASS')
-    smtp_use_ssl = os.environ.get('SMTP_USE_SSL', 'true').lower() == 'true'
-    print("DEBUG SMTP CONFIG:")
-    print("SMTP_HOST:", smtp_host)
-    print("SMTP_PORT:", smtp_port)
-    print("SMTP_USER:", smtp_user)
-    print("SMTP_USE_SSL:", smtp_use_ssl)
+def _tenant_index(tenant_id):
+    """Estrae il numero da tenant tipo 'negozio1' -> '1' (fallback None)."""
+    if not tenant_id:
+        return None
+    m = re.search(r'(\d+)', str(tenant_id))
+    return m.group(1) if m else None
+
+def _smtp_config_for_tenant(tenant_id):
+    """
+    Restituisce dict con host, port, user, pass, use_ssl, from_email per il tenant.
+    Cerca le variabili SMTP{N}_* prima, poi EMAIL{N}_*, poi fallback generico.
+    """
+    idx = _tenant_index(tenant_id)
+    cfg = {}
+    if idx:
+        cfg['host'] = os.environ.get(f"SMTP{idx}_HOST") or os.environ.get(f"EMAIL{idx}_HOST")
+        cfg['port'] = os.environ.get(f"SMTP{idx}_PORT") or os.environ.get(f"EMAIL{idx}_PORT")
+        cfg['user'] = os.environ.get(f"SMTP{idx}_USER") or os.environ.get(f"EMAIL{idx}_USER")
+        cfg['pass'] = os.environ.get(f"SMTP{idx}_PASS") or os.environ.get(f"EMAIL{idx}_PASS")
+        cfg['use_ssl'] = str(os.environ.get(f"SMTP{idx}_USE_SSL") or os.environ.get(f"EMAIL{idx}_USE_SSL") or "false").lower() in ("1","true","yes")
+        cfg['from_email'] = os.environ.get(f"FROM{idx}_EMAIL") or os.environ.get(f"EMAIL{idx}_FROM") or cfg['user']
+    # fallback generico
+    cfg['host'] = cfg.get('host') or os.environ.get("SMTP_HOST") or os.environ.get("EMAIL1_HOST")
+    cfg['port'] = int(cfg.get('port') or os.environ.get("SMTP_PORT", os.environ.get("EMAIL1_PORT", 587)))
+    cfg['user'] = cfg.get('user') or os.environ.get("SMTP_USER") or os.environ.get("EMAIL1_USER")
+    cfg['pass'] = cfg.get('pass') or os.environ.get("SMTP_PASS") or os.environ.get("EMAIL1_PASS")
+    cfg['use_ssl'] = cfg.get('use_ssl') if isinstance(cfg.get('use_ssl'), bool) else str(os.environ.get("SMTP_USE_SSL", "false")).lower() in ("1","true","yes")
+    cfg['from_email'] = cfg.get('from_email') or os.environ.get("SMTP_FROM") or os.environ.get("EMAIL1_FROM") or cfg['user']
+    return cfg
+
+def invia_email_smtp(to_email, subject, html_content, from_email=None, tenant_id=None):
+    cfg = _smtp_config_for_tenant(tenant_id)
+    smtp_host = cfg['host']
+    smtp_port = int(cfg['port'])
+    smtp_user = cfg['user']
+    smtp_pass = cfg['pass']
+    smtp_use_ssl = cfg['use_ssl']
+    sender = from_email or cfg['from_email'] or smtp_user
+
+    print("DEBUG SMTP CONFIG: tenant=", tenant_id, " host=", smtp_host, " user=", smtp_user, " ssl=", smtp_use_ssl)
     if not smtp_host or not smtp_user or not smtp_pass:
+        print("SMTP config incomplete, abort send")
         return False
+
     msg = EmailMessage()
     msg['Subject'] = subject
-    msg['From'] = from_email if from_email else smtp_user
+    msg['From'] = sender
     msg['To'] = to_email
     msg.set_content(html_content, subtype='html')
+
     try:
         if smtp_use_ssl:
             with smtplib.SMTP_SSL(smtp_host, smtp_port) as smtp:
                 smtp.login(smtp_user, smtp_pass)
-                smtp.send_message(msg)
+                smtp.send_message(msg, from_addr=smtp_user)
         else:
             with smtplib.SMTP(smtp_host, smtp_port) as smtp:
                 smtp.starttls()
                 smtp.login(smtp_user, smtp_pass)
-                smtp.send_message(msg)
+                smtp.send_message(msg, from_addr=smtp_user)
         return True
     except Exception as e:
         print("ERRORE SMTP:", repr(e))
         return False
-
-# Carica le variabili d'ambiente dal file .env
-load_dotenv()
 
 def to_rome(dt):
     if dt is None:
@@ -712,7 +740,8 @@ def prenota(tenant_id):
             to_email=email,
             subject='SunBooking - Conferma appuntamento!',
             html_content=riepilogo,
-            from_email=from_addr
+            from_email=from_addr,
+            tenant_id=tenant_id
         )
 
         # Invio email all'admin (stesso approccio sicuro)
@@ -745,7 +774,8 @@ def prenota(tenant_id):
                 to_email=admin_email,
                 subject=f'Nuova prenotazione - {escape(nome)}',
                 html_content=admin_riepilogo,
-                from_email=admin_from
+                from_email=admin_from,
+                tenant_id=tenant_id
             )
 
     return jsonify({
@@ -793,7 +823,8 @@ def invia_codice(tenant_id):
         to_email=email,
         subject='SunBooking - Il tuo codice di conferma',
         html_content=html_content,
-        from_email=os.environ.get('SMTP_USER', 'noreply@sunexpressbeauty.com')
+        from_email=os.environ.get('SMTP_USER', 'noreply@noreply.com'),
+        tenant_id=tenant_id
     )
     if success:
         return jsonify({"success": True})
