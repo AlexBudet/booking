@@ -241,7 +241,7 @@ body {
   flex-direction: column;
   min-height: 0;
   -webkit-overflow-scrolling: touch;
-}
+}Q
 .modal-search-sticky {
   position: sticky;
   top: 0;
@@ -256,25 +256,6 @@ body {
   font-size: 0.8em;
   background-color: #000000;
   color: rgb(202, 177, 191);
-}
-
-.toggle-subcat {
-  color: #fff !important;
-  text-decoration: none !important;
-  font-weight: bold;
-  font-size: 1.2em;
-  background: none;
-  border: none;
-  outline: none;
-  box-shadow: none;
-  padding: 0 0.5em;
-  cursor: pointer;
-}
-.toggle-subcat:hover,
-.toggle-subcat:focus {
-  color: #fff !important;
-  text-decoration: none !important;
-  background: none;
 }
 </style>
 </head>
@@ -297,7 +278,7 @@ body {
       </p>
     </div>
 <form id="bookingForm" autocomplete="off">
-<input type="hidden" id="csrf_token" name="csrf_token" value="{{ csrf_token }}">
+
 <div class="row align-items-end mb-2" id="selezione-iniziale-servizio">
 <div class="col-7 position-relative mb-2">
   <input type="text" id="servizio-iniziale" class="form-control" placeholder="Cerca un servizio..." autocomplete="off">
@@ -309,7 +290,7 @@ body {
       <select id="operatore" class="form-select">
         <option value="">Operatore</option>
         {% for operatore in operatori %}
-        <option value="{{ operatore.id }}">{{ operatore.user_nome }}</option>
+        <option value="{{ operatore.id }}">{{ operatore.user_nome }} {{ operatore.user_cognome }}</option>
         {% endfor %}
       </select>
     </div>
