@@ -16,80 +16,28 @@ from email.message import EmailMessage
 import uuid
 from markupsafe import escape
 
-def invia_email_smtp(to_email, subject, html_content, from_email=None):
-    import socket
-    smtp_host = os.environ.get('SMTP_HOST')
-    smtp_port = int(os.environ.get('SMTP_PORT', '587'))
-    smtp_user = os.environ.get('SMTP_USER')
-    smtp_pass = os.environ.get('SMTP_PASS')
-    smtp_use_tls = str(os.environ.get('SMTP_USE_TLS', 'true')).lower() == 'true'
-    smtp_timeout = int(os.environ.get('SMTP_TIMEOUT', '5'))  # short timeout
-
-    print("DEBUG SMTP CONFIG:")
-    print("SMTP_HOST:", smtp_host)
-    print("SMTP_PORT:", smtp_port)
-    print("SMTP_USER:", smtp_user)
-    print("SMTP_USE_TLS:", smtp_use_tls)
-
-    if not smtp_host:
-        print("SMTP_HOST non configurato")
-        return False
-
-    # quick network probe to fail fast
-    try:
-        socket.create_connection((smtp_host, smtp_port), timeout=3)
-    except Exception as e:
-        print("SMTP network probe failed:", repr(e))
-        return False
-
-    # preferenza mittente: prima noreply@noreply.it, poi SMTP_USER se necessario
-    preferred_from = from_email if from_email else 'noreply@noreply.it'
+def invia_email_smtp(to_email, subject, body):
+    smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    smtp_port = int(os.getenv("SMTP_PORT", 587))
+    smtp_user = os.getenv("SMTP_USER")
+    smtp_pass = os.getenv("SMTP_PASS")
 
     msg = EmailMessage()
-    msg['Subject'] = subject
-    msg['From'] = preferred_from
-    msg['To'] = to_email
-    msg.set_content(html_content, subtype='html')
+    msg["Subject"] = subject
+    msg["From"] = smtp_user
+    msg["To"] = to_email
+    msg.set_content(body)
 
-    def _send_attempt(from_addr):
-        try:
-            try:
-                msg.replace_header('From', from_addr)
-            except Exception:
-                msg['From'] = from_addr
-
-            smtp = smtplib.SMTP(smtp_host, smtp_port, timeout=smtp_timeout)
-            with smtp:
-                try:
-                    smtp.ehlo()
-                except Exception:
-                    pass
-                if smtp_use_tls:
-                    try:
-                        smtp.starttls()
-                        try:
-                            smtp.ehlo()
-                        except Exception:
-                            pass
-                    except Exception as e:
-                        print("WARN starttls:", repr(e))
-                if smtp_user and smtp_pass:
-                    smtp.login(smtp_user, smtp_pass)
-                smtp.send_message(msg)
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_pass)
+            server.send_message(msg)
+            print("Email inviata con successo.")
             return True
-        except Exception as e:
-            print("ERRORE SMTP (_send_attempt):", repr(e))
-            return False
-
-    # primo tentativo con preferred_from (noreply)
-    if _send_attempt(preferred_from):
-        return True
-
-    # secondo tentativo con SMTP_USER come From se diverso
-    if smtp_user and smtp_user != preferred_from:
-        return _send_attempt(smtp_user)
-
-    return False
+    except Exception as e:
+        print(f"Errore nell'invio email: {e}")
+        return False
         
 def to_rome(dt):
     if dt is None:
