@@ -21,7 +21,7 @@ SMTP_CONFIGS = {
         "host": "smtp.gmail.com",
         "port": 587,
         "user": "suncityef80@gmail.com",
-        "pass_encrypted": "gAAAAABot_KRESa2bphU3r8fGyJr6Y2dNPLozjpVZryhbBl6U3a1bXbcH81bJpaOvnBQNR348MPjLYpJj_pdV4fc9O1bz_IlZQ==",  # Valore criptato per tenant 1
+        "pass_encrypted": "gAAAAABot_1Tf8FzgIawv3nkNqInPlM-DE5sd1bnVwjRKRI_cy0cfFqLjFEdRDu4gpHhIAmw7ZF5ccmsS_175Iq47HCLv3RY2A==",  # Valore criptato per tenant 1
         "use_ssl": False,
         "from_email": "suncityef80@gmail.com"
     },
@@ -29,7 +29,7 @@ SMTP_CONFIGS = {
         "host": "smtp.gmail.com",
         "port": 587,
         "user": "sunexpress3@gmail.com",
-        "pass_encrypted": "gAAAAABot_KRlwhYykYYtViTqoRkN7lTF4O4iqoIF6w0DVHvEt2Rsyuozulu3QnmCbqdmWhqaGG06ambtsBQpKxrwqocSV1A2Q==",  # Valore criptato per tenant 2
+        "pass_encrypted": "gAAAAABot_1Toau28BTgDfIVOpwlHdZI1Jfa5PhVdKS1UDb1Bq_w8KIoWv367LHZDjuu30JzcAS6BxpkuPB3sOPV4myqEflfZg==",  # Valore criptato per tenant 2
         "use_ssl": False,
         "from_email": "sunexpress3@gmail.com"
     }
