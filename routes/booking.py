@@ -1,5 +1,4 @@
 # filepath: /Users/alessio.budettagmail.com/Documents/SunBooking/appl/routes/booking.py
-from ssl import _Cipher
 import string
 import json
 from collections import Counter
