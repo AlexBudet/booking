@@ -15,30 +15,108 @@ import smtplib
 from email.message import EmailMessage
 import uuid
 from markupsafe import escape
+import socket
+from pathlib import Path
 
-def invia_email_smtp(to_email, subject, body):
-    smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
-    smtp_port = int(os.getenv("SMTP_PORT", 587))
+def invia_email_smtp(to_email, subject, html_content, from_email=None, tenant_id=None):
+    """
+    Invia una email HTML. Prima scelta mittente: 'noreply@noreply.it', se fallisce
+    si riprova con SMTP_USER. Se la rete SMTP non è raggiungibile la email viene
+    accodata su disco per invio asincrono.
+    """
+    import socket
+    from pathlib import Path
+    import json
+
+    smtp_host = os.getenv("SMTP_HOST")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
     smtp_user = os.getenv("SMTP_USER")
     smtp_pass = os.getenv("SMTP_PASS")
+    smtp_use_tls = str(os.getenv("SMTP_USE_TLS", "true")).lower() == "true"
+    smtp_timeout = int(os.getenv("SMTP_TIMEOUT", "5"))
+    queue_dir = Path(os.getenv("EMAIL_QUEUE_DIR", "/tmp/email_queue"))
+
+    print("DEBUG SMTP CONFIG:")
+    print("SMTP_HOST:", smtp_host)
+    print("SMTP_PORT:", smtp_port)
+    print("SMTP_USER:", smtp_user)
+    print("SMTP_USE_TLS:", smtp_use_tls)
+
+    if not smtp_host:
+        print("SMTP non configurato: SMTP_HOST mancante")
+        return False
+
+    preferred_from = from_email if from_email else "noreply@noreply.it"
 
     msg = EmailMessage()
     msg["Subject"] = subject
-    msg["From"] = smtp_user
+    msg["From"] = preferred_from
     msg["To"] = to_email
-    msg.set_content(body)
+    # include plain fallback
+    msg.set_content("Questo messaggio è in formato HTML. Se non vedi il contenuto, apri la versione HTML.")
+    msg.add_alternative(html_content, subtype="html")
 
+    # quick network probe: se fallisce, queue e torna True (non bloccare richiesta)
     try:
-        with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as server:
-            server.starttls()
-            server.login(smtp_user, smtp_pass)
-            server.send_message(msg)
-            print("Email inviata con successo.")
-            return True
+        socket.create_connection((smtp_host, smtp_port), timeout=3)
     except Exception as e:
-        print(f"Errore nell'invio email: {e}")
-        return False
-        
+        print("SMTP network probe failed, queueing email:", repr(e))
+        try:
+            queue_dir.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "to": to_email,
+                "subject": subject,
+                "html_content": html_content,
+                "from": preferred_from,
+                "tenant_id": tenant_id,
+                "created_at": datetime.utcnow().isoformat() + "Z"
+            }
+            fname = queue_dir / f"{uuid.uuid4().hex}.json"
+            fname.write_text(json.dumps(payload))
+            print("Email queued to", str(fname))
+            return True
+        except Exception as qe:
+            print("Errore queueing email:", repr(qe))
+            return False
+
+    def _send_attempt(from_addr):
+        try:
+            try:
+                msg.replace_header("From", from_addr)
+            except Exception:
+                msg["From"] = from_addr
+
+            smtp = smtplib.SMTP(smtp_host, smtp_port, timeout=smtp_timeout)
+            with smtp:
+                try:
+                    smtp.ehlo()
+                except Exception:
+                    pass
+                if smtp_use_tls:
+                    try:
+                        smtp.starttls()
+                        smtp.ehlo()
+                    except Exception as e:
+                        print("WARN starttls:", repr(e))
+                if smtp_user and smtp_pass:
+                    smtp.login(smtp_user, smtp_pass)
+                smtp.send_message(msg)
+            return True
+        except Exception as e:
+            print("ERRORE SMTP (_send_attempt):", repr(e))
+            return False
+
+    # primo tentativo con noreply@noreply.it (o from_email se passato)
+    if _send_attempt(preferred_from):
+        return True
+
+    # secondo tentativo con SMTP_USER come From se diverso e presente
+    if smtp_user and smtp_user != preferred_from:
+        if _send_attempt(smtp_user):
+            return True
+
+    return False
+
 def to_rome(dt):
     if dt is None:
         return None
