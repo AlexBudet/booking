@@ -694,7 +694,7 @@ def prenota(tenant_id):
         <div style="padding:12px; background:#f2f2f2; margin:20px 0; border-radius:8px;">
         <b>Totale durata:</b> {{ totale_durata }} min &nbsp; | &nbsp; <b>Totale costo:</b> €{{ totale_prezzo }}
         </div>
-        <p>Grazie per aver scelto Sun Express 3!</p>
+        <p>Grazie per aver scelto {{ company_name }}!</p>
         """
 
         riepilogo = render_template_string(
@@ -702,7 +702,8 @@ def prenota(tenant_id):
             nome=nome,
             appuntamenti=appuntamenti_data,
             totale_durata=totale_durata,
-            totale_prezzo=f"{totale_prezzo:.2f}"
+            totale_prezzo=f"{totale_prezzo:.2f}",
+            company_name=company_name
         )
 
         # Usa l'email del business come mittente se presente
