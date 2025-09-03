@@ -46,6 +46,12 @@ def decrypt_payload(encrypted_payload):
 
 def get_smtp_config_for_tenant(tenant_idx):
     """Restituisce config SMTP decrittata per tenant, o None se tenant non supportato."""
+    try:
+        tenant_idx = int(tenant_idx)  # Converti a intero
+    except (ValueError, TypeError):
+        logger.error(f"Tenant {tenant_idx} non valido (non numerico)")
+        return None
+    
     if tenant_idx not in SMTP_CONFIGS:
         logger.error(f"Tenant {tenant_idx} non supportato per SMTP")
         return None
@@ -65,7 +71,7 @@ def get_smtp_config_for_tenant(tenant_idx):
     except Exception as e:
         logger.error(f"Errore decrittazione password per tenant {tenant_idx}: {type(e).__name__}")
         return None
-
+    
 def send_email_from_payload(encrypted_payload):
     """
     Decritta il payload, ottiene config SMTP per tenant e invia l'email.
