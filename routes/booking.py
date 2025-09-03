@@ -1,4 +1,5 @@
 # filepath: /Users/alessio.budettagmail.com/Documents/SunBooking/appl/routes/booking.py
+from ssl import _Cipher
 import string
 import json
 from collections import Counter
@@ -15,86 +16,39 @@ import smtplib
 from email.message import EmailMessage
 import uuid
 from markupsafe import escape
-from emails import send_email_from_payload  # Aggiungi questo import
-from cryptography.fernet import Fernet
 
-# Chiave segreta (stessa di emails.py)
-SECRET_KEY = os.environ.get('EMAIL_SECRET_KEY')
-if not SECRET_KEY:
-    raise ValueError("EMAIL_SECRET_KEY non impostata!")
-cipher = Fernet(SECRET_KEY.encode())
-
-def _tenant_index(tenant_id):
-    """Estrae il numero da tenant tipo 'negozio1' -> '1' (fallback None)."""
-    if not tenant_id:
-        return None
-    m = re.search(r'(\d+)', str(tenant_id))
-    return m.group(1) if m else None
-
-def _smtp_config_for_tenant(tenant_id):
-    """
-    Restituisce dict con host, port, user, pass, use_ssl, from_email per il tenant.
-    Usa SOLO variabili SMTP{N}_* specifiche per tenant (nessun fallback generico).
-    """
-    idx = _tenant_index(tenant_id)
-
-    # specifico per tenant SMTP{N}_*
-    host = os.environ.get(f"SMTP{idx}_HOST") if idx else None
-    port = os.environ.get(f"SMTP{idx}_PORT") if idx else None
-    user = os.environ.get(f"SMTP{idx}_USER") if idx else None
-    pwd = os.environ.get(f"SMTP{idx}_PASS") if idx else None
-    use_ssl_raw = os.environ.get(f"SMTP{idx}_USE_SSL") if idx else None
-    from_email = os.environ.get(f"SMTP{idx}_FROM") if idx else None
-
-    # RIMUOVI TUTTI I FALLBACK GENERICI (non usare mai SMTP_*)
-
-    # parsing sicuro della porta
-    try:
-        port = int(port) if port is not None else 587
-    except Exception:
-        port = 587
-
-    # normalizza use_ssl
-    if isinstance(use_ssl_raw, bool):
-        use_ssl = use_ssl_raw
-    else:
-        use_ssl = str(use_ssl_raw or "false").strip().lower() in ("1", "true", "yes", "on")
-
-    # debug sicuro (NON stampa la password)
-    print(f"DEBUG SMTP RESOLVED: tenant={tenant_id} host={host} port={port} user={user} has_pass={bool(pwd)} use_ssl={use_ssl} from_email={from_email}")
-
-    return {
-        "host": host,
-        "port": port,
-        "user": user,
-        "pass": pwd,
-        "use_ssl": use_ssl,
-        "from_email": from_email
-    }
-
-def invia_email_smtp(to_email, subject, html_content, from_email=None, tenant_id=None):
-    """
-    Modificata per usare emails.py sicuro: cripta il payload e chiama send_email_from_payload.
-    """
-    # Estrai idx da tenant_id (es. 'negozio1' -> 1)
-    idx = _tenant_index(tenant_id)
-    if not idx:
-        print("ERRORE: tenant_id non valido per invio email")
+def invia_email_smtp(to_email, subject, html_content, from_email=None):
+    smtp_host = os.environ.get('SMTP_HOST')
+    smtp_port = int(os.environ.get('SMTP_PORT', '587'))
+    smtp_user = os.environ.get('SMTP_USER')
+    smtp_pass = os.environ.get('SMTP_PASS')
+    smtp_use_ssl = os.environ.get('SMTP_USE_SSL', 'true').lower() == 'true'
+    print("DEBUG SMTP CONFIG:")
+    print("SMTP_HOST:", smtp_host)
+    print("SMTP_PORT:", smtp_port)
+    print("SMTP_USER:", smtp_user)
+    print("SMTP_USE_SSL:", smtp_use_ssl)
+    if not smtp_host or not smtp_user or not smtp_pass:
         return False
-    
-    # Costruisci payload con dati essenziali (senza credenziali)
-    payload = {
-        "tenant_idx": idx,
-        "to_email": to_email,
-        "subject": subject,
-        "html_content": html_content
-    }
-    
-    # Cripta il payload usando la chiave segreta
-    encrypted_payload = cipher.encrypt(json.dumps(payload).encode()).decode()
-    
-    # Chiama la funzione sicura in emails.py
-    return send_email_from_payload(encrypted_payload)
+    msg = EmailMessage()
+    msg['Subject'] = subject
+    msg['From'] = from_email if from_email else os.environ.get('SMTP_FROM_EMAIL', 'noreply@noreply.it')
+    msg['To'] = to_email
+    msg.set_content(html_content, subtype='html')
+    try:
+        if smtp_use_ssl:
+            with smtplib.SMTP_SSL(smtp_host, smtp_port) as smtp:
+                smtp.login(smtp_user, smtp_pass)
+                smtp.send_message(msg)
+        else:
+            with smtplib.SMTP(smtp_host, smtp_port) as smtp:
+                smtp.starttls()
+                smtp.login(smtp_user, smtp_pass)
+                smtp.send_message(msg)
+        return True
+    except Exception as e:
+        print("ERRORE SMTP:", repr(e))
+        return False
 
 def to_rome(dt):
     if dt is None:
@@ -755,8 +709,7 @@ def prenota(tenant_id):
             to_email=email,
             subject='SunBooking - Conferma appuntamento!',
             html_content=riepilogo,
-            from_email=from_addr,
-            tenant_id=tenant_id
+            from_email=from_addr
         )
 
         # Invio email all'admin (stesso approccio sicuro)
@@ -789,8 +742,7 @@ def prenota(tenant_id):
                 to_email=admin_email,
                 subject=f'Nuova prenotazione - {escape(nome)}',
                 html_content=admin_riepilogo,
-                from_email=admin_from,
-                tenant_id=tenant_id
+                from_email=admin_from
             )
 
     return jsonify({
@@ -838,8 +790,7 @@ def invia_codice(tenant_id):
         to_email=email,
         subject='SunBooking - Il tuo codice di conferma',
         html_content=html_content,
-        from_email=os.environ.get('SMTP_USER', 'noreply@noreply.com'),
-        tenant_id=tenant_id
+        from_email=os.environ.get('SMTP_USER', 'noreply@noreply.com')
     )
     if success:
         return jsonify({"success": True})
