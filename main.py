@@ -26,7 +26,11 @@ if not secret:
     raise RuntimeError("SECRET_KEY non impostata.")
 app.config['SECRET_KEY'] = secret
 
-app.config['SESSION_COOKIE_SECURE'] = True
+if os.environ.get("ENV", "development").lower() == "production":
+    app.config['SESSION_COOKIE_SECURE'] = True
+else:
+    app.config['SESSION_COOKIE_SECURE'] = False
+
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
@@ -46,7 +50,11 @@ db_bases = {
     for tenant in db_engines
 }
 for tenant, base in db_bases.items():
-    base.prepare(db_engines[tenant], reflect=True)
+    try:
+        base.prepare(db_engines[tenant], reflect=True)
+    except Exception as e:
+        # Logga ma non bloccare l'avvio: le richieste per quel tenant daranno errore 404/DB più chiaro
+        print(f"WARN: reflection failed for tenant={tenant}: {e}")
 
 
 # 4. Registra il blueprint con un prefisso dinamico
