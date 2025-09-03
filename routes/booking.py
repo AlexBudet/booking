@@ -22,7 +22,8 @@ def invia_email_smtp(to_email, subject, html_content, from_email=None, timeout=1
     smtp_port = int(os.environ.get('SMTP_PORT', '587'))
     smtp_user = os.environ.get('SMTP_USER')
     smtp_pass = os.environ.get('SMTP_PASS')
-    smtp_use_ssl = os.environ.get('SMTP_USE_SSL', 'true').lower() == 'true'
+    # default to False so breath-compatible providers on 587 + STARTTLS work unless overridden
+    smtp_use_ssl = os.environ.get('SMTP_USE_SSL', 'false').lower() == 'true'
     print("DEBUG SMTP CONFIG:", smtp_host, smtp_port, smtp_user, smtp_use_ssl)
     if not smtp_host or not smtp_user or not smtp_pass:
         print("SMTP config missing")
@@ -38,9 +39,11 @@ def invia_email_smtp(to_email, subject, html_content, from_email=None, timeout=1
                 smtp.login(smtp_user, smtp_pass)
                 smtp.send_message(msg)
         else:
-            # pass timeout into SMTP so connect doesn't hang indefinitely
+            # connect with timeout and upgrade to TLS (STARTTLS) on port 587
             with smtplib.SMTP(smtp_host, smtp_port, timeout=timeout) as smtp:
+                smtp.ehlo()
                 smtp.starttls()
+                smtp.ehlo()
                 smtp.login(smtp_user, smtp_pass)
                 smtp.send_message(msg)
         return True
