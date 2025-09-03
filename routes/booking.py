@@ -15,6 +15,14 @@ import smtplib
 from email.message import EmailMessage
 import uuid
 from markupsafe import escape
+from emails import send_email_from_payload  # Aggiungi questo import
+from cryptography.fernet import Fernet
+
+# Chiave segreta (stessa di emails.py)
+SECRET_KEY = os.environ.get('EMAIL_SECRET_KEY')
+if not SECRET_KEY:
+    raise ValueError("EMAIL_SECRET_KEY non impostata!")
+cipher = Fernet(SECRET_KEY.encode())
 
 def _tenant_index(tenant_id):
     """Estrae il numero da tenant tipo 'negozio1' -> '1' (fallback None)."""
@@ -65,39 +73,28 @@ def _smtp_config_for_tenant(tenant_id):
     }
 
 def invia_email_smtp(to_email, subject, html_content, from_email=None, tenant_id=None):
-    cfg = _smtp_config_for_tenant(tenant_id)
-    smtp_host = cfg['host']
-    smtp_port = int(cfg['port'])
-    smtp_user = cfg['user']
-    smtp_pass = cfg['pass']
-    smtp_use_ssl = cfg['use_ssl']
-    sender = from_email or cfg['from_email'] or smtp_user
-
-    print("DEBUG SMTP CONFIG: tenant=", tenant_id, " host=", smtp_host, " user=", smtp_user, " ssl=", smtp_use_ssl)
-    if not smtp_host or not smtp_user or not smtp_pass:
-        print("SMTP config incomplete, abort send")
+    """
+    Modificata per usare emails.py sicuro: cripta il payload e chiama send_email_from_payload.
+    """
+    # Estrai idx da tenant_id (es. 'negozio1' -> 1)
+    idx = _tenant_index(tenant_id)
+    if not idx:
+        print("ERRORE: tenant_id non valido per invio email")
         return False
-
-    msg = EmailMessage()
-    msg['Subject'] = subject
-    msg['From'] = sender
-    msg['To'] = to_email
-    msg.set_content(html_content, subtype='html')
-
-    try:
-        if smtp_use_ssl:
-            with smtplib.SMTP_SSL(smtp_host, smtp_port) as smtp:
-                smtp.login(smtp_user, smtp_pass)
-                smtp.send_message(msg, from_addr=smtp_user)
-        else:
-            with smtplib.SMTP(smtp_host, smtp_port) as smtp:
-                smtp.starttls()
-                smtp.login(smtp_user, smtp_pass)
-                smtp.send_message(msg, from_addr=smtp_user)
-        return True
-    except Exception as e:
-        print("ERRORE SMTP:", repr(e))
-        return False
+    
+    # Costruisci payload con dati essenziali (senza credenziali)
+    payload = {
+        "tenant_idx": idx,
+        "to_email": to_email,
+        "subject": subject,
+        "html_content": html_content
+    }
+    
+    # Cripta il payload usando la chiave segreta
+    encrypted_payload = cipher.encrypt(json.dumps(payload).encode()).decode()
+    
+    # Chiama la funzione sicura in emails.py
+    return send_email_from_payload(encrypted_payload)
 
 def to_rome(dt):
     if dt is None:
