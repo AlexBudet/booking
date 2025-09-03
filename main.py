@@ -6,6 +6,9 @@ from flask_wtf import CSRFProtect
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.ext.automap import automap_base
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
 csrf = CSRFProtect(app)
