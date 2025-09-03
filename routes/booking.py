@@ -16,44 +16,23 @@ from email.message import EmailMessage
 import uuid
 from markupsafe import escape
 import threading
+from azure.communication.email import EmailClient
 
-def invia_email_smtp(to_email, subject, html_content, from_email=None, timeout=10):
-    smtp_host = os.environ.get('SMTP_HOST')
-    smtp_port = int(os.environ.get('SMTP_PORT', '587'))
-    smtp_user = os.environ.get('SMTP_USER')
-    smtp_pass = os.environ.get('SMTP_PASS')
-    # default to False so breath-compatible providers on 587 + STARTTLS work unless overridden
-    smtp_use_ssl = os.environ.get('SMTP_USE_SSL', 'false').lower() == 'true'
-    print("DEBUG SMTP CONFIG:", smtp_host, smtp_port, smtp_user, smtp_use_ssl)
-    if not smtp_host or not smtp_user or not smtp_pass:
-        print("SMTP config missing")
-        return False
-    msg = EmailMessage()
-    msg['Subject'] = subject
-    msg['From'] = from_email if from_email else smtp_user
-    msg['To'] = to_email
-    msg.set_content(html_content, subtype='html')
-    try:
-        if smtp_use_ssl:
-            with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=timeout) as smtp:
-                smtp.login(smtp_user, smtp_pass)
-                smtp.send_message(msg)
-        else:
-            # connect with timeout and upgrade to TLS (STARTTLS) on port 587
-            with smtplib.SMTP(smtp_host, smtp_port, timeout=timeout) as smtp:
-                smtp.ehlo()
-                smtp.starttls()
-                smtp.ehlo()
-                smtp.login(smtp_user, smtp_pass)
-                smtp.send_message(msg)
-        return True
-    except Exception as e:
-        print("ERRORE SMTP:", repr(e))
-        return False
+def invia_email_azure(to_email, subject, html_content, from_email=None):
+    connection_string = os.environ.get('AZURE_EMAIL_CONNECTION_STRING')
+    client = EmailClient.from_connection_string(connection_string)
+    message = {
+        "senderAddress": from_email or "donotreply@8a979827-fa9b-4b2d-b7f8-52cc9565a0d9.azurecomm.net",
+        "recipients": {"to": [{"address": to_email}]},
+        "content": {"subject": subject, "html": html_content}
+    }
+    poller = client.begin_send(message)
+    result = poller.result()
+    return True
 
 def invia_email_async(to_email, subject, html_content, from_email=None):
     # spawn a daemon thread so worker returns immediately
-    t = threading.Thread(target=invia_email_smtp, args=(to_email, subject, html_content, from_email), daemon=True)
+    t = threading.Thread(target=invia_email_azure, args=(to_email, subject, html_content, from_email), daemon=True)
     t.start()
     return True
 
