@@ -454,6 +454,7 @@ def prenota(tenant_id):
     ora = data.get('ora')
     servizi = data.get('servizi', [])
     codice_conferma = data.get('codice_conferma')
+    business_info = g.db_session.query(BusinessInfo).first()
 
     # Usa/crea un client di booking con NOME=BOOKING COGNOME=ONLINE (non usare l'id=9999 dummy)
     booking_client = g.db_session.query(Client).filter_by(cliente_nome="BOOKING", cliente_cognome="ONLINE").first()
@@ -707,7 +708,7 @@ def prenota(tenant_id):
         from_addr = business_info.email if business_info and business_info.email else os.environ.get('SMTP_USER', 'noreply@sunexpressbeauty.com')
         invia_email_async(
             to_email=email,
-            subject='SunBooking - Conferma appuntamento!',
+            subject=f'{company_name} - Conferma appuntamento!',
             html_content=riepilogo,
             from_email=None
         )
@@ -754,7 +755,8 @@ def prenota(tenant_id):
 
 @booking_bp.route('/invia-codice', methods=['POST'])
 def invia_codice(tenant_id):
-
+    business_info = g.db_session.query(BusinessInfo).first()
+    company_name = business_info.business_name if business_info and business_info.business_name else "SunBooking"
     last_sent = session.get('last_code_sent_at', 0)
     if datetime.now().timestamp() - last_sent < 60:
         return jsonify({"success": False, "error": "Puoi inviare un nuovo codice tra un minuto."}), 429
@@ -790,7 +792,7 @@ def invia_codice(tenant_id):
     try:
         invia_email_async(
             to_email=email,
-            subject='SunBooking - Il tuo codice di conferma',
+            subject=f'{company_name} - Il tuo codice di conferma',
             html_content=html_content,
             from_email=None
         )
