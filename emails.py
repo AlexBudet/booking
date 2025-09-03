@@ -20,10 +20,10 @@ SMTP_CONFIGS = {
     1: {
         "host": "smtp.gmail.com",
         "port": 587,
-        "user": "suncityef80@gmail.com",
-        "pass": "ghej vcqk gzlw lafe",  # Password per app in chiaro
+        "user": "alessio.budetta@gmail.com",
+        "pass": "vlcm gssx wmwo pckh",  # Password per app in chiaro
         "use_ssl": True,
-        "from_email": "suncityef80@gmail.com"
+        "from_email": "alessio.budetta@gmail.com"
     },
     2: {
         "host": "smtp.gmail.com",
