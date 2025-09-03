@@ -21,34 +21,65 @@ def invia_email_smtp(to_email, subject, html_content, from_email=None):
     smtp_port = int(os.environ.get('SMTP_PORT', '587'))
     smtp_user = os.environ.get('SMTP_USER')
     smtp_pass = os.environ.get('SMTP_PASS')
-    smtp_use_ssl = os.environ.get('SMTP_USE_SSL', 'true').lower() == 'true'
+    smtp_use_ssl = os.environ.get('SMTP_USE_SSL')
+    smtp_use_tls = os.environ.get('SMTP_USE_TLS')
+    smtp_timeout = int(os.environ.get('SMTP_TIMEOUT', '10'))  # seconds
     print("DEBUG SMTP CONFIG:")
     print("SMTP_HOST:", smtp_host)
     print("SMTP_PORT:", smtp_port)
     print("SMTP_USER:", smtp_user)
     print("SMTP_USE_SSL:", smtp_use_ssl)
+    print("SMTP_USE_TLS:", smtp_use_tls)
     if not smtp_host or not smtp_user or not smtp_pass:
         return False
+    
+    # preferenza mittente: prima noreply@noreply.it, poi SMTP_USER se necessario
+    preferred_from = from_email if from_email else 'noreply@noreply.it'
+
     msg = EmailMessage()
     msg['Subject'] = subject
     msg['From'] = from_email if from_email else os.environ.get('SMTP_FROM_EMAIL', 'noreply@noreply.it')
     msg['To'] = to_email
     msg.set_content(html_content, subtype='html')
-    try:
-        if smtp_use_ssl:
-            with smtplib.SMTP_SSL(smtp_host, smtp_port) as smtp:
-                smtp.login(smtp_user, smtp_pass)
-                smtp.send_message(msg)
-        else:
-            with smtplib.SMTP(smtp_host, smtp_port) as smtp:
-                smtp.starttls()
-                smtp.login(smtp_user, smtp_pass)
-                smtp.send_message(msg)
-        return True
-    except Exception as e:
-        print("ERRORE SMTP:", repr(e))
-        return False
 
+    def _send_attempt(from_addr):
+        try:
+            # assicura header From coerente
+            try:
+                msg.replace_header('From', from_addr)
+            except Exception:
+                msg['From'] = from_addr
+
+            if not smtp_host:
+                raise RuntimeError("SMTP_HOST non configurato")
+
+            if smtp_use_ssl:
+                smtp = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=smtp_timeout)
+            else:
+                smtp = smtplib.SMTP(smtp_host, smtp_port, timeout=smtp_timeout)
+
+            with smtp:
+                if not smtp_use_ssl:
+                    try:
+                        smtp.starttls()
+                    except Exception as e:
+                        print("WARN starttls:", repr(e))
+                if smtp_user and smtp_pass:
+                    smtp.login(smtp_user, smtp_pass)
+                smtp.send_message(msg)
+            return True
+        except Exception as e:
+            print("ERRORE SMTP (_send_attempt):", repr(e))
+            return False
+        
+    # primo tentativo con noreply@noreply.it
+    if _send_attempt(preferred_from):
+        return True
+
+    # secondo tentativo con SMTP_USER se diverso
+    if smtp_user and smtp_user != preferred_from:
+        return _send_attempt(smtp_user)
+        
 def to_rome(dt):
     if dt is None:
         return None
