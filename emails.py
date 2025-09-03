@@ -15,13 +15,13 @@ if not SECRET_KEY:
     raise ValueError("EMAIL_SECRET_KEY non impostata! Imposta la variabile d'ambiente.")
 cipher = Fernet(SECRET_KEY.encode())
 
-# Config SMTP criptata per tenant (password criptate, altri dati in chiaro ma protetti)
+# Config SMTP TEMPORANEA con password in chiaro (NON IN PRODUZIONE!)
 SMTP_CONFIGS = {
     1: {
         "host": "smtp.gmail.com",
         "port": 587,
         "user": "suncityef80@gmail.com",
-        "pass_encrypted": "gAAAAABot_1Tf8FzgIawv3nkNqInPlM-DE5sd1bnVwjRKRI_cy0cfFqLjFEdRDu4gpHhIAmw7ZF5ccmsS_175Iq47HCLv3RY2A==",  # Valore criptato per tenant 1
+        "pass": "ghej vcqk gzlw lafe",  # Password per app in chiaro
         "use_ssl": False,
         "from_email": "suncityef80@gmail.com"
     },
@@ -29,7 +29,7 @@ SMTP_CONFIGS = {
         "host": "smtp.gmail.com",
         "port": 587,
         "user": "sunexpress3@gmail.com",
-        "pass_encrypted": "gAAAAABot_1Toau28BTgDfIVOpwlHdZI1Jfa5PhVdKS1UDb1Bq_w8KIoWv367LHZDjuu30JzcAS6BxpkuPB3sOPV4myqEflfZg==",  # Valore criptato per tenant 2
+        "pass": "wfjn yqbw zkth txku",  # Password per app in chiaro
         "use_ssl": False,
         "from_email": "sunexpress3@gmail.com"
     }
@@ -45,7 +45,7 @@ def decrypt_payload(encrypted_payload):
         return None
 
 def get_smtp_config_for_tenant(tenant_idx):
-    """Restituisce config SMTP decrittata per tenant, o None se tenant non supportato."""
+    """Restituisce config SMTP per tenant, o None se tenant non supportato."""
     try:
         tenant_idx = int(tenant_idx)  # Converti a intero
     except (ValueError, TypeError):
@@ -57,21 +57,16 @@ def get_smtp_config_for_tenant(tenant_idx):
         return None
     
     cfg = SMTP_CONFIGS[tenant_idx]
-    try:
-        # Decritta la password solo al momento dell'uso
-        decrypted_pass = cipher.decrypt(cfg["pass_encrypted"].encode()).decode()
-        return {
-            "host": cfg["host"],
-            "port": cfg["port"],
-            "user": cfg["user"],
-            "pass": decrypted_pass,
-            "use_ssl": cfg["use_ssl"],
-            "from_email": cfg["from_email"]
-        }
-    except Exception as e:
-        logger.error(f"Errore decrittazione password per tenant {tenant_idx}: {type(e).__name__}")
-        return None
-    
+    # TEMPORANEO: Usa password in chiaro, senza decriptazione
+    return {
+        "host": cfg["host"],
+        "port": cfg["port"],
+        "user": cfg["user"],
+        "pass": cfg["pass"],  # In chiaro
+        "use_ssl": cfg["use_ssl"],
+        "from_email": cfg["from_email"]
+    }
+
 def send_email_from_payload(encrypted_payload):
     """
     Decritta il payload, ottiene config SMTP per tenant e invia l'email.
