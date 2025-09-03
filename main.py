@@ -19,8 +19,6 @@ TENANT_DATABASES = {
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
-
 secret = os.environ.get('SECRET_KEY')
 if not secret:
     raise RuntimeError("SECRET_KEY non impostata.")
@@ -79,10 +77,10 @@ def index():
 @app.before_request
 def attach_db_session():
     tenant_id = request.view_args.get('tenant_id') if request.view_args else None
-    print(f"DEBUG: Tenant ID: {tenant_id}, DB URL: {TENANT_DATABASES.get(tenant_id)}")  # <-- Aggiungi questo
     if tenant_id and tenant_id in db_sessions:
         g.db_session = db_sessions[tenant_id]
         g.db_base = db_bases[tenant_id]
+        g.tenant_id = tenant_id  # Aggiungi per filtrare query
     elif tenant_id:
         abort(404, description="Negozio non trovato.")
 

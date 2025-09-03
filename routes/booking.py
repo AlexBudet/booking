@@ -712,7 +712,7 @@ def prenota(tenant_id):
         # Usa l'email del business come mittente se presente
         business_info = g.db_session.query(BusinessInfo).first()
         from_addr = business_info.email if business_info and business_info.email else os.environ.get('SMTP_USER', 'noreply@sunexpressbeauty.com')
-        invia_email_smtp(
+        invia_email_async(
             to_email=email,
             subject='SunBooking - Conferma appuntamento!',
             html_content=riepilogo,
@@ -745,7 +745,7 @@ def prenota(tenant_id):
         )
         if admin_email:
             admin_from = business_info.email if business_info and business_info.email else os.environ.get('SMTP_USER', 'noreply@sunexpressbeauty.com')
-            invia_email_smtp(
+            invia_email_async(
                 to_email=admin_email,
                 subject=f'Nuova prenotazione - {escape(nome)}',
                 html_content=admin_riepilogo,
