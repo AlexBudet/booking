@@ -17,6 +17,7 @@ import uuid
 from markupsafe import escape
 import threading
 from azure.communication.email import EmailClient
+import threading
 
 def invia_email_azure(to_email, subject, html_content, from_email=None):
     connection_string = os.environ.get('AZURE_EMAIL_CONNECTION_STRING')
@@ -31,24 +32,25 @@ def invia_email_azure(to_email, subject, html_content, from_email=None):
     return True
 
 def invia_email_async(to_email, subject, html_content, from_email=None):
-    try:
-        connection_string = os.environ.get('AZURE_EMAIL_CONNECTION_STRING')
-        if not connection_string:
-            print("ERROR: AZURE_EMAIL_CONNECTION_STRING not set")
-            return False
-        client = EmailClient.from_connection_string(connection_string)
-        message = {
-            "senderAddress": from_email or "donotreply@8a979827-fa9b-4b2d-b7f8-52cc9565a0d9.azurecomm.net",
-            "recipients": {"to": [{"address": to_email}]},
-            "content": {"subject": subject, "html": html_content}
-        }
-        poller = client.begin_send(message)
-        result = poller.result()
-        print(f"Email sent successfully: {result.message_id}")
-        return True
-    except Exception as e:
-        print(f"ERROR sending email: {repr(e)}")
-        return False
+    def send_email():
+        try:
+            connection_string = os.environ.get('AZURE_EMAIL_CONNECTION_STRING')
+            if not connection_string:
+                print("ERROR: AZURE_EMAIL_CONNECTION_STRING not set")
+                return
+            client = EmailClient.from_connection_string(connection_string)
+            message = {
+                "senderAddress": from_email or "donotreply@8a979827-fa9b-4b2d-b7f8-52cc9565a0d9.azurecomm.net",
+                "recipients": {"to": [{"address": to_email}]},
+                "content": {"subject": subject, "html": html_content}
+            }
+            poller = client.begin_send(message)
+            result = poller.result()
+            print(f"Email sent successfully: {result.message_id}")
+        except Exception as e:
+            print(f"ERROR sending email: {repr(e)}")
+    thread = threading.Thread(target=send_email, daemon=True)
+    thread.start()
 
 def to_rome(dt):
     if dt is None:
@@ -705,14 +707,17 @@ def prenota(tenant_id):
 
         # Usa l'email del business come mittente se presente
         business_info = g.db_session.query(BusinessInfo).first()
-        from_addr = business_info.email if business_info and business_info.email else os.environ.get('SMTP_USER', 'noreply@sunexpressbeauty.com')
-        invia_email_async(
-            to_email=email,
-            subject=f'{company_name} - Conferma appuntamento!',
-            html_content=riepilogo,
-            from_email=None
-        )
-
+        company_name = business_info.business_name if business_info and business_info.business_name else "SunBooking"
+        try:
+            invia_email_async(
+                to_email=email,
+                subject=f'{company_name} - Conferma appuntamento!',
+                html_content=riepilogo,
+                from_email=None
+            )
+        except Exception as e:
+            print(f"ERROR queueing confirmation email: {repr(e)}")
+        
         # Invio email all'admin (stesso approccio sicuro)
         admin_email = business_info.email if business_info and business_info.email else None
         admin_riepilogo = render_template_string(
@@ -737,14 +742,17 @@ def prenota(tenant_id):
             totale_durata=totale_durata,
             totale_prezzo=f"{totale_prezzo:.2f}"
         )
+        admin_email = business_info.email if business_info and business_info.email else None
         if admin_email:
-            admin_from = business_info.email if business_info and business_info.email else os.environ.get('SMTP_USER', 'noreply@sunexpressbeauty.com')
-            invia_email_async(
-                to_email=admin_email,
-                subject=f'Nuova prenotazione - {escape(nome)}',
-                html_content=admin_riepilogo,
-                from_email=None
-            )
+            try:
+                invia_email_async(
+                    to_email=admin_email,
+                    subject=f'Nuova prenotazione - {escape(nome)}',
+                    html_content=admin_riepilogo,
+                    from_email=None
+                )
+            except Exception as e:
+                print(f"ERROR queueing admin email: {repr(e)}")
 
     return jsonify({
         "success": len(risultati) > 0,
