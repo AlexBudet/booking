@@ -17,43 +17,46 @@ import uuid
 from markupsafe import escape
 
 def invia_email_smtp(to_email, subject, html_content, from_email=None):
+    import socket
     smtp_host = os.environ.get('SMTP_HOST')
     smtp_port = int(os.environ.get('SMTP_PORT', '587'))
     smtp_user = os.environ.get('SMTP_USER')
     smtp_pass = os.environ.get('SMTP_PASS')
-    smtp_use_tls = os.environ.get('SMTP_USE_TLS')
-    smtp_timeout = int(os.environ.get('SMTP_TIMEOUT', '10'))  # seconds
+    smtp_use_tls = str(os.environ.get('SMTP_USE_TLS', 'true')).lower() == 'true'
+    smtp_timeout = int(os.environ.get('SMTP_TIMEOUT', '5'))  # short timeout
+
     print("DEBUG SMTP CONFIG:")
     print("SMTP_HOST:", smtp_host)
     print("SMTP_PORT:", smtp_port)
     print("SMTP_USER:", smtp_user)
     print("SMTP_USE_TLS:", smtp_use_tls)
-    if not smtp_host or not smtp_user or not smtp_pass:
+
+    if not smtp_host:
+        print("SMTP_HOST non configurato")
         return False
-    
+
+    # quick network probe to fail fast
+    try:
+        socket.create_connection((smtp_host, smtp_port), timeout=3)
+    except Exception as e:
+        print("SMTP network probe failed:", repr(e))
+        return False
+
     # preferenza mittente: prima noreply@noreply.it, poi SMTP_USER se necessario
     preferred_from = from_email if from_email else 'noreply@noreply.it'
 
     msg = EmailMessage()
     msg['Subject'] = subject
-    msg['From'] = from_email if from_email else os.environ.get('SMTP_FROM_EMAIL', 'noreply@noreply.it')
+    msg['From'] = preferred_from
     msg['To'] = to_email
     msg.set_content(html_content, subtype='html')
 
     def _send_attempt(from_addr):
         try:
-            # assicura header From coerente
             try:
                 msg.replace_header('From', from_addr)
             except Exception:
                 msg['From'] = from_addr
-
-            if not smtp_host:
-                raise RuntimeError("SMTP_HOST non configurato")
-
-            # non usiamo più SMTP_SSL: apriamo sempre una connessione SMTP e
-            # facciamo STARTTLS solo se richiesto (env SMTP_USE_TLS)
-            use_starttls = str(smtp_use_tls).lower() == 'true'
 
             smtp = smtplib.SMTP(smtp_host, smtp_port, timeout=smtp_timeout)
             with smtp:
@@ -61,7 +64,7 @@ def invia_email_smtp(to_email, subject, html_content, from_email=None):
                     smtp.ehlo()
                 except Exception:
                     pass
-                if use_starttls:
+                if smtp_use_tls:
                     try:
                         smtp.starttls()
                         try:
@@ -77,14 +80,16 @@ def invia_email_smtp(to_email, subject, html_content, from_email=None):
         except Exception as e:
             print("ERRORE SMTP (_send_attempt):", repr(e))
             return False
-        
-    # primo tentativo con noreply@noreply.it
+
+    # primo tentativo con preferred_from (noreply)
     if _send_attempt(preferred_from):
         return True
 
-    # secondo tentativo con SMTP_USER se diverso
+    # secondo tentativo con SMTP_USER come From se diverso
     if smtp_user and smtp_user != preferred_from:
         return _send_attempt(smtp_user)
+
+    return False
         
 def to_rome(dt):
     if dt is None:
