@@ -22,7 +22,7 @@ SMTP_CONFIGS = {
         "port": 587,
         "user": "suncityef80@gmail.com",
         "pass": "ghej vcqk gzlw lafe",  # Password per app in chiaro
-        "use_ssl": False,
+        "use_ssl": True,
         "from_email": "suncityef80@gmail.com"
     },
     2: {
@@ -30,7 +30,7 @@ SMTP_CONFIGS = {
         "port": 587,
         "user": "sunexpress3@gmail.com",
         "pass": "wfjn yqbw zkth txku",  # Password per app in chiaro
-        "use_ssl": False,
+        "use_ssl": True,
         "from_email": "sunexpress3@gmail.com"
     }
 }
