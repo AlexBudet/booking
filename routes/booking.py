@@ -15,35 +15,31 @@ import smtplib
 from email.message import EmailMessage
 import uuid
 from markupsafe import escape
+import threading
 
-def invia_email_smtp(to_email, subject, html_content, from_email=None):
+def invia_email_smtp(to_email, subject, html_content, from_email=None, timeout=10):
     smtp_host = os.environ.get('SMTP_HOST')
     smtp_port = int(os.environ.get('SMTP_PORT', '587'))
     smtp_user = os.environ.get('SMTP_USER')
     smtp_pass = os.environ.get('SMTP_PASS')
-    smtp_use_ssl = os.environ.get('SMTP_USE_SSL')
-    smtp_use_tls = os.environ.get('SMTP_USE_TLS')
-    print("DEBUG SMTP CONFIG:")
-    print("SMTP_HOST:", smtp_host)
-    print("SMTP_PORT:", smtp_port)
-    print("SMTP_USER:", smtp_user)
-    print("SMTP_USE_SSL:", smtp_use_ssl)
-    print("SMTP_USE_TLS:", smtp_use_tls)
+    smtp_use_ssl = os.environ.get('SMTP_USE_SSL', 'true').lower() == 'true'
+    print("DEBUG SMTP CONFIG:", smtp_host, smtp_port, smtp_user, smtp_use_ssl)
     if not smtp_host or not smtp_user or not smtp_pass:
+        print("SMTP config missing")
         return False
     msg = EmailMessage()
     msg['Subject'] = subject
-    msg['From'] = from_email if from_email else os.environ.get('SMTP_FROM_EMAIL', 'noreply@noreply.it')
+    msg['From'] = from_email if from_email else smtp_user
     msg['To'] = to_email
     msg.set_content(html_content, subtype='html')
-    
     try:
         if smtp_use_ssl:
-            with smtplib.SMTP_SSL(smtp_host, smtp_port) as smtp:
+            with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=timeout) as smtp:
                 smtp.login(smtp_user, smtp_pass)
                 smtp.send_message(msg)
         else:
-            with smtplib.SMTP(smtp_host, smtp_port) as smtp:
+            # pass timeout into SMTP so connect doesn't hang indefinitely
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=timeout) as smtp:
                 smtp.starttls()
                 smtp.login(smtp_user, smtp_pass)
                 smtp.send_message(msg)
@@ -51,6 +47,12 @@ def invia_email_smtp(to_email, subject, html_content, from_email=None):
     except Exception as e:
         print("ERRORE SMTP:", repr(e))
         return False
+
+def invia_email_async(to_email, subject, html_content, from_email=None):
+    # spawn a daemon thread so worker returns immediately
+    t = threading.Thread(target=invia_email_smtp, args=(to_email, subject, html_content, from_email), daemon=True)
+    t.start()
+    return True
 
 def to_rome(dt):
     if dt is None:
@@ -788,13 +790,15 @@ def invia_codice(tenant_id):
         <p>Grazie!</p>
     """
 
-    success = invia_email_smtp(
-        to_email=email,
-        subject='SunBooking - Il tuo codice di conferma',
-        html_content=html_content,
-        from_email=os.environ.get('SMTP_USER', 'noreply@noreply.com')
-    )
-    if success:
+    # Queue email in background to avoid blocking gunicorn worker
+    try:
+        invia_email_async(
+            to_email=email,
+            subject='SunBooking - Il tuo codice di conferma',
+            html_content=html_content,
+            from_email=os.environ.get('SMTP_USER', 'noreply@noreply.com')
+        )
         return jsonify({"success": True})
-    else:
+    except Exception as e:
+        print("ERROR queueing email:", repr(e))
         return jsonify({"success": False, "error": "Errore durante l'invio dell'email."}), 500
