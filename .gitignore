@@ -37,5 +37,5 @@ env/
 *.swp
 test_output/
 
-# Dati account email
-emails.txt
+# Segreti Azure per GitHub
+github_secrets.txt
