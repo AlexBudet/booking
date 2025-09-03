@@ -51,8 +51,6 @@ for tenant, base in db_bases.items():
 #    Questo renderà le tue routes accessibili tramite /negozio1/booking, /negozio2/booking, etc.
 app.register_blueprint(booking_bp, url_prefix='/<tenant_id>')
 
-db.init_app(app)
-
 @app.route('/')
 def index():
     links = []
