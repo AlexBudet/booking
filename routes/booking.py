@@ -217,7 +217,8 @@ def booking_page():
         servizi_json=servizi_json,
         operatori_json=operatori_json,
         business_info=business_info,
-        oggi=date.today().isoformat() 
+        oggi=date.today().isoformat(),
+        tenant_id=os.environ.get('NONE')
     )
 
 @booking_bp.route('/search-servizi')
