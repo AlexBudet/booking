@@ -30,7 +30,7 @@ def invia_email_azure(to_email, subject, html_content, from_email=None):
     result = poller.result()
     return True
 
-def invia_email_azure(to_email, subject, html_content, from_email=None):
+def invia_email_async(to_email, subject, html_content, from_email=None):
     try:
         connection_string = os.environ.get('AZURE_EMAIL_CONNECTION_STRING')
         if not connection_string:
@@ -709,7 +709,7 @@ def prenota(tenant_id):
             to_email=email,
             subject='SunBooking - Conferma appuntamento!',
             html_content=riepilogo,
-            from_email=from_addr
+            from_email=None
         )
 
         # Invio email all'admin (stesso approccio sicuro)
@@ -742,7 +742,7 @@ def prenota(tenant_id):
                 to_email=admin_email,
                 subject=f'Nuova prenotazione - {escape(nome)}',
                 html_content=admin_riepilogo,
-                from_email=admin_from
+                from_email=None
             )
 
     return jsonify({
@@ -792,7 +792,7 @@ def invia_codice(tenant_id):
             to_email=email,
             subject='SunBooking - Il tuo codice di conferma',
             html_content=html_content,
-            from_email=os.environ.get('SMTP_USER', 'noreply@noreply.com')
+            from_email=None
         )
         return jsonify({"success": True})
     except Exception as e:
