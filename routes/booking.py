@@ -1,5 +1,4 @@
-from cmath import e
-import random
+# filepath: /Users/alessio.budettagmail.com/Documents/SunBooking/appl/routes/booking.py
 import string
 import json
 from collections import Counter
@@ -10,32 +9,34 @@ from datetime import date, datetime, timezone, timedelta, time
 from sqlalchemy import and_, cast, DateTime, or_
 from pytz import timezone as pytz_timezone
 import os
+import re
 import random
-from dotenv import load_dotenv
 import smtplib
 from email.message import EmailMessage
 import uuid
 from markupsafe import escape
-from sqlalchemy.orm import joinedload
 
 def invia_email_smtp(to_email, subject, html_content, from_email=None):
     smtp_host = os.environ.get('SMTP_HOST')
     smtp_port = int(os.environ.get('SMTP_PORT', '587'))
     smtp_user = os.environ.get('SMTP_USER')
     smtp_pass = os.environ.get('SMTP_PASS')
-    smtp_use_ssl = os.environ.get('SMTP_USE_SSL', 'true').lower() == 'true'
+    smtp_use_ssl = os.environ.get('SMTP_USE_SSL')
+    smtp_use_tls = os.environ.get('SMTP_USE_TLS')
     print("DEBUG SMTP CONFIG:")
     print("SMTP_HOST:", smtp_host)
     print("SMTP_PORT:", smtp_port)
     print("SMTP_USER:", smtp_user)
     print("SMTP_USE_SSL:", smtp_use_ssl)
+    print("SMTP_USE_TLS:", smtp_use_tls)
     if not smtp_host or not smtp_user or not smtp_pass:
         return False
     msg = EmailMessage()
     msg['Subject'] = subject
-    msg['From'] = from_email if from_email else smtp_user
+    msg['From'] = from_email if from_email else os.environ.get('SMTP_FROM_EMAIL', 'noreply@noreply.it')
     msg['To'] = to_email
     msg.set_content(html_content, subtype='html')
+    
     try:
         if smtp_use_ssl:
             with smtplib.SMTP_SSL(smtp_host, smtp_port) as smtp:
@@ -50,9 +51,6 @@ def invia_email_smtp(to_email, subject, html_content, from_email=None):
     except Exception as e:
         print("ERRORE SMTP:", repr(e))
         return False
-
-# Carica le variabili d'ambiente dal file .env
-load_dotenv()
 
 def to_rome(dt):
     if dt is None:
@@ -181,44 +179,41 @@ booking_bp = Blueprint('booking', __name__)
 
 @booking_bp.route('/')
 @booking_bp.route('/booking')
-def booking_page():
-    csrf_token = generate_csrf()
-    # Mostra solo servizi visibili online
-    servizi = g.db_session.query(Service).options(joinedload(Service.operators)).filter_by(is_visible_online=True, is_deleted=False).all()
-    operatori = g.db_session.query(Operator).filter_by(is_visible=True, is_deleted=False).all()
+def booking_page(tenant_id):
+    # Il tenant_id viene preso dall'URL grazie al prefisso dinamico nel blueprint
+    oggi = date.today().strftime('%Y-%m-%d')
+    servizi = g.db_session.query(Service).filter(
+        Service.servizio_durata != 0,
+        ~Service.servizio_nome.ilike('dummy')
+    ).order_by(Service.servizio_nome).all()
+    operatori = g.db_session.query(Operator).order_by(Operator.user_nome).all()
     business_info = g.db_session.query(BusinessInfo).first()
 
-    servizi_json = [
-        {
-            "id": s.id,
-            "servizio_nome": s.servizio_nome,
-            "servizio_durata": s.servizio_durata,
-            "servizio_prezzo": s.servizio_prezzo,
-            "sottocategoria": s.servizio_sottocategoria.nome,
-            "operator_ids": [op.id for op in s.operators]
-        }
-        for s in servizi
-    ]
+    servizi_json = [{
+        'id': s.id, 
+        'servizio_nome': s.servizio_nome, 
+        'servizio_durata': s.servizio_durata,
+        'servizio_prezzo': str(s.servizio_prezzo),
+        'operator_ids': [op.id for op in s.operators],
+        'sottocategoria': s.servizio_sottocategoria.nome if s.servizio_sottocategoria else None
+    } for s in servizi]
+    
+    operatori_json = [{
+        'id': op.id, 
+        'nome': op.user_nome
+    } for op in operatori]
 
-    operatori_json = [
-        {
-            "id": op.id,
-            "nome": op.user_nome,
-            "cognome": op.user_cognome
-        }
-        for op in operatori
-    ]
+    csrf_token = generate_csrf()
 
     return render_template(
-        "booking_public.html",
-        csrf_token=csrf_token,
-        servizi=servizi,
-        operatori=operatori,
-        servizi_json=servizi_json,
+        'booking_public.html', 
+        servizi_json=servizi_json, 
         operatori_json=operatori_json,
+        operatori=operatori,
+        oggi=oggi,
         business_info=business_info,
-        oggi=date.today().isoformat(),
-        tenant_id=os.environ.get('NONE')
+        csrf_token=csrf_token,
+        tenant_id=tenant_id
     )
 
 @booking_bp.route('/search-servizi')
