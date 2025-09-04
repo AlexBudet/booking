@@ -16,8 +16,8 @@ csrf = CSRFProtect(app)
 # 1. Carica le stringhe di connessione per ogni negozio dalle variabili d'ambiente
 #    Assicurati di impostarle nel tuo hosting (Railway, Azure, etc)
 TENANT_DATABASES = {
-    'negozio1': os.environ.get('DATABASE_URL_NEGOZIO1'),
-    'negozio2': os.environ.get('DATABASE_URL_NEGOZIO2')
+    't1': os.environ.get('DATABASE_URL_NEGOZIO1'),
+    't2': os.environ.get('DATABASE_URL_NEGOZIO2')
 }
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
