@@ -712,7 +712,7 @@ def prenota(tenant_id):
         try:
             invia_email_async(
                 to_email=email,
-                subject=f'{company_name} - Conferma appuntamento!',
+                subject=f'{company_name} - Nuova prenotazione - {escape(nome)}',
                 html_content=riepilogo,
                 from_email=None
             )
@@ -723,7 +723,7 @@ def prenota(tenant_id):
         admin_email = business_info.email if business_info and business_info.email else None
         admin_riepilogo = render_template_string(
             """
-            <h3>nuova prenotazione: {{ nome }} {{ cognome }}</h3>
+    <div style="font-size:2.5em;">Nuova prenotazione:</div><div style="font-size:3.5em; color:red;"> {{ nome }} {{ cognome }}</div>
             <div style="font-size:1.3em;">
             <ul>
             {% for a in appuntamenti %}
@@ -748,7 +748,7 @@ def prenota(tenant_id):
             try:
                 invia_email_async(
                     to_email=admin_email,
-                    subject=f'Nuova prenotazione - {escape(nome)}',
+                    subject= f'{company_name} - Nuova prenotazione - {escape(nome)}',
                     html_content=admin_riepilogo,
                     from_email=None
                 )
