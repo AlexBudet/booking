@@ -673,6 +673,9 @@ def prenota(tenant_id):
                 "prezzo": f"{prezzo_i:.2f}"
             })
 
+        business_info = g.db_session.query(BusinessInfo).first()
+        company_name = business_info.business_name if business_info and business_info.business_name else "SunBooking"
+
         # Template sicuro: Jinja escaperà le variabili automaticamente
         template = """
         <p>Ciao {{ nome }},</p>
@@ -706,9 +709,6 @@ def prenota(tenant_id):
             company_name=company_name
         )
 
-        # Usa l'email del business come mittente se presente
-        business_info = g.db_session.query(BusinessInfo).first()
-        company_name = business_info.business_name if business_info and business_info.business_name else "SunBooking"
         try:
             invia_email_async(
                 to_email=email,
