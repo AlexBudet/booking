@@ -621,7 +621,7 @@ def prenota(tenant_id):
         servizio = servizi_map.get(servizio_id)
         note = f"PRENOTATO DA BOOKING ONLINE - Nome: {escape(nome)}, Cognome: {escape(cognome)}, Telefono: {escape(telefono)}, Email: {escape(email)}"
         operatore = g.db_session.get(Operator, operatore_id)
-        operatore_nome = f"{escape(operatore.user_nome)} {escape(operatore.user_cognome)}" if operatore else ""
+        operatore_nome = f"{escape(operatore.user_nome)}" if operatore else ""
         nuovo = Appointment(
             client_id=dummy_client.id,
             operator_id=operatore_id,
@@ -723,7 +723,7 @@ def prenota(tenant_id):
         admin_email = business_info.email if business_info and business_info.email else None
         admin_riepilogo = render_template_string(
             """
-    <div style="font-size:2.5em;">Nuova prenotazione:</div><div style="font-size:3.5em; color:red;"> {{ nome }} {{ cognome }}</div>
+    <div style="font-size:1.5em;">Nuova prenotazione:</div><div style="font-size:2.8em; color:red;"> {{ nome }} {{ cognome }}</div>
             <div style="font-size:1.3em;">
             <ul>
             {% for a in appuntamenti %}
