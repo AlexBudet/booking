@@ -17,7 +17,8 @@ csrf = CSRFProtect(app)
 #    Assicurati di impostarle nel tuo hosting (Railway, Azure, etc)
 TENANT_DATABASES = {
     't1': os.environ.get('DATABASE_URL_NEGOZIO1'),
-    't2': os.environ.get('DATABASE_URL_NEGOZIO2')
+    't2': os.environ.get('DATABASE_URL_NEGOZIO2'),
+    't3': os.environ.get('DATABASE_URL_NEGOZIO3'),
 }
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
