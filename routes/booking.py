@@ -184,7 +184,8 @@ def booking_page(tenant_id):
     oggi = date.today().strftime('%Y-%m-%d')
     servizi = g.db_session.query(Service).filter(
         Service.servizio_durata != 0,
-        ~Service.servizio_nome.ilike('dummy')
+        ~Service.servizio_nome.ilike('dummy'),
+        Service.is_visible_online == True  # Aggiungi questo filtro
     ).order_by(Service.servizio_nome).all()
     operatori = g.db_session.query(Operator).order_by(Operator.user_nome).all()
     business_info = g.db_session.query(BusinessInfo).first()
