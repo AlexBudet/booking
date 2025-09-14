@@ -773,11 +773,20 @@ def prenota(tenant_id):
     })
 
 @booking_bp.route('/invia-codice', methods=['POST'])
+@booking_bp.route('/invia-codice', methods=['POST'])
 def invia_codice(tenant_id):
     business_info = g.db_session.query(BusinessInfo).first()
     company_name = business_info.business_name if business_info and business_info.business_name else "SunBooking"
-    last_sent = session.get('last_code_sent_at', 0)
+
     cooldown = 60
+    now_ts = datetime.now().timestamp()
+    last_sent = session.get('last_code_sent_at', 0)
+    attempts = session.get('code_send_attempts', 0)
+
+    # se l'ultimo invio è passato oltre il cooldown, azzera il contatore
+    if last_sent and now_ts - last_sent >= cooldown:
+        attempts = 0
+        session['code_send_attempts'] = 0
 
     data = request.get_json()
     if not data:
@@ -794,20 +803,18 @@ def invia_codice(tenant_id):
     if '@' not in email or '.' not in email.split('@')[-1]:
         return jsonify({"success": False, "error": "Indirizzo email non valido."}), 400
 
-    # incrementa solo dopo validazione: i primi 2 tentativi sono liberi, dal 3° vale cooldown
-    now_ts = datetime.now().timestamp()
-    attempts = session.get('code_send_attempts', 0) + 1
-    session['code_send_attempts'] = attempts
-    if attempts >= 3 and now_ts - last_sent < cooldown:
+    # Blocca SOLO dal 3° tentativo se entro cooldown
+    if attempts >= 2 and last_sent and now_ts - last_sent < cooldown:
         remaining = int(cooldown - (now_ts - last_sent))
         return jsonify({"success": False, "error": f"Puoi inviare un nuovo codice tra {remaining} secondi."}), 429
 
+    # Procedi con l'invio: genera codice, registra timestamp, e aggiorna tentativi
     codice = ''.join(random.choices(string.digits, k=6))
     now_ts = datetime.now().timestamp()
     session['codice_conferma'] = codice
     session['email_conferma'] = email
     session['last_code_sent_at'] = now_ts
-    session['code_send_attempts'] = 0  # reset dopo invio riuscito
+    session['code_send_attempts'] = attempts + 1
 
     html_content = f"""
         <p>Ciao {escape(nome)},</p>
