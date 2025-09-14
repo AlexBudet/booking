@@ -87,6 +87,43 @@ def attach_db_session():
     elif tenant_id:
         abort(404, description="Negozio non trovato.")
 
+@app.after_request
+def set_security_headers(response):
+    # Prevent MIME type sniffing
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+
+    # Clickjacking: allow same-origin embedding for internal widgets
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+
+    # Build CSP with optional extra hosts from env
+    extra_hosts = os.environ.get('CSP_TRUSTED_HOSTS', '').strip()
+    extra = (' ' + extra_hosts) if extra_hosts else ''
+
+    csp = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https: " + extra + "; "
+        "style-src 'self' 'unsafe-inline' https: " + extra + "; "
+        "img-src 'self' data: https: " + extra + "; "
+        "connect-src 'self' https: " + extra + "; "
+        "font-src 'self' data: https: " + extra + "; "
+        "object-src 'none'; "
+        "frame-ancestors 'self';"
+    )
+
+    # If set, send report-only header first to detect violations without breaking layout
+    if os.environ.get('CSP_REPORT_ONLY', '0') == '1':
+        response.headers['Content-Security-Policy-Report-Only'] = csp
+    else:
+        response.headers['Content-Security-Policy'] = csp
+
+    # Cross-Origin Resource Policy
+    response.headers['Cross-Origin-Resource-Policy'] = 'same-origin'
+    # Referrer policy
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    # HSTS: rollout-safe default (1 day). Increase after verification.
+    response.headers['Strict-Transport-Security'] = 'max-age=86400; includeSubDomains; preload'
+    return response
+
 @app.teardown_appcontext
 def shutdown_session(exception=None):
     # Rimuove la sessione del database alla fine della richiesta
