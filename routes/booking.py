@@ -777,8 +777,7 @@ def invia_codice(tenant_id):
     business_info = g.db_session.query(BusinessInfo).first()
     company_name = business_info.business_name if business_info and business_info.business_name else "SunBooking"
     last_sent = session.get('last_code_sent_at', 0)
-    if datetime.now().timestamp() - last_sent < 60:
-        return jsonify({"success": False, "error": "Puoi inviare un nuovo codice tra un minuto."}), 429
+    cooldown = 60
 
     data = request.get_json()
     if not data:
@@ -795,10 +794,20 @@ def invia_codice(tenant_id):
     if '@' not in email or '.' not in email.split('@')[-1]:
         return jsonify({"success": False, "error": "Indirizzo email non valido."}), 400
 
+    # incrementa solo dopo validazione: i primi 2 tentativi sono liberi, dal 3° vale cooldown
+    now_ts = datetime.now().timestamp()
+    attempts = session.get('code_send_attempts', 0) + 1
+    session['code_send_attempts'] = attempts
+    if attempts >= 3 and now_ts - last_sent < cooldown:
+        remaining = int(cooldown - (now_ts - last_sent))
+        return jsonify({"success": False, "error": f"Puoi inviare un nuovo codice tra {remaining} secondi."}), 429
+
     codice = ''.join(random.choices(string.digits, k=6))
+    now_ts = datetime.now().timestamp()
     session['codice_conferma'] = codice
     session['email_conferma'] = email
-    session['last_code_sent_at'] = datetime.now().timestamp()
+    session['last_code_sent_at'] = now_ts
+    session['code_send_attempts'] = 0  # reset dopo invio riuscito
 
     html_content = f"""
         <p>Ciao {escape(nome)},</p>
