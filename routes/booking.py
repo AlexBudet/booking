@@ -263,7 +263,11 @@ def orari_disponibili(tenant_id):
     if not servizi_ids:
         return jsonify({"error": "Servizi non trovati"}), 404
 
-    servizi = g.db_session.query(Service).filter(Service.id.in_(servizi_ids)).all()
+    servizi = g.db_session.query(Service).filter(
+        Service.id.in_(servizi_ids),
+        Service.is_deleted == False,
+        Service.is_visible_online == True
+    ).all()
     if not servizi:
         return jsonify({"error": "Servizi non trovati"}), 404
     
@@ -494,7 +498,11 @@ def prenota(tenant_id):
 
     # --- PATCH: Usa la stessa logica di orari_disponibili per validare slot e operatori ---
     servizi_ids = [int(s.get("servizio_id")) for s in servizi]
-    servizi_objs = g.db_session.query(Service).filter(Service.id.in_(servizi_ids)).all()
+    servizi_objs = g.db_session.query(Service).filter(
+        Service.id.in_(servizi_ids),
+        Service.is_deleted == False,
+        Service.is_visible_online == True
+    ).all()
     servizi_map = {s.id: s for s in servizi_objs}
     servizi_operatori = {s.id: [op.id for op in s.operators] for s in servizi_objs}
 
