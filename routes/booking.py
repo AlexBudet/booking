@@ -778,7 +778,7 @@ def invia_codice(tenant_id):
     business_info = g.db_session.query(BusinessInfo).first()
     company_name = business_info.business_name if business_info and business_info.business_name else "SunBooking"
 
-    cooldown = 60
+    cooldown = 300  # 5 minuti
     now_ts = datetime.now().timestamp()
     last_sent = session.get('last_code_sent_at', 0)
     attempts = session.get('code_send_attempts', 0)
