@@ -1,5 +1,6 @@
 import os
 from flask import Flask, g, request, render_template, abort
+from datetime import timedelta
 from appl import db
 from routes.booking import booking_bp
 from flask_wtf import CSRFProtect
@@ -85,6 +86,31 @@ def attach_db_session():
         g.tenant_id = tenant_id  # Aggiungi per filtrare query
     elif tenant_id:
         abort(404, description="Negozio non trovato.")
+
+@app.after_request
+def set_security_headers(response):
+    # Prevent MIME type sniffing
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    # Clickjacking protection (CSP frame-ancestors is primary)
+    response.headers['X-Frame-Options'] = 'DENY'
+    # Content Security Policy: adjust sources to your needs (allow external CDNs if used)
+    response.headers['Content-Security-Policy'] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; "
+        "connect-src 'self' https:; "
+        "font-src 'self' data:; "
+        "object-src 'none'; "
+        "frame-ancestors 'none';"
+    )
+    # Cross-Origin Resource Policy
+    response.headers['Cross-Origin-Resource-Policy'] = 'same-origin'
+    # Referrer policy
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    # HSTS: enable only if HTTPS is enforced. Start with shorter max-age if unsure.
+    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains; preload'
+    return response
 
 @app.teardown_appcontext
 def shutdown_session(exception=None):
