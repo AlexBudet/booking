@@ -18,12 +18,16 @@ import time as time_mod
 from azure.communication.email import EmailClient
 from wbiztool_client import WbizToolClient
 
+def _now_rome():
+    return datetime.now(pytz_timezone('Europe/Rome'))
+
 # Stato semplice per il job mattutino (per-tenant, in memoria)
 _MORNING_STATE = {}        # tenant_id -> {"date": date, "queue": [dict], "idx": int, "next_send_at": datetime}
 _MORNING_LOCKS = {}        # tenant_id -> threading.Lock()
 MORNING_POLL_SECONDS = 60   # ogni quanto il tick gira
 MORNING_RATE_SECONDS = 120  # ogni quanto inviare un messaggio
 WA_MORNING_DEBUG = True  # metti a False quando hai finito i test
+PROCESS_START_AT = _now_rome() # Registra l'orario di avvio del processo (serve per capire se il riavvio è avvenuto dopo il cutoff)
 
 def _wa_dbg(tenant_id, msg):
     if WA_MORNING_DEBUG:
@@ -37,7 +41,9 @@ def _normalize_msisdn(phone: str) -> str:
     return phone
 
 def _tenant_env_prefix(tenant_id: str) -> str:
-    return str(tenant_id).upper()
+    raw = str(tenant_id or '').strip().upper().replace('-', '_')
+    digits = ''.join(ch for ch in raw if ch.isdigit())
+    return f'T{digits}' if digits else raw
 
 def invia_email_azure(to_email, subject, html_content, from_email=None):
     connection_string = os.environ.get('AZURE_EMAIL_CONNECTION_STRING')
@@ -71,9 +77,6 @@ def invia_email_async(to_email, subject, html_content, from_email=None):
             print(f"ERROR sending email: {repr(e)}")
     thread = threading.Thread(target=send_email, daemon=True)
     thread.start()
-
-def _now_rome():
-    return datetime.now(pytz_timezone('Europe/Rome'))
 
 def to_rome(dt):
     if dt is None:
@@ -859,13 +862,30 @@ def invia_codice(tenant_id):
         return jsonify({"success": False, "error": "Errore durante l'invio dell'email."}), 500
     
 def _get_wbiztool_creds(tenant_id: str):
-    p = _tenant_env_prefix(tenant_id)
-    api_key = os.environ.get(f'WBIZTOOL_API_KEY_{p}') or os.environ.get('WBIZTOOL_API_KEY')
-    client_id = os.environ.get(f'WBIZTOOL_CLIENT_ID_{p}') or os.environ.get('WBIZTOOL_CLIENT_ID')
-    wa_client_id = os.environ.get(f'WBIZTOOL_WHATSAPP_CLIENT_ID_{p}') or os.environ.get('WBIZTOOL_WHATSAPP_CLIENT_ID')
+    suffix = _tenant_env_prefix(tenant_id)  # es: T1
+    k_api = f'WBIZTOOL_API_KEY_{suffix}'
+    k_cli = f'WBIZTOOL_CLIENT_ID_{suffix}'
+    k_wa  = f'WBIZTOOL_WHATSAPP_CLIENT_ID_{suffix}'
+
+    api_key = os.environ.get(k_api)
+    client_id = os.environ.get(k_cli)
+    wa_client_id = os.environ.get(k_wa)
+
     if not (api_key and client_id and wa_client_id):
+        _wa_dbg(tenant_id, f"Credenziali WBIZTOOL assenti per {suffix}. Nessun fallback.")
         return None
-    return {"api_key": api_key, "client_id": int(client_id), "wa_client_id": int(wa_client_id)}
+
+    try:
+        creds = {
+            "api_key": str(api_key).strip(),
+            "client_id": int(str(client_id).strip()),
+            "wa_client_id": int(str(wa_client_id).strip())
+        }
+        _wa_dbg(tenant_id, f"Credenziali WBIZTOOL caricate (suffix={suffix})")
+        return creds
+    except Exception as e:
+        _wa_dbg(tenant_id, f"Env WBIZTOOL {suffix} non parseabili: {repr(e)}")
+        return None
 
 def _prepare_wbiz_phone(phone: str):
     """Ritorna (numero_pulito, country_code) stile calendar.py"""
@@ -1109,6 +1129,29 @@ def process_morning_tick(app, tenant_id: str):
                 return
 
             st = _MORNING_STATE.get(tenant_id)
+
+            # Se marcato per saltare la giornata corrente (post-riavvio), esci
+            if st and st.get("skip_today"):
+                _wa_dbg(tenant_id, "skip_today attivo: nessun invio fino a domani")
+                return
+
+            # RESTART GUARD: se il processo è (ri)partito oggi DOPO l'orario di reminder, non inviare oggi
+            if (not st or st.get("date") != now.date()) and now_time >= reminder_time:
+                started = PROCESS_START_AT
+                if started.date() == now.date() and started.time() >= reminder_time:
+                    tz = pytz_timezone('Europe/Rome')
+                    tomorrow = now.date() + timedelta(days=1)
+                    next_naive = datetime.combine(tomorrow, reminder_time)  # naive domani hh:mm
+                    _MORNING_STATE[tenant_id] = {
+                        "date": now.date(),
+                        "queue": [],
+                        "idx": 0,
+                        "next_send_at": tz.localize(next_naive),
+                        "skip_today": True
+                    }
+                    _wa_dbg(tenant_id, f"riavvio dopo cutoff {reminder_time}: salto invii di oggi, riparto domani {next_naive.strftime('%Y-%m-%d %H:%M')}")
+                    return
+
             if not st or st.get("date") != now.date() or not st.get("queue"):
                 # costruisci coda solo dagli appuntamenti successivi a reminder_time
                 start_from = datetime.combine(now.date(), reminder_time)  # naive
@@ -1127,10 +1170,6 @@ def process_morning_tick(app, tenant_id: str):
                 _wa_dbg(tenant_id, f"coda costruita da {start_from.strftime('%H:%M')}: {len(queue)} target")
                 if not queue:
                     return
-
-            if st["idx"] >= len(st["queue"]):
-                _wa_dbg(tenant_id, "coda finita")
-                return
 
             rate_sec = MORNING_RATE_SECONDS
             _wa_dbg(tenant_id, f"tick: idx={st['idx']}/{len(st['queue'])}, next={st['next_send_at']}, now={now}")
