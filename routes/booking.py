@@ -1,23 +1,43 @@
 # filepath: /Users/alessio.budettagmail.com/Documents/SunBooking/appl/routes/booking.py
 import string
 import json
-from collections import Counter
-from flask import Blueprint, g, request, jsonify, render_template, render_template_string, session
+from flask import Blueprint, g, request, jsonify, render_template, render_template_string, session, current_app
 from flask_wtf.csrf import generate_csrf
-from appl.models import Appointment, AppointmentSource, Service, Operator, OperatorShift, Client, BusinessInfo, Subcategory, db
+from appl.models import Appointment, AppointmentSource, Service, Operator, OperatorShift, Client, BusinessInfo, db
 from datetime import date, datetime, timezone, timedelta, time
-from sqlalchemy import and_, cast, DateTime, or_
+from sqlalchemy import or_
 from pytz import timezone as pytz_timezone
-import os
 import re
+import os
 import random
-import smtplib
-from email.message import EmailMessage
 import uuid
 from markupsafe import escape
 import threading
+import requests
+import time as time_mod
 from azure.communication.email import EmailClient
-import threading
+from wbiztool_client import WbizToolClient
+
+# Stato semplice per il job mattutino (per-tenant, in memoria)
+_MORNING_STATE = {}        # tenant_id -> {"date": date, "queue": [dict], "idx": int, "next_send_at": datetime}
+_MORNING_LOCKS = {}        # tenant_id -> threading.Lock()
+MORNING_POLL_SECONDS = 60   # ogni quanto il tick gira
+MORNING_RATE_SECONDS = 120  # ogni quanto inviare un messaggio
+WA_MORNING_DEBUG = True  # metti a False quando hai finito i test
+
+def _wa_dbg(tenant_id, msg):
+    if WA_MORNING_DEBUG:
+        print(f"[WA-MORNING][{tenant_id}] {msg}")
+
+def _normalize_msisdn(phone: str) -> str:
+    if not phone:
+        return ''
+    phone = phone.strip()
+    phone = re.sub(r'[^\d+]', '', phone)
+    return phone
+
+def _tenant_env_prefix(tenant_id: str) -> str:
+    return str(tenant_id).upper()
 
 def invia_email_azure(to_email, subject, html_content, from_email=None):
     connection_string = os.environ.get('AZURE_EMAIL_CONNECTION_STRING')
@@ -51,6 +71,9 @@ def invia_email_async(to_email, subject, html_content, from_email=None):
             print(f"ERROR sending email: {repr(e)}")
     thread = threading.Thread(target=send_email, daemon=True)
     thread.start()
+
+def _now_rome():
+    return datetime.now(pytz_timezone('Europe/Rome'))
 
 def to_rome(dt):
     if dt is None:
@@ -773,7 +796,6 @@ def prenota(tenant_id):
     })
 
 @booking_bp.route('/invia-codice', methods=['POST'])
-@booking_bp.route('/invia-codice', methods=['POST'])
 def invia_codice(tenant_id):
     business_info = g.db_session.query(BusinessInfo).first()
     company_name = business_info.business_name if business_info and business_info.business_name else "SunBooking"
@@ -835,3 +857,239 @@ def invia_codice(tenant_id):
     except Exception as e:
         print("ERROR queueing email:", repr(e))
         return jsonify({"success": False, "error": "Errore durante l'invio dell'email."}), 500
+    
+def _get_wbiztool_creds(tenant_id: str):
+    p = _tenant_env_prefix(tenant_id)
+    api_key = os.environ.get(f'WBIZTOOL_API_KEY_{p}') or os.environ.get('WBIZTOOL_API_KEY')
+    client_id = os.environ.get(f'WBIZTOOL_CLIENT_ID_{p}') or os.environ.get('WBIZTOOL_CLIENT_ID')
+    wa_client_id = os.environ.get(f'WBIZTOOL_WHATSAPP_CLIENT_ID_{p}') or os.environ.get('WBIZTOOL_WHATSAPP_CLIENT_ID')
+    if not (api_key and client_id and wa_client_id):
+        return None
+    return {"api_key": api_key, "client_id": int(client_id), "wa_client_id": int(wa_client_id)}
+
+def _prepare_wbiz_phone(phone: str):
+    """Ritorna (numero_pulito, country_code) stile calendar.py"""
+    numero_pulito = re.sub(r'\D', '', str(phone or ''))
+    if numero_pulito.startswith('00'):
+        numero_pulito = numero_pulito.lstrip('0')
+    if not numero_pulito:
+        return '', ''
+    if not numero_pulito.startswith('39'):
+        numero_pulito = '39' + numero_pulito
+    country_code = '39' if numero_pulito.startswith('39') else numero_pulito[:2]
+    return numero_pulito, country_code
+
+def _render_morning_text(session, template: str, item: dict) -> str:
+    """Sostituisce {{nome}}, {{cognome}}, {{data}}, {{ora}}, {{azienda}}"""
+    try:
+        appt = session.get(Appointment, item["appointment_id"])
+        cli = session.get(Client, item["client_id"]) if item.get("client_id") else None
+        biz = session.query(BusinessInfo).first()
+        dt = getattr(appt, 'start_time', None)
+        data_str = dt.strftime('%d/%m/%Y') if dt else ''
+        ora_str = dt.strftime('%H:%M') if dt else ''
+        nome = (getattr(cli, 'cliente_nome', '') or '').strip()
+        cognome = (getattr(cli, 'cliente_cognome', '') or '').strip()
+        azienda = (getattr(biz, 'business_name', '') or '').strip()
+        nome_fmt = " ".join([w.capitalize() for w in nome.split()])
+        txt = (template or "")
+        return (txt.replace('{{nome}}', nome_fmt)
+                   .replace('{{cognome}}', cognome)
+                   .replace('{{data}}', data_str)
+                   .replace('{{ora}}', ora_str)
+                   .replace('{{azienda}}', azienda))
+    except Exception:
+        return template or ''
+
+def _send_wbiztool_message(creds: dict, to_phone: str, text: str) -> bool:
+    """Invia con WbizToolClient come in calendar.py"""
+    try:
+        numero_pulito, country_code = _prepare_wbiz_phone(to_phone)
+        if not numero_pulito:
+            print("[WBIZTOOL] Numero vuoto dopo normalizzazione")
+            return False
+
+        client = WbizToolClient(api_key=creds["api_key"], client_id=creds["client_id"])
+        resp = client.send_message(
+            phone=numero_pulito,
+            msg=text or "",
+            msg_type=0,
+            whatsapp_client=creds["wa_client_id"],
+            country_code=country_code
+        )
+        # Esiti possibili: dict {"status":1} oppure oggetto/Response 2xx
+        if isinstance(resp, dict):
+            ok = resp.get("status") == 1
+            if not ok:
+                print(f"[WBIZTOOL] send failed dict: {resp}")
+            return ok
+        status = getattr(resp, 'status_code', None)
+        if status is None:
+            # fallback best-effort
+            return True
+        ok = 200 <= status < 300
+        if not ok:
+            body = getattr(resp, 'text', None) or getattr(resp, 'content', None)
+            print(f"[WBIZTOOL] http failed {status} body={body}")
+        return ok
+    except Exception as e:
+        print(f"[WBIZTOOL] ERROR: {repr(e)}")
+        return False
+    
+def _build_today_targets(session, start_from=None) -> list:
+    """
+    Seleziona gli appuntamenti odierni ordinati, esclusi OFF, pseudo-servizio 9999,
+    e i finti BOOKING/ONLINE. Deduplica blocchi contigui per cliente.
+    Ritorna una lista di dict: {"appointment_id", "client_id", "phone"}.
+    """
+    today = _now_rome().date()
+    start = datetime.combine(today, time.min)
+    end = datetime.combine(today + timedelta(days=1), time.min)
+
+    # Se richiesto, limita dalla fascia oraria indicata (stesso giorno)
+    if isinstance(start_from, datetime) and start_from.date() == today and start_from > start:
+        start = start_from
+
+    # Client finto "BOOKING ONLINE" da escludere
+    booking_dummy = session.query(Client).filter_by(cliente_nome="BOOKING", cliente_cognome="ONLINE").first()
+    dummy_id = booking_dummy.id if booking_dummy else None
+
+    q = session.query(Appointment).join(Client, Appointment.client_id == Client.id).filter(
+        Appointment.start_time >= start,
+        Appointment.start_time < end,
+        # Escludi blocchi OFF e pseudo-servizi
+        ~Appointment.note.ilike('%OFF%'),
+        Appointment.service_id != 9999,
+        # Escludi client finto se presente
+        (Appointment.client_id != dummy_id) if dummy_id else True,
+        # Solo clienti con telefono
+        Client.cliente_cellulare.isnot(None),
+        Client.cliente_cellulare != ''
+    ).order_by(Appointment.start_time.asc())
+
+    apps = q.all()
+    targets = []
+    last_end_by_client = {}
+
+    for a in apps:
+        c_id = a.client_id
+        # durata in minuti; fallback 0
+        dur_min = int(getattr(a, "_duration", 0) or 0)
+        a_start = a.start_time
+        a_end = a_start + timedelta(minutes=dur_min)
+
+        last_end = last_end_by_client.get(c_id)
+        if last_end and a_start <= last_end:
+            # blocco contiguo per lo stesso cliente: salta (già coperto)
+            last_end_by_client[c_id] = max(last_end, a_end)
+            continue
+
+        client = session.get(Client, c_id) if c_id else None
+        phone = _normalize_msisdn(getattr(client, 'cliente_cellulare', '') if client else '')
+        if not phone:
+            last_end_by_client[c_id] = a_end
+            continue
+
+        targets.append({
+            "appointment_id": a.id,
+            "client_id": c_id,
+            "phone": phone
+        })
+        last_end_by_client[c_id] = a_end
+
+    return targets
+
+def process_morning_tick(app, tenant_id: str):
+    """
+    Tick per tenant:
+    - carica config
+    - costruisce coda da reminder_time -> fine giornata
+    - invia 1 messaggio per tick rispettando MORNING_RATE_SECONDS
+    """
+    lock = _MORNING_LOCKS.get(tenant_id)
+    if lock is None:
+        lock = threading.Lock()
+        _MORNING_LOCKS[tenant_id] = lock
+
+    with lock:
+        SessionFactory = app.config['DB_SESSIONS'][tenant_id]
+        session = SessionFactory()
+        try:
+            biz = session.query(BusinessInfo).first()
+            if not biz or not getattr(biz, 'whatsapp_morning_reminder_enabled', False):
+                _wa_dbg(tenant_id, "disabilitato o BusinessInfo assente")
+                _MORNING_STATE.pop(tenant_id, None)
+                return
+
+            reminder_time = getattr(biz, 'whatsapp_morning_reminder_time', time(8, 0))
+            msg_text = getattr(biz, 'whatsapp_message_morning', None)
+            if not msg_text or not isinstance(reminder_time, time):
+                _wa_dbg(tenant_id, "config mancante (msg/time)")
+                return
+
+            now = _now_rome()  # aware Europe/Rome
+            now_time = now.time()
+            if getattr(now_time, 'tzinfo', None) is not None:
+                now_time = now_time.replace(tzinfo=None)
+
+            if now_time < reminder_time:
+                _wa_dbg(tenant_id, f"non ancora tempo: ora={now_time} < {reminder_time}")
+                return
+            else:
+                _wa_dbg(tenant_id, f"finestra aperta: ora={now_time} >= {reminder_time}")
+
+            creds = _get_wbiztool_creds(tenant_id)
+            if not creds:
+                _wa_dbg(tenant_id, "credenziali mancanti")
+                return
+
+            st = _MORNING_STATE.get(tenant_id)
+            if not st or st.get("date") != now.date() or not st.get("queue"):
+                # costruisci coda solo dagli appuntamenti successivi a reminder_time
+                start_from = datetime.combine(now.date(), reminder_time)  # naive
+                queue = _build_today_targets(session, start_from=start_from)
+                tz = pytz_timezone('Europe/Rome')
+                next_naive = datetime.combine(now.date(), reminder_time)  # naive
+                next_send_at = tz.localize(next_naive)  # corretto con pytz
+
+                _MORNING_STATE[tenant_id] = {
+                    "date": now.date(),
+                    "queue": queue,
+                    "idx": 0,
+                    "next_send_at": next_send_at
+                }
+                st = _MORNING_STATE[tenant_id]
+                _wa_dbg(tenant_id, f"coda costruita da {start_from.strftime('%H:%M')}: {len(queue)} target")
+                if not queue:
+                    return
+
+            if st["idx"] >= len(st["queue"]):
+                _wa_dbg(tenant_id, "coda finita")
+                return
+
+            rate_sec = MORNING_RATE_SECONDS
+            _wa_dbg(tenant_id, f"tick: idx={st['idx']}/{len(st['queue'])}, next={st['next_send_at']}, now={now}")
+            if now >= st["next_send_at"]:
+                item = st["queue"][st["idx"]]
+                st["idx"] += 1
+
+                # compila il template con dati reali
+                text_to_send = _render_morning_text(session, msg_text, item)
+                ok = _send_wbiztool_message(creds, item["phone"], text_to_send)
+                _wa_dbg(tenant_id, f"inviato={ok} appt_id={item['appointment_id']} -> {item['phone']}")
+                st["next_send_at"] = now + timedelta(seconds=rate_sec)
+
+            _MORNING_STATE[tenant_id] = st
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            print(f"[WA-MORNING][{tenant_id}] error: {repr(e)}")
+            raise
+        finally:
+            try:
+                session.close()
+            finally:
+                try:
+                    SessionFactory.remove()
+                except Exception:
+                    pass

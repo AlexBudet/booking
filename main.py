@@ -1,6 +1,7 @@
 import os
-from flask import Flask, g, request, render_template, abort
-from datetime import timedelta
+import threading
+import time as time_mod
+from flask import Flask, g, request, abort
 from appl import db
 from routes.booking import booking_bp
 from flask_wtf import CSRFProtect
@@ -51,6 +52,41 @@ db_bases = {
 for tenant, base in db_bases.items():
     base.prepare(db_engines[tenant], reflect=True)
 
+# Espone i riferimenti per uso altrove (es. job schedulati)
+app.config['DB_SESSIONS'] = db_sessions
+app.config['DB_BASES'] = db_bases
+app.config['TENANT_DATABASES'] = TENANT_DATABASES
+app.config['DB_ENGINES'] = db_engines
+
+def _start_morning_scheduler_once(app):
+    # evita multi-avvio in ambienti con più worker
+    if app.config.get('MORNING_SCHEDULER_STARTED'):
+        return
+    app.config['MORNING_SCHEDULER_STARTED'] = True
+
+    def worker():
+        from flask import current_app
+        import importlib
+        # importa il modulo una volta e leggi attributi
+        booking_mod = importlib.import_module('routes.booking')
+        poll_seconds = getattr(booking_mod, 'MORNING_POLL_SECONDS', 60)
+        process_morning_tick = getattr(booking_mod, 'process_morning_tick')
+
+        while True:
+            try:
+                with app.app_context():
+                    sessions = current_app.config.get('DB_SESSIONS', {})
+                    for tenant_id in sessions.keys():
+                        try:
+                            process_morning_tick(app, tenant_id)
+                        except Exception as e:
+                            print(f"[WA-MORNING][{tenant_id}] tick error: {repr(e)}")
+            except Exception as e:
+                print(f"[WA-MORNING] loop error: {repr(e)}")
+            time_mod.sleep(poll_seconds)
+
+    t = threading.Thread(target=worker, name="wa_morning_scheduler", daemon=True)
+    t.start()
 
 # 4. Registra il blueprint con un prefisso dinamico
 #    Questo renderà le tue routes accessibili tramite /negozio1/booking, /negozio2/booking, etc.
@@ -60,13 +96,20 @@ app.register_blueprint(booking_bp, url_prefix='/<tenant_id>')
 def index():
     links = []
     for tenant_id in TENANT_DATABASES.keys():
-        session = db_sessions.get(tenant_id)
-        base = db_bases.get(tenant_id)
-        if session and base:
-            # Usa la classe riflessa
-            BusinessInfo = getattr(base.classes, 'business_info', None)
-            business_info = session.query(BusinessInfo).first() if BusinessInfo else None
-            nome = business_info.business_name if business_info and hasattr(business_info, 'business_name') else tenant_id
+        Session = db_sessions.get(tenant_id)
+        Base = db_bases.get(tenant_id)
+        if Session and Base:
+            BusinessInfo = getattr(Base.classes, 'business_info', None)
+            nome = tenant_id
+            if BusinessInfo:
+                s = Session()
+                try:
+                    bi = s.query(BusinessInfo).first()
+                    if bi and getattr(bi, 'business_name', None):
+                        nome = bi.business_name
+                finally:
+                    s.close()
+                    Session.remove()
             links.append(f'<li><a href="/{tenant_id}/booking">{nome}</a></li>')
         else:
             links.append(f'<li><a href="/{tenant_id}/booking">{tenant_id}</a></li>')
@@ -130,7 +173,7 @@ def shutdown_session(exception=None):
     if hasattr(g, 'db_session'):
         g.db_session.remove()
 
-# --- FINE MODIFICHE ---
+_start_morning_scheduler_once(app)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
