@@ -879,6 +879,68 @@ def _prepare_wbiz_phone(phone: str):
     country_code = '39' if numero_pulito.startswith('39') else numero_pulito[:2]
     return numero_pulito, country_code
 
+def _services_bullet_for_contiguous_block(session, appt) -> str:
+    """
+    Restituisce una lista puntata dei servizi per il blocco contiguo dell'appuntamento:
+    include appuntamenti dello stesso cliente nello stesso giorno che si toccano o si sovrappongono,
+    escludendo OFF e servizio 9999.
+    """
+    try:
+        if not appt or not appt.client_id or not appt.start_time:
+            return ""
+        day = appt.start_time.date()
+        # carica tutti gli appt del cliente nel giorno (escludi OFF e 9999)
+        appts = (
+            session.query(Appointment)
+            .filter(
+                Appointment.client_id == appt.client_id,
+                Appointment.start_time >= datetime.combine(day, time.min),
+                Appointment.start_time < datetime.combine(day + timedelta(days=1), time.min),
+                ~Appointment.note.ilike('%OFF%'),
+                Appointment.service_id != 9999
+            )
+            .order_by(Appointment.start_time.asc())
+            .all()
+        )
+        if not appts:
+            return ""
+
+        # prepara start/end per catena contigua
+        starts, ends = [], []
+        for a in appts:
+            start = a.start_time
+            dur_min = int(getattr(a, "_duration", 0) or 0)
+            if dur_min <= 0:
+                svc = session.get(Service, a.service_id) if a.service_id else None
+                dur_min = int(getattr(svc, "servizio_durata", 0) or 30)
+            ends.append(start + timedelta(minutes=dur_min))
+            starts.append(start)
+
+        # trova indice dell'appuntamento corrente
+        try:
+            idx = next(i for i, a in enumerate(appts) if a.id == appt.id)
+        except StopIteration:
+            return ""
+
+        # espandi a sinistra/destra finché contigui (overlap o adiacenti)
+        lower = idx
+        while lower - 1 >= 0 and ends[lower - 1] >= starts[lower]:
+            lower -= 1
+        upper = idx
+        while upper + 1 < len(appts) and starts[upper + 1] <= ends[upper]:
+            upper += 1
+
+        # costruisci elenco servizi (in ordine)
+        lines = []
+        for i in range(lower, upper + 1):
+            svc = session.get(Service, appts[i].service_id) if appts[i].service_id else None
+            label = ((getattr(svc, "servizio_nome", "") or "").strip() if svc else "")
+            if label:
+                lines.append(f"• {label}")
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
 def _render_morning_text(session, template: str, item: dict) -> str:
     """Sostituisce {{nome}}, {{cognome}}, {{data}}, {{ora}}, {{azienda}}"""
     try:
@@ -892,12 +954,15 @@ def _render_morning_text(session, template: str, item: dict) -> str:
         cognome = (getattr(cli, 'cliente_cognome', '') or '').strip()
         azienda = (getattr(biz, 'business_name', '') or '').strip()
         nome_fmt = " ".join([w.capitalize() for w in nome.split()])
+        servizi_str = _services_bullet_for_contiguous_block(session, appt)
+
         txt = (template or "")
         return (txt.replace('{{nome}}', nome_fmt)
                    .replace('{{cognome}}', cognome)
                    .replace('{{data}}', data_str)
                    .replace('{{ora}}', ora_str)
-                   .replace('{{azienda}}', azienda))
+                   .replace('{{azienda}}', azienda)
+                   .replace('{{servizi}}', ("\n" + servizi_str + "\n") if servizi_str else ""))
     except Exception:
         return template or ''
 
