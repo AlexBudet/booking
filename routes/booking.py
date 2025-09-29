@@ -1130,27 +1130,32 @@ def process_morning_tick(app, tenant_id: str):
 
             st = _MORNING_STATE.get(tenant_id)
 
-            # Se marcato per saltare la giornata corrente (post-riavvio), esci
+            # Gestione skip_today: se è impostato per la data corrente, skip.
+            # Se invece skip_today è presente ma riferito a una data passata, resetta lo stato.
             if st and st.get("skip_today"):
-                _wa_dbg(tenant_id, "skip_today attivo: nessun invio fino a domani")
-                return
-
-            # RESTART GUARD: se il processo è (ri)partito oggi DOPO l'orario di reminder, non inviare oggi
-            if (not st or st.get("date") != now.date()) and now_time >= reminder_time:
-                started = PROCESS_START_AT
-                if started.date() == now.date() and started.time() >= reminder_time:
-                    tz = pytz_timezone('Europe/Rome')
-                    tomorrow = now.date() + timedelta(days=1)
-                    next_naive = datetime.combine(tomorrow, reminder_time)  # naive domani hh:mm
-                    _MORNING_STATE[tenant_id] = {
-                        "date": now.date(),
-                        "queue": [],
-                        "idx": 0,
-                        "next_send_at": tz.localize(next_naive),
-                        "skip_today": True
-                    }
-                    _wa_dbg(tenant_id, f"riavvio dopo cutoff {reminder_time}: salto invii di oggi, riparto domani {next_naive.strftime('%Y-%m-%d %H:%M')}")
+                if st.get("date") == now.date():
+                    _wa_dbg(tenant_id, "skip_today attivo: nessun invio fino a domani")
                     return
+                else:
+                    _wa_dbg(tenant_id, "skip_today scaduto (data diversa): reset dello stato")
+                    _MORNING_STATE.pop(tenant_id, None)
+                    st = None
+
+            # RESTART GUARD (modificata): se non abbiamo ancora costruito lo stato per la data corrente
+            # e siamo già oltre reminder_time, SKIP la giornata corrente e pianifica il prossimo invio a domani reminder_time.
+            if (not st or st.get("date") != now.date()) and now_time >= reminder_time:
+                tz = pytz_timezone('Europe/Rome')
+                tomorrow = now.date() + timedelta(days=1)
+                next_naive = datetime.combine(tomorrow, reminder_time)  # naive domani hh:mm
+                _MORNING_STATE[tenant_id] = {
+                    "date": now.date(),
+                    "queue": [],
+                    "idx": 0,
+                    "next_send_at": tz.localize(next_naive),
+                    "skip_today": True
+                }
+                _wa_dbg(tenant_id, f"oltre reminder_time e stato non presente: salto invii di oggi, riparto domani {next_naive.strftime('%Y-%m-%d %H:%M')}")
+                return
 
             if not st or st.get("date") != now.date() or not st.get("queue"):
                 # costruisci coda solo dagli appuntamenti successivi a reminder_time
