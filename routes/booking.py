@@ -1086,10 +1086,10 @@ def _build_today_targets(session, start_from=None) -> list:
 
 def process_morning_tick(app, tenant_id: str):
     """
-    Tick per tenant:
-    - carica config
-    - costruisce coda da reminder_time -> fine giornata
-    - invia 1 messaggio per tick rispettando MORNING_RATE_SECONDS
+    Semplice: ogni tick (ogni 60s) legge l'ora dal DB e, SE E SOLO SE
+    ora_corrente(HH:MM) == reminder_time(HH:MM), costruisce la lista per
+    la DATA CORRENTE e avvia gli invii (primo invio immediato, poi ogni MORNING_RATE_SECONDS).
+    Non ci sono altri controlli/skip basati su riavvio/process_start_at.
     """
     lock = _MORNING_LOCKS.get(tenant_id)
     if lock is None:
@@ -1117,11 +1117,12 @@ def process_morning_tick(app, tenant_id: str):
             if getattr(now_time, 'tzinfo', None) is not None:
                 now_time = now_time.replace(tzinfo=None)
 
-            if now_time < reminder_time:
-                _wa_dbg(tenant_id, f"non ancora tempo: ora={now_time} < {reminder_time}")
+            # Controllo semplice: procedi SOLO nel minuto in cui HH:MM coincide con reminder_time
+            if not (now_time.hour == reminder_time.hour and now_time.minute == reminder_time.minute):
+                _wa_dbg(tenant_id, f"non è il minuto di invio: ora={now_time.strftime('%H:%M')} reminder={reminder_time.strftime('%H:%M')}")
                 return
-            else:
-                _wa_dbg(tenant_id, f"finestra aperta: ora={now_time} >= {reminder_time}")
+
+            _wa_dbg(tenant_id, f"minuto di invio: ora={now_time.strftime('%H:%M')} - costruisco la lista per la data di oggi")
 
             creds = _get_wbiztool_creds(tenant_id)
             if not creds:
@@ -1130,65 +1131,43 @@ def process_morning_tick(app, tenant_id: str):
 
             st = _MORNING_STATE.get(tenant_id)
 
-            # Gestione skip_today: se è impostato per la data corrente, skip.
-            # Se invece skip_today è presente ma riferito a una data passata, resetta lo stato.
-            if st and st.get("skip_today"):
-                if st.get("date") == now.date():
-                    _wa_dbg(tenant_id, "skip_today attivo: nessun invio fino a domani")
+            # Se non esiste stato per oggi, costruisci la coda ORA per la data corrente.
+            # La lista include gli appuntamenti presenti in questo momento per la data odierna.
+            if not st or st.get("date") != now.date():
+                # build for the whole day (start_from=None) so we collect today's appointments
+                queue = _build_today_targets(session, start_from=None)
+                if not queue:
+                    _wa_dbg(tenant_id, "coda vuota per oggi al momento della costruzione")
                     return
-                else:
-                    _wa_dbg(tenant_id, "skip_today scaduto (data diversa): reset dello stato")
-                    _MORNING_STATE.pop(tenant_id, None)
-                    st = None
-
-            # RESTART GUARD (modificata): se non abbiamo ancora costruito lo stato per la data corrente
-            # e siamo già oltre reminder_time, SKIP la giornata corrente e pianifica il prossimo invio a domani reminder_time.
-            if (not st or st.get("date") != now.date()) and now_time >= reminder_time:
-                tz = pytz_timezone('Europe/Rome')
-                tomorrow = now.date() + timedelta(days=1)
-                next_naive = datetime.combine(tomorrow, reminder_time)  # naive domani hh:mm
-                _MORNING_STATE[tenant_id] = {
-                    "date": now.date(),
-                    "queue": [],
-                    "idx": 0,
-                    "next_send_at": tz.localize(next_naive),
-                    "skip_today": True
-                }
-                _wa_dbg(tenant_id, f"oltre reminder_time e stato non presente: salto invii di oggi, riparto domani {next_naive.strftime('%Y-%m-%d %H:%M')}")
-                return
-
-            if not st or st.get("date") != now.date() or not st.get("queue"):
-                # costruisci coda solo dagli appuntamenti successivi a reminder_time
-                start_from = datetime.combine(now.date(), reminder_time)  # naive
-                queue = _build_today_targets(session, start_from=start_from)
-                tz = pytz_timezone('Europe/Rome')
-                next_naive = datetime.combine(now.date(), reminder_time)  # naive
-                next_send_at = tz.localize(next_naive)  # corretto con pytz
 
                 _MORNING_STATE[tenant_id] = {
                     "date": now.date(),
                     "queue": queue,
                     "idx": 0,
-                    "next_send_at": next_send_at
+                    "next_send_at": now  # invio immediato nel tick corrente
                 }
                 st = _MORNING_STATE[tenant_id]
-                _wa_dbg(tenant_id, f"coda costruita da {start_from.strftime('%H:%M')}: {len(queue)} target")
-                if not queue:
-                    return
+                _wa_dbg(tenant_id, f"coda costruita: {len(queue)} target")
 
+            # Invio step: invia uno se è il momento
             rate_sec = MORNING_RATE_SECONDS
-            _wa_dbg(tenant_id, f"tick: idx={st['idx']}/{len(st['queue'])}, next={st['next_send_at']}, now={now}")
-            if now >= st["next_send_at"]:
+            _wa_dbg(tenant_id, f"tick semplice: idx={st['idx']}/{len(st['queue'])}, next={st['next_send_at']}, now={now}")
+            if st.get("next_send_at") and now >= st["next_send_at"] and st["idx"] < len(st["queue"]):
                 item = st["queue"][st["idx"]]
                 st["idx"] += 1
 
-                # compila il template con dati reali
                 text_to_send = _render_morning_text(session, msg_text, item)
                 ok = _send_wbiztool_message(creds, item["phone"], text_to_send)
                 _wa_dbg(tenant_id, f"inviato={ok} appt_id={item['appointment_id']} -> {item['phone']}")
                 st["next_send_at"] = now + timedelta(seconds=rate_sec)
 
-            _MORNING_STATE[tenant_id] = st
+            # Se finita la coda, reset dello stato (si ricostruirà il giorno successivo nel minuto giusto)
+            if st.get("idx", 0) >= len(st.get("queue", [])):
+                _wa_dbg(tenant_id, "tutti i messaggi inviati: reset stato mattutino")
+                _MORNING_STATE.pop(tenant_id, None)
+            else:
+                _MORNING_STATE[tenant_id] = st
+
             session.commit()
         except Exception as e:
             session.rollback()
