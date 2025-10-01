@@ -1160,12 +1160,30 @@ def process_morning_tick(app, tenant_id: str):
             _wa_dbg(tenant_id, f"tick semplice: idx={st['idx']}/{len(st['queue'])}, next={st['next_send_at']}, now={now}")
             if st.get("next_send_at") and now >= st["next_send_at"] and st["idx"] < len(st["queue"]):
                 item = st["queue"][st["idx"]]
+
+                # Avanza l'indice immediatamente per evitare blocchi su invii falliti
                 st["idx"] += 1
 
-                text_to_send = _render_morning_text(session, msg_text, item)
-                ok = _send_wbiztool_message(creds, item["phone"], text_to_send)
+                # Render & send protetti: qualsiasi errore/log -> continua con il prossimo item
+                try:
+                    text_to_send = _render_morning_text(session, msg_text, item)
+                except Exception as e:
+                    _wa_dbg(tenant_id, f"render error appt_id={item.get('appointment_id')}: {repr(e)}")
+                    text_to_send = msg_text or ""
+
+                try:
+                    ok = _send_wbiztool_message(creds, item["phone"], text_to_send)
+                except Exception as e:
+                    _wa_dbg(tenant_id, f"send raised exception appt_id={item.get('appointment_id')}: {repr(e)}")
+                    ok = False
+
                 _wa_dbg(tenant_id, f"inviato={ok} appt_id={item['appointment_id']} -> {item['phone']}")
-                st["next_send_at"] = now + timedelta(seconds=rate_sec)
+
+                # Pianifica comunque il prossimo invio (evita retry infinito sullo stesso elemento)
+                try:
+                    st["next_send_at"] = now + timedelta(seconds=rate_sec)
+                except Exception:
+                    st["next_send_at"] = None
 
             # Se finita la coda, reset dello stato (si ricostruirà il giorno successivo nel minuto giusto)
             if st.get("idx", 0) >= len(st.get("queue", [])):
