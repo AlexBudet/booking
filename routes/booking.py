@@ -1023,9 +1023,11 @@ def _send_wbiztool_message(creds: dict, to_phone: str, text: str) -> bool:
     
 def _build_today_targets(session, start_from=None) -> list:
     """
-    Seleziona gli appuntamenti odierni ordinati, esclusi OFF, pseudo-servizio 9999,
-    e i finti BOOKING/ONLINE. Deduplica blocchi contigui per cliente.
+    Seleziona gli appuntamenti odierni ordinati, esclusi OFF e servizio 9999,
+    esclude il client finto BOOKING/ONLINE. Deduplica blocchi contigui per cliente.
     Ritorna una lista di dict: {"appointment_id", "client_id", "phone"}.
+    Regola: il cellulare viene SEMPRE letto dal record Client usando client_id.
+    Non si estrae nulla dalla nota.
     """
     today = _now_rome().date()
     start = datetime.combine(today, time.min)
@@ -1039,20 +1041,19 @@ def _build_today_targets(session, start_from=None) -> list:
     booking_dummy = session.query(Client).filter_by(cliente_nome="BOOKING", cliente_cognome="ONLINE").first()
     dummy_id = booking_dummy.id if booking_dummy else None
 
-    q = session.query(Appointment).join(Client, Appointment.client_id == Client.id).filter(
+    # Query semplice sugli appuntamenti del giorno, senza join sui client né filtri su cliente_cellulare
+    q = session.query(Appointment).filter(
         Appointment.start_time >= start,
         Appointment.start_time < end,
-        # Escludi blocchi OFF e pseudo-servizi
         ~Appointment.note.ilike('%OFF%'),
         Appointment.service_id != 9999,
-        # Escludi client finto se presente
-        (Appointment.client_id != dummy_id) if dummy_id else True,
-        # Solo clienti con telefono
-        Client.cliente_cellulare.isnot(None),
-        Client.cliente_cellulare != ''
-    ).order_by(Appointment.start_time.asc())
+    )
+    if dummy_id:
+        q = q.filter(Appointment.client_id != dummy_id)
 
+    q = q.order_by(Appointment.start_time.asc())
     apps = q.all()
+
     targets = []
     last_end_by_client = {}
 
@@ -1069,16 +1070,21 @@ def _build_today_targets(session, start_from=None) -> list:
             last_end_by_client[c_id] = max(last_end, a_end)
             continue
 
+        # Preleva SEMPRE il cellulare dal record Client (client_id)
         client = session.get(Client, c_id) if c_id else None
-        phone = _normalize_msisdn(getattr(client, 'cliente_cellulare', '') if client else '')
-        if not phone:
-            last_end_by_client[c_id] = a_end
-            continue
+        phone_raw = getattr(client, 'cliente_cellulare', '') if client else ''
+        phone = _normalize_msisdn(phone_raw)
+
+        # Log per debug se il DB contiene valore vuoto/placeholder
+        if not phone_raw:
+            _wa_dbg(c_id or "?", f"cliente {c_id} ha cliente_cellulare vuoto in DB")
+        elif phone_raw == '000000000':
+            _wa_dbg(c_id or "?", f"cliente {c_id} ha cliente_cellulare placeholder '000000000' in DB")
 
         targets.append({
             "appointment_id": a.id,
             "client_id": c_id,
-            "phone": phone
+            "phone": phone  # valore normalizzato preso dal DB (può essere '' o '000000000' normalizzato)
         })
         last_end_by_client[c_id] = a_end
 
