@@ -1,9 +1,9 @@
 # filepath: /Users/alessio.budettagmail.com/Documents/SunBooking/appl/routes/booking.py
 import string
 import json
-from flask import Blueprint, g, request, jsonify, render_template, render_template_string, session, current_app
+from flask import Blueprint, g, request, jsonify, render_template, render_template_string, session, url_for
 from flask_wtf.csrf import generate_csrf
-from appl.models import Appointment, AppointmentSource, Service, Operator, OperatorShift, Client, BusinessInfo, db
+from appl.models import Appointment, AppointmentSource, Service, Operator, OperatorShift, Client, BusinessInfo
 from datetime import date, datetime, timezone, timedelta, time
 from sqlalchemy import or_
 from pytz import timezone as pytz_timezone
@@ -22,7 +22,7 @@ def _now_rome():
     return datetime.now(pytz_timezone('Europe/Rome'))
 
 # Stato semplice per il job mattutino (per-tenant, in memoria)
-_MORNING_STATE = {}        # tenant_id -> {"date": date, "queue": [dict], "idx": int, "next_send_at": datetime}
+_MORNING_STATE = {}        # tenant_id -> {"date": date, "queue": [dict], "idx": int, "last_sent_minute": datetime}
 _MORNING_LOCKS = {}        # tenant_id -> threading.Lock()
 MORNING_POLL_SECONDS = 60   # ogni quanto il tick gira
 MORNING_RATE_SECONDS = 60  # ogni quanto inviare un messaggio
@@ -690,6 +690,8 @@ def prenota(tenant_id):
 
 # Invio email di conferma SOLO se ci sono risultati
     if risultati:
+        # Costruisci URL assoluto per annullare (riusa booking_session_id come token)
+        cancel_url = url_for('booking.cancel_booking', tenant_id=tenant_id, token=booking_session_id, _external=True)
         # Prepara i dati in struttura sicura (Jinja farà escaping automaticamente)
         appuntamenti_data = []
         totale_durata = 0
@@ -733,6 +735,9 @@ def prenota(tenant_id):
         <div style="padding:12px; background:#f2f2f2; margin:20px 0; border-radius:8px;">
         <b>Totale durata:</b> {{ totale_durata }} min &nbsp; | &nbsp; <b>Totale costo:</b> €{{ totale_prezzo }}
         </div>
+        <p style="margin-top:16px;">
+          Non puoi venire? Puoi annullare qui: <a href="{{ cancel_url }}">Annulla prenotazione</a>
+        </p>
         <p>Grazie per aver scelto {{ company_name }}!</p>
         """
 
@@ -742,7 +747,8 @@ def prenota(tenant_id):
             appuntamenti=appuntamenti_data,
             totale_durata=totale_durata,
             totale_prezzo=f"{totale_prezzo:.2f}",
-            company_name=company_name
+            company_name=company_name,
+            cancel_url=cancel_url
         )
 
         try:
@@ -797,6 +803,52 @@ def prenota(tenant_id):
         "errori": [],
         "popup_warning": popup_warning
     })
+
+@booking_bp.route('/cancel/<token>', methods=['GET'])
+def cancel_booking(tenant_id, token):
+    """
+    Cancella tutti gli appuntamenti creati nella stessa sessione (booking_session_id == token).
+    Idempotente: se il token non esiste più, restituisce 404.
+    """
+    # valida formato UUID per evitare query inutili
+    try:
+        uuid.UUID(str(token))
+    except Exception:
+        return render_template_string("<p>Link non valido.</p>"), 404
+
+    try:
+        appts = (
+            g.db_session.query(Appointment)
+            .filter(Appointment.booking_session_id == str(token))
+            .all()
+        )
+        if not appts:
+            return render_template_string("<p>Link non valido o già usato.</p>"), 404
+
+        count = len(appts)
+        for a in appts:
+            g.db_session.delete(a)
+        g.db_session.commit()
+
+        biz = g.db_session.query(BusinessInfo).first()
+        company_name = (getattr(biz, 'business_name', None) or "SunBooking")
+
+        # risposta semplice, sicura (Jinja autoescape su variabili)
+        return render_template_string("""
+            <!doctype html>
+            <meta charset="utf-8">
+            <title>Prenotazione annullata</title>
+            <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:720px;margin:40px auto;padding:20px;">
+              <h2>Prenotazione annullata</h2>
+              <p>La tua prenotazione è stata annullata con successo.</p>
+              <p>Appuntamenti cancellati: {{ count }}</p>
+              <p style="color:#666;">{{ company_name }}</p>
+            </div>
+        """, count=count, company_name=company_name)
+    except Exception as e:
+        g.db_session.rollback()
+        print(f"[CANCEL] error: {repr(e)}")
+        return render_template_string("<p>Errore durante la cancellazione. Riprova più tardi.</p>"), 500
 
 @booking_bp.route('/invia-codice', methods=['POST'])
 def invia_codice(tenant_id):
@@ -860,7 +912,7 @@ def invia_codice(tenant_id):
     except Exception as e:
         print("ERROR queueing email:", repr(e))
         return jsonify({"success": False, "error": "Errore durante l'invio dell'email."}), 500
-    
+
 def _get_wbiztool_creds(tenant_id: str):
     suffix = _tenant_env_prefix(tenant_id)  # es: T1
     k_api = f'WBIZTOOL_API_KEY_{suffix}'
@@ -1092,10 +1144,8 @@ def _build_today_targets(session, start_from=None) -> list:
 
 def process_morning_tick(app, tenant_id: str):
     """
-    Semplice: ogni tick (ogni 60s) legge l'ora dal DB e, SE E SOLO SE
-    ora_corrente(HH:MM) == reminder_time(HH:MM), costruisce la lista per
-    la DATA CORRENTE e avvia gli invii (primo invio immediato, poi ogni MORNING_RATE_SECONDS).
-    Non ci sono altri controlli/skip basati su riavvio/process_start_at.
+    Ogni 60s: al minuto del reminder costruisce la coda del giorno.
+    Poi invia 1 messaggio al minuto finché la coda non è vuota.
     """
     lock = _MORNING_LOCKS.get(tenant_id)
     if lock is None:
@@ -1118,81 +1168,75 @@ def process_morning_tick(app, tenant_id: str):
                 _wa_dbg(tenant_id, "config mancante (msg/time)")
                 return
 
-            now = _now_rome()  # aware Europe/Rome
+            now = _now_rome()
             now_time = now.time()
             if getattr(now_time, 'tzinfo', None) is not None:
                 now_time = now_time.replace(tzinfo=None)
 
-            # Procedi se è il minuto del reminder OPPURE se esiste una coda attiva oggi
             st = _MORNING_STATE.get(tenant_id)
             has_active_queue = bool(st and st.get("date") == now.date() and st.get("idx", 0) < len(st.get("queue", [])))
-            if not ((now_time.hour == reminder_time.hour and now_time.minute == reminder_time.minute) or has_active_queue):
-                _wa_dbg(tenant_id, f"skip: no reminder minute and no active queue. ora={now_time.strftime('%H:%M')} reminder={reminder_time.strftime('%H:%M')}")
-                return
+            is_reminder_minute = (now_time.hour == reminder_time.hour and now_time.minute == reminder_time.minute)
 
-            _wa_dbg(tenant_id, f"tick: build/continue. ora={now_time.strftime('%H:%M')}")
-
-            creds = _get_wbiztool_creds(tenant_id)
-            if not creds:
-                _wa_dbg(tenant_id, "credenziali mancanti")
-                return
-
-            st = _MORNING_STATE.get(tenant_id)
-
-            # Se non esiste stato per oggi, costruisci la coda ORA per la data corrente.
-            # La lista include gli appuntamenti presenti in questo momento per la data odierna.
-            if not st or st.get("date") != now.date():
-                # build for the whole day (start_from=None) so we collect today's appointments
+            # Costruisci la coda solo al minuto del reminder
+            if is_reminder_minute and (not st or st.get("date") != now.date()):
                 queue = _build_today_targets(session, start_from=None)
                 if not queue:
-                    _wa_dbg(tenant_id, "coda vuota per oggi al momento della costruzione")
+                    _wa_dbg(tenant_id, "coda vuota per oggi")
                     return
-
-                # Arrotonda all'inizio del minuto corrente per il primo invio
-                first_minute = now.replace(second=0, microsecond=0)
                 _MORNING_STATE[tenant_id] = {
                     "date": now.date(),
                     "queue": queue,
                     "idx": 0,
-                    "next_send_at": first_minute  # invio immediato al minuto corrente
+                    "last_sent_minute": None
                 }
                 st = _MORNING_STATE[tenant_id]
                 _wa_dbg(tenant_id, f"coda costruita: {len(queue)} target")
 
-            # Invio step: invia uno se è il momento
-            rate_sec = MORNING_RATE_SECONDS
-            now_minute = now.replace(second=0, microsecond=0)
-            _wa_dbg(tenant_id, f"tick: idx={st['idx']}/{len(st['queue'])}, next={st.get('next_send_at')}, now_min={now_minute}")
-            if st.get("next_send_at") and now_minute >= st["next_send_at"] and st["idx"] < len(st["queue"]):
+            # Se non è il minuto del reminder e non c'è coda attiva, esci
+            if not (is_reminder_minute or has_active_queue):
+                _wa_dbg(tenant_id, f"skip: no reminder minute and no active queue. ora={now_time.strftime('%H:%M')}")
+                return
+
+            # Se non c'è più nulla da inviare, reset
+            if not st or st.get("idx", 0) >= len(st.get("queue", [])):
+                _wa_dbg(tenant_id, "nessun messaggio da inviare")
+                _MORNING_STATE.pop(tenant_id, None)
+                return
+
+            # 1 invio per minuto (ancorato al minuto intero)
+            current_slot = now.replace(second=0, microsecond=0)
+            last_slot = st.get("last_sent_minute")
+            can_send = (last_slot is None) or (current_slot > last_slot)
+
+            _wa_dbg(tenant_id, f"tick: idx={st['idx']}/{len(st['queue'])}, last_slot={last_slot}, current_slot={current_slot}, can_send={can_send}")
+
+            if can_send:
                 item = st["queue"][st["idx"]]
+                st["idx"] += 1  # avanza sempre, anche su errore
 
-                # Avanza l'indice immediatamente per evitare blocchi su invii falliti
-                st["idx"] += 1
-
-                # Render & send protetti: qualsiasi errore/log -> continua con il prossimo item
                 try:
                     text_to_send = _render_morning_text(session, msg_text, item)
                 except Exception as e:
                     _wa_dbg(tenant_id, f"render error appt_id={item.get('appointment_id')}: {repr(e)}")
                     text_to_send = msg_text or ""
 
-                try:
-                    ok = _send_wbiztool_message(creds, item["phone"], text_to_send)
-                except Exception as e:
-                    _wa_dbg(tenant_id, f"send raised exception appt_id={item.get('appointment_id')}: {repr(e)}")
-                    ok = False
+                creds = _get_wbiztool_creds(tenant_id)
+                ok = False
+                if creds:
+                    try:
+                        ok = _send_wbiztool_message(creds, item["phone"], text_to_send)
+                    except Exception as e:
+                        _wa_dbg(tenant_id, f"send raised exception appt_id={item.get('appointment_id')}: {repr(e)}")
+                        ok = False
+                else:
+                    _wa_dbg(tenant_id, "credenziali mancanti")
 
                 _wa_dbg(tenant_id, f"inviato={ok} appt_id={item['appointment_id']} -> {item['phone']}")
+                st["last_sent_minute"] = current_slot  # blocca ulteriori invii in questo minuto
 
-                # Prossimo invio al minuto successivo, non prima
-                try:
-                    st["next_send_at"] = now_minute + timedelta(seconds=rate_sec)
-                except Exception:
-                    st["next_send_at"] = now_minute + timedelta(minutes=1)
-
-            # Se finita la coda, reset dello stato (si ricostruirà il giorno successivo nel minuto giusto)
+            # Fine coda -> reset
             if st.get("idx", 0) >= len(st.get("queue", [])):
-                _wa_dbg(tenant_id, "tutti i messaggi inviati: reset stato mattutino")
+                _wa_dbg(tenant_id, "tutti i messaggi inviati: reset")
                 _MORNING_STATE.pop(tenant_id, None)
             else:
                 _MORNING_STATE[tenant_id] = st
