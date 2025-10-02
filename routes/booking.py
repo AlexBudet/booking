@@ -25,7 +25,7 @@ def _now_rome():
 _MORNING_STATE = {}        # tenant_id -> {"date": date, "queue": [dict], "idx": int, "next_send_at": datetime}
 _MORNING_LOCKS = {}        # tenant_id -> threading.Lock()
 MORNING_POLL_SECONDS = 60   # ogni quanto il tick gira
-MORNING_RATE_SECONDS = 120  # ogni quanto inviare un messaggio
+MORNING_RATE_SECONDS = 60  # ogni quanto inviare un messaggio
 WA_MORNING_DEBUG = True  # metti a False quando hai finito i test
 PROCESS_START_AT = _now_rome() # Registra l'orario di avvio del processo (serve per capire se il riavvio è avvenuto dopo il cutoff)
 
@@ -1123,13 +1123,14 @@ def process_morning_tick(app, tenant_id: str):
             if getattr(now_time, 'tzinfo', None) is not None:
                 now_time = now_time.replace(tzinfo=None)
 
-            # Procedi se è il minuto del reminder OPPURE se la coda è già stata costruita per oggi e ci sono ancora messaggi da inviare
+            # Procedi se è il minuto del reminder OPPURE se esiste una coda attiva oggi
             st = _MORNING_STATE.get(tenant_id)
-            if not ((now_time.hour == reminder_time.hour and now_time.minute == reminder_time.minute) or (st and st.get("date") == now.date() and st.get("idx", 0) < len(st.get("queue", [])))):
-                _wa_dbg(tenant_id, f"non è il minuto di invio e nessuna coda attiva: ora={now_time.strftime('%H:%M')} reminder={reminder_time.strftime('%H:%M')}")
+            has_active_queue = bool(st and st.get("date") == now.date() and st.get("idx", 0) < len(st.get("queue", [])))
+            if not ((now_time.hour == reminder_time.hour and now_time.minute == reminder_time.minute) or has_active_queue):
+                _wa_dbg(tenant_id, f"skip: no reminder minute and no active queue. ora={now_time.strftime('%H:%M')} reminder={reminder_time.strftime('%H:%M')}")
                 return
 
-            _wa_dbg(tenant_id, f"minuto di invio: ora={now_time.strftime('%H:%M')} - costruisco la lista per la data di oggi")
+            _wa_dbg(tenant_id, f"tick: build/continue. ora={now_time.strftime('%H:%M')}")
 
             creds = _get_wbiztool_creds(tenant_id)
             if not creds:
@@ -1147,19 +1148,22 @@ def process_morning_tick(app, tenant_id: str):
                     _wa_dbg(tenant_id, "coda vuota per oggi al momento della costruzione")
                     return
 
+                # Arrotonda all'inizio del minuto corrente per il primo invio
+                first_minute = now.replace(second=0, microsecond=0)
                 _MORNING_STATE[tenant_id] = {
                     "date": now.date(),
                     "queue": queue,
                     "idx": 0,
-                    "next_send_at": now  # invio immediato nel tick corrente
+                    "next_send_at": first_minute  # invio immediato al minuto corrente
                 }
                 st = _MORNING_STATE[tenant_id]
                 _wa_dbg(tenant_id, f"coda costruita: {len(queue)} target")
 
             # Invio step: invia uno se è il momento
             rate_sec = MORNING_RATE_SECONDS
-            _wa_dbg(tenant_id, f"tick semplice: idx={st['idx']}/{len(st['queue'])}, next={st['next_send_at']}, now={now}")
-            if st.get("next_send_at") and now >= st["next_send_at"] and st["idx"] < len(st["queue"]):
+            now_minute = now.replace(second=0, microsecond=0)
+            _wa_dbg(tenant_id, f"tick: idx={st['idx']}/{len(st['queue'])}, next={st.get('next_send_at')}, now_min={now_minute}")
+            if st.get("next_send_at") and now_minute >= st["next_send_at"] and st["idx"] < len(st["queue"]):
                 item = st["queue"][st["idx"]]
 
                 # Avanza l'indice immediatamente per evitare blocchi su invii falliti
@@ -1180,11 +1184,11 @@ def process_morning_tick(app, tenant_id: str):
 
                 _wa_dbg(tenant_id, f"inviato={ok} appt_id={item['appointment_id']} -> {item['phone']}")
 
-                # Pianifica comunque il prossimo invio (evita retry infinito sullo stesso elemento)
+                # Prossimo invio al minuto successivo, non prima
                 try:
-                    st["next_send_at"] = now + timedelta(seconds=rate_sec)
+                    st["next_send_at"] = now_minute + timedelta(seconds=rate_sec)
                 except Exception:
-                    st["next_send_at"] = None
+                    st["next_send_at"] = now_minute + timedelta(minutes=1)
 
             # Se finita la coda, reset dello stato (si ricostruirà il giorno successivo nel minuto giusto)
             if st.get("idx", 0) >= len(st.get("queue", [])):
