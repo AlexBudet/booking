@@ -1123,9 +1123,10 @@ def process_morning_tick(app, tenant_id: str):
             if getattr(now_time, 'tzinfo', None) is not None:
                 now_time = now_time.replace(tzinfo=None)
 
-            # Controllo semplice: procedi SOLO nel minuto in cui HH:MM coincide con reminder_time
-            if not (now_time.hour == reminder_time.hour and now_time.minute == reminder_time.minute):
-                _wa_dbg(tenant_id, f"non è il minuto di invio: ora={now_time.strftime('%H:%M')} reminder={reminder_time.strftime('%H:%M')}")
+            # Procedi se è il minuto del reminder OPPURE se la coda è già stata costruita per oggi e ci sono ancora messaggi da inviare
+            st = _MORNING_STATE.get(tenant_id)
+            if not ((now_time.hour == reminder_time.hour and now_time.minute == reminder_time.minute) or (st and st.get("date") == now.date() and st.get("idx", 0) < len(st.get("queue", [])))):
+                _wa_dbg(tenant_id, f"non è il minuto di invio e nessuna coda attiva: ora={now_time.strftime('%H:%M')} reminder={reminder_time.strftime('%H:%M')}")
                 return
 
             _wa_dbg(tenant_id, f"minuto di invio: ora={now_time.strftime('%H:%M')} - costruisco la lista per la data di oggi")
