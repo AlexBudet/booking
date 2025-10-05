@@ -13,10 +13,26 @@ import random
 import uuid
 from markupsafe import escape
 import threading
-import requests
-import time as time_mod
 from azure.communication.email import EmailClient
 from wbiztool_client import WbizToolClient
+
+# --- UTIL: formato data per email (solo output email, non DB) ---
+MONTH_ABBR_IT = {
+    1: 'GEN', 2: 'FEB', 3: 'MAR', 4: 'APR', 5: 'MAG', 6: 'GIU',
+    7: 'LUG', 8: 'AGO', 9: 'SET', 10: 'OTT', 11: 'NOV', 12: 'DIC'
+}
+
+def _fmt_date_it_short(date_str: str) -> str:
+    """
+    Converte 'YYYY-MM-DD' in 'DD MMM YYYY' (es: 2025-10-05 -> 05 OTT 2025).
+    Se parsing fallisce restituisce l'input originale.
+    Usata SOLO per formattare le date nelle email.
+    """
+    try:
+        d = datetime.strptime(date_str, '%Y-%m-%d').date()
+        return f"{d.day:02d} {MONTH_ABBR_IT.get(d.month, '')} {d.year}"
+    except Exception:
+        return date_str
 
 def _now_rome():
     return datetime.now(pytz_timezone('Europe/Rome'))
@@ -747,7 +763,7 @@ def prenota(tenant_id):
             totale_durata += durata_i
             totale_prezzo += prezzo_i
             appuntamenti_data.append({
-                "data": r['data'],
+                "data": _fmt_date_it_short(r['data']),  # solo per email
                 "ora": r['ora'],
                 "operatore_nome": r.get('operatore_nome', ''),
                 "servizio_nome": r['servizio_nome'],
