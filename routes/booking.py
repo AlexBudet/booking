@@ -452,6 +452,50 @@ def orari_disponibili(tenant_id):
                 slot_operatori[slot.strftime("%H:%M")] = operatori_catena
             slot += slot_step
 
+        if servizi_items:
+            for start, end in intervalli:
+                slot = datetime.combine(data, start)
+                fine = datetime.combine(data, end)
+                while slot + durata <= fine:
+                    slot_str = slot.strftime("%H:%M")
+                    if slot_str in slot_operatori:
+                        slot += slot_step
+                        continue
+                    assegnati = []
+                    slot_corrente_temp = slot
+                    fallito = False
+                    for servizio_item in servizi_items:
+                        servizio_id = int(servizio_item.get("servizio_id"))
+                        durata_servizio = next((s.servizio_durata or 30 for s in servizi if s.id == servizio_id), 30)
+                        durata_td = timedelta(minutes=durata_servizio)
+                        inizio = slot_corrente_temp
+                        fine_servizio = slot_corrente_temp + durata_td
+                        prefer_op = servizio_item.get("operatore_id")
+                        candidate_ops = []
+                        if prefer_op:
+                            try:
+                                prefer_op_int = int(prefer_op)
+                                candidate_ops = [op for op in operatori_disponibili if op.id == prefer_op_int and op.id in servizi_operatori[servizio_id]]
+                            except:
+                                candidate_ops = []
+                        if not candidate_ops:
+                            candidate_ops = [op for op in operatori_disponibili if op.id in servizi_operatori[servizio_id]]
+                        scelto = None
+                        for op in candidate_ops:
+                            disponibile, _ = operatore_disponibile(op.id, inizio, fine_servizio)
+                            if disponibile:
+                                scelto = op
+                                break
+                        if not scelto:
+                            fallito = True
+                            break
+                        assegnati.append(scelto.id)
+                        slot_corrente_temp = fine_servizio
+                    if not fallito and len(assegnati) == len(servizi_items):
+                        orari.append(slot_str)
+                        slot_operatori[slot_str] = assegnati
+                    slot += slot_step
+
     orari = sorted(list(set(orari)))
 
     # FILTRO: escludi orari già passati se la data è oggi
