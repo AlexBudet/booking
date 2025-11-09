@@ -777,7 +777,7 @@ def prenota(tenant_id):
         # Template sicuro: Jinja escaperà le variabili automaticamente
         template = """
         <p>Ciao {{ nome }},</p>
-        <p>La tua prenotazione è stata confermata!</p>
+        <p>La tua richiesta di prenotazione è stata ricevuta! Riceverai la conferma via Whatsapp in orario lavorativo, o comunque al più presto possibile!</p>
         <ul>
         {% for a in appuntamenti %}
           <li>
