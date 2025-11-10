@@ -230,7 +230,12 @@ def booking_page(tenant_id):
         Service.is_visible_online == True,
         Service.is_deleted == False
     ).order_by(Service.servizio_nome).all()
-    operatori = g.db_session.query(Operator).order_by(Operator.user_nome).all()
+    operatori = (
+        g.db_session.query(Operator)
+        .filter(Operator.is_deleted == False, Operator.is_visible == True)
+        .order_by(Operator.user_nome)
+        .all()
+    )
     business_info = g.db_session.query(BusinessInfo).first()
 
     servizi_json = [{
@@ -238,7 +243,7 @@ def booking_page(tenant_id):
         'servizio_nome': s.servizio_nome, 
         'servizio_durata': s.servizio_durata,
         'servizio_prezzo': str(s.servizio_prezzo),
-        'operator_ids': [op.id for op in s.operators],
+        'operator_ids': [op.id for op in s.operators if op.is_visible and not op.is_deleted],
         'sottocategoria': s.servizio_sottocategoria.nome if s.servizio_sottocategoria else None
     } for s in servizi]
     
@@ -777,7 +782,7 @@ def prenota(tenant_id):
         # Template sicuro: Jinja escaperà le variabili automaticamente
         template = """
         <p>Ciao {{ nome }},</p>
-        <p>La tua richiesta di prenotazione è stata ricevuta! Riceverai la conferma via Whatsapp in orario lavorativo, o comunque al più presto possibile!</p>
+        <p>La tua richiesta di prenotazione è stata ricevuta! Riceverai la conferma via Whatsapp in orario lavorativo, o comunque al più presto possibile.</p>
         <ul>
         {% for a in appuntamenti %}
           <li>
