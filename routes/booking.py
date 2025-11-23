@@ -68,8 +68,9 @@ def invia_email_azure(to_email, subject, html_content, from_email=None):
             print("ERROR: AZURE_EMAIL_CONNECTION_STRING not set")
             return False
         
-        # Usa AZURE_EMAIL_SENDER se definito, altrimenti from_email o default nuovo
+        # Usa AZURE_EMAIL_SENDER se definito, altrimenti from_email o default
         default_sender = os.environ.get('AZURE_EMAIL_SENDER') or from_email or "donotreply@websunbookingemail.azurecomm.net"
+        print(f"[EMAIL] Using sender: {default_sender}")
         
         client = EmailClient.from_connection_string(connection_string)
         message = {
@@ -77,7 +78,6 @@ def invia_email_azure(to_email, subject, html_content, from_email=None):
             "recipients": {"to": [{"address": to_email}]},
             "content": {"subject": subject, "html": html_content}
         }
-        print(f"[EMAIL] Sending to {to_email} from {default_sender}")
         poller = client.begin_send(message)
         result = poller.result()
         print(f"[EMAIL] Sent successfully: {result.message_id}")
@@ -96,6 +96,7 @@ def invia_email_async(to_email, subject, html_content, from_email=None):
             
             # Usa AZURE_EMAIL_SENDER se definito
             default_sender = os.environ.get('AZURE_EMAIL_SENDER') or from_email or "donotreply@websunbookingemail.azurecomm.net"
+            print(f"[EMAIL] Using sender: {default_sender}")
             
             client = EmailClient.from_connection_string(connection_string)
             message = {
