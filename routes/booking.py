@@ -62,34 +62,38 @@ def _tenant_env_prefix(tenant_id: str) -> str:
     return f'T{digits}' if digits else raw
 
 def invia_email_azure(to_email, subject, html_content, from_email=None):
-    cs = os.getenv("AZURE_EMAIL_CONNECTION_STRING")
-    if not cs or not cs.startswith("endpoint="):
-        print("[EMAIL] MISSING/BAD CONNECTION STRING")
-        return False
-    sender = from_email or os.getenv("AZURE_EMAIL_SENDER") or "DoNotReply@01f185a7-d028-442e-9e7c-6fd24d4eb2bb.azurecomm.net"
-    try:
-        endpoint = cs.split(";")[0].replace("endpoint=","")
-        print(f"[EMAIL] USING endpoint={endpoint} sender={sender}")
-        client = EmailClient.from_connection_string(cs)
-        msg = {
-            "senderAddress": sender,
-            "recipients": {"to": [{"address": to_email}]},
-            "content": {"subject": subject, "html": html_content}
-        }
-        poller = client.begin_send(msg)
-        res = poller.result()
-        print(f"[EMAIL] RESULT status={getattr(res,'status',None)} id={getattr(res,'message_id',None)}")
-        return getattr(res,'status',None) == "Succeeded"
-    except Exception as e:
-        print(f"[EMAIL] ERROR {type(e).__name__}: {e}")
-        return False
+    connection_string = os.environ.get('AZURE_EMAIL_CONNECTION_STRING')
+    client = EmailClient.from_connection_string(connection_string)
+    message = {
+        "senderAddress": from_email or "DoNotReply@01f185a7-d028-442e-9e7c-6fd24d4eb2bb.azurecomm.net",
+        "recipients": {"to": [{"address": to_email}]},
+        "content": {"subject": subject, "html": html_content}
+    }
+    poller = client.begin_send(message)
+    result = poller.result()
+    return True
 
 def invia_email_async(to_email, subject, html_content, from_email=None):
-    def _run():
-        ok = invia_email_azure(to_email, subject, html_content, from_email)
-        if not ok:
-            print("[EMAIL] async send failed")
-    threading.Thread(target=_run, daemon=True).start()
+    def send_email():
+        try:
+            connection_string = os.environ.get('AZURE_EMAIL_CONNECTION_STRING')
+            if not connection_string:
+                print("ERROR: AZURE_EMAIL_CONNECTION_STRING not set")
+                return
+            client = EmailClient.from_connection_string(connection_string)
+            message = {
+                "senderAddress": from_email or "DoNotReply@01f185a7-d028-442e-9e7c-6fd24d4eb2bb.azurecomm.net",
+                "recipients": {"to": [{"address": to_email}]},
+                "content": {"subject": subject, "html": html_content}
+            }
+            poller = client.begin_send(message)
+            result = poller.result()
+            print(f"Email sent successfully: {result.message_id}")
+        except Exception as e:
+            print(f"ERROR sending email: {repr(e)}")
+    thread = threading.Thread(target=send_email, daemon=True)
+    thread.start()
+
 def to_rome(dt):
     if dt is None:
         return None
