@@ -63,25 +63,23 @@ def _tenant_env_prefix(tenant_id: str) -> str:
 
 def invia_email_azure(to_email, subject, html_content, from_email=None):
     cs = os.getenv("AZURE_EMAIL_CONNECTION_STRING")
-    if not cs:
-        print("[EMAIL] MISSING AZURE_EMAIL_CONNECTION_STRING")
+    if not cs or not cs.startswith("endpoint="):
+        print("[EMAIL] MISSING/BAD CONNECTION STRING")
         return False
-    if not cs.startswith("endpoint="):
-        print(f"[EMAIL] INVALID CONNECTION STRING FORMAT: {cs[:60]}...")
-        return False
-    sender = from_email or os.getenv("AZURE_EMAIL_SENDER") or "DoNotReply@8a979827-fa9b-4b2d-b7f8-52cc9565a0d9.azurecomm.net"
+    sender = from_email or os.getenv("AZURE_EMAIL_SENDER") or "DoNotReply@01f185a7-d028-442e-9e7c-6fd24d4eb2bb.azurecomm.net"
     try:
+        endpoint = cs.split(";")[0].replace("endpoint=","")
+        print(f"[EMAIL] USING endpoint={endpoint} sender={sender}")
         client = EmailClient.from_connection_string(cs)
         msg = {
             "senderAddress": sender,
             "recipients": {"to": [{"address": to_email}]},
             "content": {"subject": subject, "html": html_content}
         }
-        print(f"[EMAIL] SEND to={to_email} sender={sender}")
         poller = client.begin_send(msg)
         res = poller.result()
         print(f"[EMAIL] RESULT status={getattr(res,'status',None)} id={getattr(res,'message_id',None)}")
-        return getattr(res, 'status', None) == "Succeeded"
+        return getattr(res,'status',None) == "Succeeded"
     except Exception as e:
         print(f"[EMAIL] ERROR {type(e).__name__}: {e}")
         return False
