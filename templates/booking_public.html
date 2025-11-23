@@ -720,29 +720,11 @@ document.getElementById('inviaCodiceBtn').addEventListener('click', function() {
 });
 
 document.getElementById('inviaConfermaPrenotazioneBtn').addEventListener('click', function() {
-  const btn = this;
-  if (btn.dataset.locked === '1') return;
-
-  btn.dataset.locked = '1';
-  btn.disabled = true;
-  const originalText = btn.textContent;
-  btn.textContent = 'Invio in corso...';
-
-  setTimeout(() => {
-    btn.dataset.locked = '0';
-    btn.disabled = false;
-    btn.textContent = originalText;
-  }, 10000);
-
   const codice = document.getElementById('codice-conferma').value.trim();
   if (!codice) {
     alert('Inserisci il codice di conferma ricevuto via email.');
-    btn.dataset.locked = '0';
-    btn.disabled = false;
-    btn.textContent = originalText;
     return;
   }
-
   const nome = document.getElementById('nome').value.trim();
   const cognome = document.getElementById('cognome').value.trim();
   const telefono = document.getElementById('telefono').value.trim();
@@ -750,93 +732,59 @@ document.getElementById('inviaConfermaPrenotazioneBtn').addEventListener('click'
   const data = document.getElementById('data').value;
   const ora = document.getElementById('ora').value;
   const csrfToken = document.getElementById('csrf_token').value;
+
+  // Raccogli tutti i servizi e operatori selezionati
   const servizi = getServiziSelezionati();
-  let operatori_assegnati = [];
+
+    let operatori_assegnati = [];
   if (window._operatoriOrariMap && window._operatoriOrariMap[ora]) {
     operatori_assegnati = window._operatoriOrariMap[ora];
   }
 
-  fetch(`/${tenantId}/prenota`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-    body: JSON.stringify({
-      nome, cognome, telefono, email,
-      data, ora,
-      codice_conferma: codice,
-      servizi,
-      operatori_assegnati
-    })
+fetch(`/${tenantId}/prenota`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+  body: JSON.stringify({
+    nome, cognome, telefono, email,
+    data, ora,
+    codice_conferma: codice,
+    servizi, // array [{servizio_id, operatore_id}, ...]
+    operatori_assegnati
   })
+})
   .then(r => r.json())
   .then(res => {
     console.log("Risposta /prenota:", res);
     const msg = document.getElementById('msg');
-    while (msg.firstChild) msg.removeChild(msg.firstChild);
-
-    const divTotale = document.getElementById('totale-servizi');
-    if (divTotale) divTotale.style.display = 'none';
-
-    if (res.popup_error) {
-      alert(res.popup_error);
-      return;
-    }
-    if (res.popup_warning) {
-      alert(res.popup_warning);
-    }
-
-    if (res.success && res.prenotazioni && res.prenotazioni.length) {
-      let totaleDurata = 0;
-      let totalePrezzo = 0;
-
-      res.prenotazioni.forEach(p => {
-        const block = document.createElement('div');
-        block.className = 'mb-3 p-3 border rounded bg-light';
-        block.style.color = '#333';
-
-        const strong = document.createElement('strong');
-        strong.textContent = 'Riepilogo appuntamento:';
-        block.appendChild(strong);
-        block.appendChild(document.createElement('br'));
-
-        const spanData = document.createElement('span');
-        spanData.innerHTML = `🗓 <b>Data:</b> ${escapeHtml(p.data)} <b>Ora:</b> ${escapeHtml(p.ora)}`;
-        block.appendChild(spanData);
-        block.appendChild(document.createElement('br'));
-
-        if (p.operatore_nome) {
-          const spanOp = document.createElement('span');
-            spanOp.innerHTML = `👤 <b>con</b> ${escapeHtml(p.operatore_nome)}`;
-          block.appendChild(spanOp);
-          block.appendChild(document.createElement('br'));
-        }
-
-        const spanServ = document.createElement('span');
-        spanServ.innerHTML = `💇 <b>Servizio:</b> ${escapeHtml(p.servizio_nome)}`;
-        block.appendChild(spanServ);
-        block.appendChild(document.createElement('br'));
-
-        const durata = parseInt(p.servizio_durata || 0, 10);
-        const prezzo = parseFloat(p.servizio_prezzo || 0);
-        totaleDurata += durata;
-        totalePrezzo += prezzo;
-
-        const small = document.createElement('small');
-        small.textContent = `Durata: ${durata} min - Prezzo: €${prezzo.toFixed(2)}`;
-        block.appendChild(small);
-
-        msg.appendChild(block);
-      });
-
-      const totDiv = document.createElement('div');
-      totDiv.className = 'alert alert-dark mt-2';
-      totDiv.textContent = `Totale durata: ${totaleDurata} min  |  Totale costo: €${totalePrezzo.toFixed(2)}`;
-      msg.appendChild(totDiv);
-
-      const okDiv = document.createElement('div');
-      okDiv.className = 'alert alert-success';
-      okDiv.textContent = 'Prenotazione confermata!';
-      msg.appendChild(okDiv);
-
+    let divTotale = document.getElementById('totale-servizi');
+if (divTotale) divTotale.style.display = 'none';
+if (res.popup_error) {
+  alert(res.popup_error); // oppure apri la tua modale personalizzata
+  return;
+}
+if (res.popup_warning) {
+  alert(res.popup_warning); // oppure apri la tua modale personalizzata
+  // Non fare return: la prenotazione va avanti anche in caso di warning
+}
+if (res.success && res.prenotazioni && res.prenotazioni.length) {
+  let sommario = '';
+  let totaleDurata = 0;
+  let totalePrezzo = 0;
+  res.prenotazioni.forEach(p => {
+    const durata = parseInt(p.servizio_durata || 0, 10);
+    const prezzo = parseFloat(p.servizio_prezzo || 0);
+    totaleDurata += durata;
+    totalePrezzo += prezzo;
+    sommario += `<div class="mb-3 p-3 border rounded bg-light" style="color: #333;">
+      <strong>Riepilogo appuntamento:</strong><br>
+      <span>🗓 <b>Data:</b> ${escapeHtml(p.data)} <b>Ora:</b> ${escapeHtml(p.ora)}</span><br>
+      ${p.operatore_nome ? `<span>👤 <b>con</b> ${escapeHtml(p.operatore_nome)}</span><br>` : ""}
+      <span>💇 <b>Servizio:</b> ${escapeHtml(p.servizio_nome)}</span><br>
+      <small>Durata: ${durata} min - Prezzo: €${prezzo.toFixed(2)}</small>
+    </div>`;
+  });
+  sommario += `<div class="alert alert-dark mt-2"><b>Totale durata:</b> ${totaleDurata} min &nbsp; | &nbsp; <b>Totale costo:</b> €${totalePrezzo.toFixed(2)}</div>`;
+  msg.innerHTML = sommario + '<div class="alert alert-success">Prenotazione confermata! Per ulteriori informazioni, contattaci al telefono fisso o scrivici su Whatsapp!.</div>';
       document.getElementById('bookingForm').reset();
       document.getElementById('data_wrapper').style.display = 'none';
       document.getElementById('ora_wrapper').style.display = 'none';
@@ -844,19 +792,11 @@ document.getElementById('inviaConfermaPrenotazioneBtn').addEventListener('click'
       document.getElementById('codice-conferma-wrapper').style.display = 'none';
       document.getElementById('inviaConfermaPrenotazioneBtn').style.display = 'none';
     } else {
-      const errDiv = document.createElement('div');
-      errDiv.className = 'alert alert-danger';
-      errDiv.textContent = res.error || 'Errore';
-      msg.appendChild(errDiv);
+      msg.innerHTML = `<div class="alert alert-danger">${escapeHtml(res.error || 'Errore')}</div>`;
     }
   })
   .catch(() => {
-    const msg = document.getElementById('msg');
-    while (msg.firstChild) msg.removeChild(msg.firstChild);
-    const netErr = document.createElement('div');
-    netErr.className = 'alert alert-danger';
-    netErr.textContent = 'Errore di rete.';
-    msg.appendChild(netErr);
+    document.getElementById('msg').innerHTML = '<div class="alert alert-danger">Errore di rete.</div>';
   });
 });
 </script>
