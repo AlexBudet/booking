@@ -720,19 +720,9 @@ document.getElementById('inviaCodiceBtn').addEventListener('click', function() {
 });
 
 document.getElementById('inviaConfermaPrenotazioneBtn').addEventListener('click', function() {
-  const btn = this;
-  if (btn.dataset.state === 'sending') return;
-  btn.dataset.state = 'sending';
-  btn.disabled = true;
-  const originalText = btn.textContent;
-  btn.textContent = 'Invio...';
-
   const codice = document.getElementById('codice-conferma').value.trim();
   if (!codice) {
     alert('Inserisci il codice di conferma ricevuto via email.');
-    btn.dataset.state = '';
-    btn.disabled = false;
-    btn.textContent = originalText;
     return;
   }
   const nome = document.getElementById('nome').value.trim();
@@ -743,7 +733,9 @@ document.getElementById('inviaConfermaPrenotazioneBtn').addEventListener('click'
   const ora = document.getElementById('ora').value;
   const csrfToken = document.getElementById('csrf_token').value;
 
+  // Raccogli tutti i servizi e operatori selezionati
   const servizi = getServiziSelezionati();
+
   let operatori_assegnati = [];
   if (window._operatoriOrariMap && window._operatoriOrariMap[ora]) {
     operatori_assegnati = window._operatoriOrariMap[ora];
@@ -756,27 +748,24 @@ document.getElementById('inviaConfermaPrenotazioneBtn').addEventListener('click'
       nome, cognome, telefono, email,
       data, ora,
       codice_conferma: codice,
-      servizi,
+      servizi, // array [{servizio_id, operatore_id}, ...]
       operatori_assegnati
     })
   })
   .then(r => r.json())
   .then(res => {
+    console.log("Risposta /prenota:", res);
     const msg = document.getElementById('msg');
     let divTotale = document.getElementById('totale-servizi');
     if (divTotale) divTotale.style.display = 'none';
-
     if (res.popup_error) {
-      alert(res.popup_error);
-      btn.dataset.state = '';
-      btn.disabled = false;
-      btn.textContent = originalText;
+      alert(res.popup_error); // oppure apri la tua modale personalizzata
       return;
     }
     if (res.popup_warning) {
-      alert(res.popup_warning);
+      alert(res.popup_warning); // oppure apri la tua modale personalizzata
+      // Non fare return: la prenotazione va avanti anche in caso di warning
     }
-
     if (res.success && res.prenotazioni && res.prenotazioni.length) {
       let sommario = '';
       let totaleDurata = 0;
@@ -796,26 +785,18 @@ document.getElementById('inviaConfermaPrenotazioneBtn').addEventListener('click'
       });
       sommario += `<div class="alert alert-dark mt-2"><b>Totale durata:</b> ${totaleDurata} min &nbsp; | &nbsp; <b>Totale costo:</b> €${totalePrezzo.toFixed(2)}</div>`;
       msg.innerHTML = sommario + '<div class="alert alert-success">Prenotazione confermata! Per ulteriori informazioni, contattaci al telefono fisso o scrivici su Whatsapp!.</div>';
-
       document.getElementById('bookingForm').reset();
       document.getElementById('data_wrapper').style.display = 'none';
       document.getElementById('ora_wrapper').style.display = 'none';
       document.getElementById('dati-cliente').style.display = 'none';
       document.getElementById('codice-conferma-wrapper').style.display = 'none';
-      btn.style.display = 'none';
-      // Bottone resta disabilitato/nascosto
+      document.getElementById('inviaConfermaPrenotazioneBtn').style.display = 'none';
     } else {
       msg.innerHTML = `<div class="alert alert-danger">${escapeHtml(res.error || 'Errore')}</div>`;
-      btn.dataset.state = '';
-      btn.disabled = false;
-      btn.textContent = originalText;
     }
   })
   .catch(() => {
     document.getElementById('msg').innerHTML = '<div class="alert alert-danger">Errore di rete.</div>';
-    btn.dataset.state = '';
-    btn.disabled = false;
-    btn.textContent = originalText;
   });
 });
 </script>
