@@ -65,7 +65,7 @@ def invia_email_azure(to_email, subject, html_content, from_email=None):
     connection_string = os.environ.get('AZURE_EMAIL_CONNECTION_STRING')
     client = EmailClient.from_connection_string(connection_string)
     message = {
-        "senderAddress": from_email or "donotreply@8a979827-fa9b-4b2d-b7f8-52cc9565a0d9.azurecomm.net",
+        "senderAddress": from_email or "DoNotReply@8a979827-fa9b-4b2d-b7f8-52cc9565a0d9.azurecomm.net",
         "recipients": {"to": [{"address": to_email}]},
         "content": {"subject": subject, "html": html_content}
     }
