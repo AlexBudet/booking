@@ -15,8 +15,6 @@ from markupsafe import escape
 import threading
 from azure.communication.email import EmailClient
 from wbiztool_client import WbizToolClient
-import logging
-from azure.core.exceptions import HttpResponseError
 
 # --- UTIL: formato data per email (solo output email, non DB) ---
 MONTH_ABBR_IT = {
@@ -64,28 +62,16 @@ def _tenant_env_prefix(tenant_id: str) -> str:
     return f'T{digits}' if digits else raw
 
 def invia_email_azure(to_email, subject, html_content, from_email=None):
-    logging.info(f"Tentativo invio email a {to_email} con subject '{subject}'")
     connection_string = os.environ.get('AZURE_EMAIL_CONNECTION_STRING')
-    if not connection_string:
-        logging.error("AZURE_EMAIL_CONNECTION_STRING non impostata")
-        return False
     client = EmailClient.from_connection_string(connection_string)
     message = {
         "senderAddress": from_email or "donotreply@8a979827-fa9b-4b2d-b7f8-52cc9565a0d9.azurecomm.net",
         "recipients": {"to": [{"address": to_email}]},
         "content": {"subject": subject, "html": html_content}
     }
-    try:
-        poller = client.begin_send(message)
-        result = poller.result()
-        logging.info(f"Risultato invio email: {result}")
-        return True
-    except HttpResponseError as ex:
-        logging.error(f"Errore invio email: {ex}")
-        return False
-    except Exception as ex:
-        logging.error(f"Errore generico invio email: {ex}")
-        return False
+    poller = client.begin_send(message)
+    result = poller.result()
+    return True
 
 def invia_email_async(to_email, subject, html_content, from_email=None):
     def send_email():
