@@ -15,6 +15,8 @@ from markupsafe import escape
 import threading
 from azure.communication.email import EmailClient
 from wbiztool_client import WbizToolClient
+import logging
+from azure.core.exceptions import HttpResponseError
 
 # --- UTIL: formato data per email (solo output email, non DB) ---
 MONTH_ABBR_IT = {
@@ -62,28 +64,27 @@ def _tenant_env_prefix(tenant_id: str) -> str:
     return f'T{digits}' if digits else raw
 
 def invia_email_azure(to_email, subject, html_content, from_email=None):
+    logging.info(f"Tentativo invio email a {to_email} con subject '{subject}'")
+    connection_string = os.environ.get('AZURE_EMAIL_CONNECTION_STRING')
+    if not connection_string:
+        logging.error("AZURE_EMAIL_CONNECTION_STRING non impostata")
+        return False
+    client = EmailClient.from_connection_string(connection_string)
+    message = {
+        "senderAddress": from_email or "donotreply@8a979827-fa9b-4b2d-b7f8-52cc9565a0d9.azurecomm.net",
+        "recipients": {"to": [{"address": to_email}]},
+        "content": {"subject": subject, "html": html_content}
+    }
     try:
-        connection_string = os.environ.get('AZURE_EMAIL_CONNECTION_STRING')
-        if not connection_string:
-            print("ERROR: AZURE_EMAIL_CONNECTION_STRING not set")
-            return False
-        
-        # Usa AZURE_EMAIL_SENDER se definito, altrimenti from_email o default
-        default_sender = os.environ.get('AZURE_EMAIL_SENDER') or from_email or "donotreply@websunbookingemail.azurecomm.net"
-        print(f"[EMAIL] Using sender: {default_sender}")
-        
-        client = EmailClient.from_connection_string(connection_string)
-        message = {
-            "senderAddress": default_sender,
-            "recipients": {"to": [{"address": to_email}]},
-            "content": {"subject": subject, "html": html_content}
-        }
         poller = client.begin_send(message)
         result = poller.result()
-        print(f"[EMAIL] Sent successfully: {result.message_id}")
+        logging.info(f"Risultato invio email: {result}")
         return True
-    except Exception as e:
-        print(f"[EMAIL] ERROR: {repr(e)}")
+    except HttpResponseError as ex:
+        logging.error(f"Errore invio email: {ex}")
+        return False
+    except Exception as ex:
+        logging.error(f"Errore generico invio email: {ex}")
         return False
 
 def invia_email_async(to_email, subject, html_content, from_email=None):
@@ -93,22 +94,17 @@ def invia_email_async(to_email, subject, html_content, from_email=None):
             if not connection_string:
                 print("ERROR: AZURE_EMAIL_CONNECTION_STRING not set")
                 return
-            
-            # Usa AZURE_EMAIL_SENDER se definito
-            default_sender = os.environ.get('AZURE_EMAIL_SENDER') or from_email or "donotreply@websunbookingemail.azurecomm.net"
-            print(f"[EMAIL] Using sender: {default_sender}")
-            
             client = EmailClient.from_connection_string(connection_string)
             message = {
-                "senderAddress": default_sender,
+                "senderAddress": from_email or "donotreply@8a979827-fa9b-4b2d-b7f8-52cc9565a0d9.azurecomm.net",
                 "recipients": {"to": [{"address": to_email}]},
                 "content": {"subject": subject, "html": html_content}
             }
             poller = client.begin_send(message)
             result = poller.result()
-            print(f"[EMAIL] Sent successfully: {result.message_id}")
+            print(f"Email sent successfully: {result.message_id}")
         except Exception as e:
-            print(f"[EMAIL] ERROR: {repr(e)}")
+            print(f"ERROR sending email: {repr(e)}")
     thread = threading.Thread(target=send_email, daemon=True)
     thread.start()
 
