@@ -63,15 +63,27 @@ def _tenant_env_prefix(tenant_id: str) -> str:
 
 def invia_email_azure(to_email, subject, html_content, from_email=None):
     connection_string = os.environ.get('AZURE_EMAIL_CONNECTION_STRING')
+    if not connection_string:
+        print("ERROR: AZURE_EMAIL_CONNECTION_STRING not set")
+        return False
+    sender = (os.environ.get('AZURE_EMAIL_SENDER') or "").strip()
+    if not sender:
+        print("ERROR: AZURE_EMAIL_SENDER not set")
+        return False
     client = EmailClient.from_connection_string(connection_string)
     message = {
-        "senderAddress": from_email or "DoNotReply@01f185a7-d028-442e-9e7c-6fd24d4eb2bb.azurecomm.net",
+        "senderAddress": sender,
         "recipients": {"to": [{"address": to_email}]},
         "content": {"subject": subject, "html": html_content}
     }
     poller = client.begin_send(message)
-    result = poller.result()
-    return True
+    try:
+        result = poller.result()
+        print(f"[EMAIL] sent id={getattr(result,'message_id',None)} sender={sender}")
+        return getattr(result, "status", "Succeeded") == "Succeeded"
+    except Exception as e:
+        print(f"[EMAIL] ERROR result: {repr(e)}")
+        return False
 
 def invia_email_async(to_email, subject, html_content, from_email=None):
     def send_email():
@@ -80,15 +92,19 @@ def invia_email_async(to_email, subject, html_content, from_email=None):
             if not connection_string:
                 print("ERROR: AZURE_EMAIL_CONNECTION_STRING not set")
                 return
+            sender = (os.environ.get('AZURE_EMAIL_SENDER') or "").strip()
+            if not sender:
+                print("ERROR: AZURE_EMAIL_SENDER not set")
+                return
             client = EmailClient.from_connection_string(connection_string)
             message = {
-                "senderAddress": from_email or "DoNotReply@01f185a7-d028-442e-9e7c-6fd24d4eb2bb.azurecomm.net",
+                "senderAddress": sender,
                 "recipients": {"to": [{"address": to_email}]},
                 "content": {"subject": subject, "html": html_content}
             }
             poller = client.begin_send(message)
             result = poller.result()
-            print(f"Email sent successfully: {result.message_id}")
+            print(f"[EMAIL-ASYNC] sent id={getattr(result,'message_id',None)} sender={sender}")
         except Exception as e:
             print(f"ERROR sending email: {repr(e)}")
     thread = threading.Thread(target=send_email, daemon=True)
