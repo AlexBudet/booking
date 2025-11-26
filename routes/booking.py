@@ -799,17 +799,19 @@ def prenota(tenant_id):
         template = """
         <p>Ciao {{ nome }},</p>
         <p>La tua richiesta di prenotazione è stata ricevuta! Riceverai la conferma via Whatsapp in orario lavorativo, o comunque al più presto possibile.</p>
-        <ul>
+        <ul style="list-style-type:none;padding-left:0;">
         {% for a in appuntamenti %}
-          <li>
-            <b>Data:</b> {{ a.data }}<br>
-            <b>Ora:</b> {{ a.ora }}<br>
-            {% if a.operatore_nome %}<b>Operatore:</b> {{ a.operatore_nome }}<br>{% endif %}
-            <b>Servizio:</b> {{ a.servizio_nome }}<br>
-            <small>
-              Durata: {{ a.durata }} min<br>
-              Prezzo: {{ a.prezzo }} €
-            </small>
+          <li style="margin-bottom:14px;">
+            <div><b>Data:</b> {{ a.data }}</div>
+            <div><b>Ora:</b> {{ a.ora }}</div>
+            {% if a.operatore_nome %}
+              <div><b>Operatore:</b> {{ a.operatore_nome }}</div>
+            {% endif %}
+            <div><b>Servizio:</b> {{ a.servizio_nome }}</div>
+            <div style="font-size:0.9em;color:#555;">
+              <span>Durata: {{ a.durata }} min</span><br>
+              <span>Prezzo: {{ a.prezzo }} €</span>
+            </div>
           </li>
         {% endfor %}
         </ul>
