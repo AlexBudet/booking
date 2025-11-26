@@ -845,21 +845,26 @@ def prenota(tenant_id):
         # Invio email all'admin (stesso approccio sicuro)
         admin_email = business_info.email if business_info and business_info.email else None
         admin_riepilogo = render_template_string(
-            """
-    <div style="font-size:1.5em;">Nuova prenotazione:</div><div style="font-size:2.8em; color:red;"> {{ nome }} {{ cognome }}</div>
-            <div style="font-size:1.3em;">
-            <ul>
-            {% for a in appuntamenti %}
-              <li>
-                <b>Data:</b> {{ a.data }} - <b>Ora:</b> {{ a.ora }} - <b>Servizio:</b> {{ a.servizio_nome }}
-              </li>
-            {% endfor %}
-            </ul>
-            </div>
-            <div style="padding:12px; background:#f2f2f2; margin:20px 0; border-radius:8px; font-size:1.3em;">
-            <b>Totale durata:</b> {{ totale_durata }} min &nbsp; | &nbsp; <b>Totale costo:</b> €{{ totale_prezzo }}
-            </div>
-            """,
+    """
+    <div style="font-size:1.5em;">Nuova prenotazione:</div>
+    <div style="font-size:2.8em; color:red;">{{ nome }} {{ cognome }}</div>
+    <div style="font-size:1.3em;">
+      <ul>
+      {% for a in appuntamenti %}
+        <li>
+          <b>Data:</b> {{ a.data }} - <b>Ora:</b> {{ a.ora }}
+          {% if a.operatore_nome %}
+            - <b>Operatore:</b> {{ a.operatore_nome }}
+          {% endif %}
+          - <b>Servizio:</b> {{ a.servizio_nome }}
+        </li>
+      {% endfor %}
+      </ul>
+    </div>
+    <div style="padding:12px; background:#f2f2f2; margin:20px 0; border-radius:8px; font-size:1.3em;">
+      <b>Totale durata:</b> {{ totale_durata }} min &nbsp; | &nbsp; <b>Totale costo:</b> €{{ totale_prezzo }}
+    </div>
+    """,
             nome=nome,
             cognome=cognome,
             appuntamenti=appuntamenti_data,
@@ -885,6 +890,7 @@ def prenota(tenant_id):
         "popup_warning": popup_warning
     })
 
+@csrf.exempt
 @booking_bp.route('/cancel/<token>', methods=['GET', 'POST'])
 def cancel_booking(tenant_id, token):
     """
