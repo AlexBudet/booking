@@ -15,7 +15,6 @@ from markupsafe import escape
 import threading
 from azure.communication.email import EmailClient
 from wbiztool_client import WbizToolClient
-from appl import csrf
 
 # --- UTIL: formato data per email (solo output email, non DB) ---
 MONTH_ABBR_IT = {
@@ -891,7 +890,6 @@ def prenota(tenant_id):
         "popup_warning": popup_warning
     })
 
-@csrf.exempt
 @booking_bp.route('/cancel/<token>', methods=['GET', 'POST'])
 def cancel_booking(tenant_id, token):
     """
@@ -918,7 +916,9 @@ def cancel_booking(tenant_id, token):
         company_name = (getattr(biz, 'business_name', None) or "SunBooking")
 
         if request.method == 'GET':
-            # SOLO pagina di conferma, nessuna cancellazione ancora
+            # genera un token CSRF per questo form
+            csrf_token = generate_csrf()
+
             count = len(appts)
             first_appt = appts[0]
             dt = to_rome(first_appt.start_time) if first_appt.start_time else None
@@ -936,6 +936,7 @@ def cancel_booking(tenant_id, token):
                   {% endif %}
                   <p>Questo annullerà {{ count }} appuntamento/i collegati a questa prenotazione.</p>
                   <form method="post">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <button type="submit" style="background:#c0392b;color:#fff;border:none;padding:10px 18px;border-radius:4px;cursor:pointer;">
                       Conferma annullamento
                     </button>
@@ -943,7 +944,7 @@ def cancel_booking(tenant_id, token):
                   <p style="margin-top:16px;color:#666;">{{ company_name }}</p>
                 </div>
             """, count=len(appts), company_name=company_name,
-                 data_str=data_str, ora_str=ora_str)
+                 data_str=data_str, ora_str=ora_str, csrf_token=csrf_token)
 
         # POST: esegue la cancellazione vera
         count = len(appts)
@@ -966,7 +967,7 @@ def cancel_booking(tenant_id, token):
         g.db_session.rollback()
         print(f"[CANCEL] error: {repr(e)}")
         return render_template_string("<p>Errore durante la cancellazione. Riprova più tardi.</p>"), 500
-
+    
 @booking_bp.route('/invia-codice', methods=['POST'])
 def invia_codice(tenant_id):
     business_info = g.db_session.query(BusinessInfo).first()
