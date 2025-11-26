@@ -937,7 +937,7 @@ def cancel_booking(tenant_id, token):
                   <p>Questo annullerà {{ count }} appuntamento/i collegati a questa prenotazione.</p>
                   <form method="post">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <button type="submit" style="background:#c0392b;color:#fff;border:none;padding:10px 18px;border-radius:4px;cursor:pointer;">
+        <button type="submit" style="background:#c0392b;color:#fff;border:none;padding:10px 18px;border-radius:4px;cursor:pointer;font-size:clamp(20px,4vw,28px);">
                       Conferma annullamento
                     </button>
                   </form>
