@@ -885,10 +885,11 @@ def prenota(tenant_id):
         "popup_warning": popup_warning
     })
 
-@booking_bp.route('/cancel/<token>', methods=['GET'])
+@booking_bp.route('/cancel/<token>', methods=['GET', 'POST'])
 def cancel_booking(tenant_id, token):
     """
-    Cancella tutti gli appuntamenti creati nella stessa sessione (booking_session_id == token).
+    Step 1 (GET): mostra pagina di conferma annullamento.
+    Step 2 (POST): cancella tutti gli appuntamenti della sessione (booking_session_id == token).
     Idempotente: se il token non esiste più, restituisce 404.
     """
     # valida formato UUID per evitare query inutili
@@ -906,15 +907,43 @@ def cancel_booking(tenant_id, token):
         if not appts:
             return render_template_string("<p>Link non valido o già usato.</p>"), 404
 
+        biz = g.db_session.query(BusinessInfo).first()
+        company_name = (getattr(biz, 'business_name', None) or "SunBooking")
+
+        if request.method == 'GET':
+            # SOLO pagina di conferma, nessuna cancellazione ancora
+            count = len(appts)
+            first_appt = appts[0]
+            dt = to_rome(first_appt.start_time) if first_appt.start_time else None
+            data_str = dt.strftime('%d/%m/%Y') if dt else ''
+            ora_str = dt.strftime('%H:%M') if dt else ''
+
+            return render_template_string("""
+                <!doctype html>
+                <meta charset="utf-8">
+                <title>Conferma annullamento</title>
+                <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:720px;margin:40px auto;padding:20px;">
+                  <h2>Vuoi annullare la prenotazione?</h2>
+                  {% if data_str and ora_str %}
+                    <p><b>Data:</b> {{ data_str }} &nbsp; <b>Ora:</b> {{ ora_str }}</p>
+                  {% endif %}
+                  <p>Questo annullerà {{ count }} appuntamento/i collegati a questa prenotazione.</p>
+                  <form method="post">
+                    <button type="submit" style="background:#c0392b;color:#fff;border:none;padding:10px 18px;border-radius:4px;cursor:pointer;">
+                      Conferma annullamento
+                    </button>
+                  </form>
+                  <p style="margin-top:16px;color:#666;">{{ company_name }}</p>
+                </div>
+            """, count=len(appts), company_name=company_name,
+                 data_str=data_str, ora_str=ora_str)
+
+        # POST: esegue la cancellazione vera
         count = len(appts)
         for a in appts:
             g.db_session.delete(a)
         g.db_session.commit()
 
-        biz = g.db_session.query(BusinessInfo).first()
-        company_name = (getattr(biz, 'business_name', None) or "SunBooking")
-
-        # risposta semplice, sicura (Jinja autoescape su variabili)
         return render_template_string("""
             <!doctype html>
             <meta charset="utf-8">

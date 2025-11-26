@@ -694,7 +694,6 @@ document.getElementById('inviaCodiceBtn').addEventListener('click', function() {
   // Leggi il token CSRF dall'input nascosto nel form
   const csrfToken = document.getElementById('csrf_token').value;
 
-
   fetch(`/${tenantId}/invia-codice`, {
     method: 'POST',
   headers: {
@@ -719,7 +718,17 @@ document.getElementById('inviaCodiceBtn').addEventListener('click', function() {
   });
 });
 
+let prenotaLocked = false;
+
 document.getElementById('inviaConfermaPrenotazioneBtn').addEventListener('click', function() {
+  if (prenotaLocked) {
+    return;
+  }
+  prenotaLocked = true;
+  setTimeout(function() {
+    prenotaLocked = false;
+  }, 10000);
+  
   const codice = document.getElementById('codice-conferma').value.trim();
   if (!codice) {
     alert('Inserisci il codice di conferma ricevuto via email.');
