@@ -590,14 +590,17 @@ def prenota(tenant_id):
     booking_session_id = str(uuid.uuid4())
     operatori_assegnati = data.get('operatori_assegnati')
 
-    # Verifica codice conferma
-    if 'codice_conferma' in session:
-        codice_sessione = session.get('codice_conferma')
-        email_sessione = session.get('email_conferma')
-        if not codice_conferma or codice_conferma != codice_sessione or email != email_sessione:
-            return jsonify({"error": "Codice di conferma errato! Riprova"}), 400
-    else:
+    # Verifica codice conferma basato sulla sessione (collegato al CSRF/token di invia-codice)
+    codice_sessione = session.get('codice_conferma')
+    email_sessione = session.get('email_conferma')
+
+    # Se non c'è un codice in sessione, la prenotazione non deve poter procedere
+    if not codice_sessione or not email_sessione:
         return jsonify({"error": "Codice di conferma non richiesto"}), 400
+
+    # Se manca il codice nel payload o non coincide con quello in sessione o l'email non corrisponde
+    if not codice_conferma or codice_conferma != codice_sessione or email != email_sessione:
+        return jsonify({"error": "Codice di conferma errato! Riprova"}), 400
 
     # Validazione campi base
     if not all([nome, telefono, data_str, ora]) or not servizi or not isinstance(servizi, list):
