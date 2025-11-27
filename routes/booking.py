@@ -153,30 +153,14 @@ def is_calendar_closed(op_id, inizio, fine, turni_per_operatore, all_apps):
                 return True
     return False
 
-def scegli_operatori_automatici(
-    servizi_ids,
-    data_str,
-    ora_str,
-    operatori_possibili,
-    turni_per_operatore,
-    all_apps,
-    operatori_preferiti_ids=[],
-    operatori_preferiti_per_servizio=None
-):
+def scegli_operatori_automatici(servizi_ids, data_str, ora_str, operatori_possibili, turni_per_operatore, all_apps, operatori_preferiti_ids=[]):
     """
     Restituisce una lista di operatori assegnati (uno per ogni servizio), seguendo le priorità:
     1. Tutti i servizi con lo stesso operatore (priorità alta).
     2. Se non possibile, assegnazione a cascata cercando di raggruppare il maggior numero di servizi
        sullo stesso operatore, preferendo gli operatori_preferiti_ids.
     3. Se neanche a cascata è possibile assegnare tutti i servizi, restituisce [None] * len(servizi_ids).
-
-    Se operatori_preferiti_per_servizio è passato, per ogni servizio i:
-    - []  => nessun vincolo (può usare qualunque operatore abilitato),
-    - [X] => per quel servizio può essere usato SOLO l'operatore X.
     """
-
-    if operatori_preferiti_per_servizio is None:
-        operatori_preferiti_per_servizio = [[] for _ in servizi_ids]
 
     servizi_objs = g.db_session.query(Service).filter(Service.id.in_(servizi_ids)).all()
     servizi_map = {s.id: s for s in servizi_objs}
@@ -187,25 +171,16 @@ def scegli_operatori_automatici(
     # e ordina gli operatori preferiti per primi
     operatori_rilevanti = sorted(
         [op for op in operatori_possibili if any(op.id in servizi_operatori_abilitati[sid] for sid in servizi_ids)],
-        key=lambda op: (op.id not in operatori_preferiti_ids, op.user_nome)
+        key=lambda op: (op.id not in operatori_preferiti_ids, op.user_nome) # Metti i preferiti per primi
     )
 
     start_time = datetime.strptime(f"{data_str} {ora_str}", "%Y-%m-%d %H:%M")
 
     # --- 1. Prova tutti con lo stesso operatore (PRIORITÀ ALTA) ---
+    # Inizia dagli operatori preferiti per questa ricerca
     for op in operatori_rilevanti:
-        # L'operatore deve essere abilitato per *tutti* i servizi
+        # Se l'operatore non è abilitato per *tutti* i servizi, salta
         if not all(op.id in servizi_operatori_abilitati.get(sid, []) for sid in servizi_ids):
-            continue
-
-        # E non deve violare i vincoli per singolo servizio
-        violates_constraint = False
-        for idx, _sid in enumerate(servizi_ids):
-            allowed = operatori_preferiti_per_servizio[idx]
-            if allowed and op.id not in allowed:
-                violates_constraint = True
-                break
-        if violates_constraint:
             continue
 
         slot_corrente_temp = start_time
@@ -213,54 +188,50 @@ def scegli_operatori_automatici(
         for durata_servizio in servizi_durate:
             inizio_temp = slot_corrente_temp
             fine_temp = slot_corrente_temp + timedelta(minutes=durata_servizio)
-
+            
             if is_calendar_closed(op.id, inizio_temp, fine_temp, turni_per_operatore, all_apps):
                 ok = False
                 break
-            slot_corrente_temp = fine_temp
-
+            slot_corrente_temp = fine_temp # Aggiorna lo slot per il servizio successivo
+        
         if ok:
+            # Trovato un singolo operatore per tutti i servizi! 🎉
             return [op.id] * len(servizi_ids)
 
     # --- 2. Assegnazione a cascata con raggruppamento e preferenza operatori (PRIORITÀ SECONDARIA) ---
     operatori_assegnati = []
     slot_corrente = start_time
-
+    
     for i, servizio_id in enumerate(servizi_ids):
         durata_servizio = servizi_durate[i]
         inizio_servizio = slot_corrente
         fine_servizio = slot_corrente + timedelta(minutes=durata_servizio)
-        allowed_for_this = operatori_preferiti_per_servizio[i] or None
-
+        
         found_operator_for_current_service = False
-
-        # 2.a: prova prima con gli operatori preferiti (globali) abilitati per questo servizio
+        
+        # Prova prima con gli operatori preferiti che sono anche abilitati per questo servizio
         for op in [o for o in operatori_rilevanti if o.id in servizi_operatori_abilitati.get(servizio_id, [])]:
-            # se c'è un vincolo forte per questo servizio, rispetta solo quelli
-            if allowed_for_this is not None and op.id not in allowed_for_this:
-                continue
             if not is_calendar_closed(op.id, inizio_servizio, fine_servizio, turni_per_operatore, all_apps):
                 operatori_assegnati.append(op.id)
                 slot_corrente = fine_servizio
                 found_operator_for_current_service = True
-                break
-
+                break # Operatore trovato per questo servizio, passa al prossimo
+        
         if not found_operator_for_current_service:
-            # 2.b: prova altri operatori possibili (abilitati) rispettando eventuale vincolo per questo servizio
+            # Se nessuno degli operatori preferiti va bene, prova tutti gli altri operatori rilevanti
+            # (non preferiti, ma comunque abilitati e disponibili)
             for op in [o for o in operatori_possibili if o.id in servizi_operatori_abilitati.get(servizio_id, []) and o.id not in operatori_preferiti_ids]:
-                if allowed_for_this is not None and op.id not in allowed_for_this:
-                    continue
                 if not is_calendar_closed(op.id, inizio_servizio, fine_servizio, turni_per_operatore, all_apps):
                     operatori_assegnati.append(op.id)
                     slot_corrente = fine_servizio
                     found_operator_for_current_service = True
                     break
-
+        
         if not found_operator_for_current_service:
             # Se non si trova nessun operatore per il servizio corrente, la catena fallisce
-            return [None] * len(servizi_ids)
-
-    return operatori_assegnati
+            return [None] * len(servizi_ids) 
+            
+    return operatori_assegnati # Ritorna la lista completa di operatori assegnati
 
 booking_bp = Blueprint('booking', __name__)
 
@@ -723,7 +694,7 @@ def prenota(tenant_id):
         if b not in appuntamenti:
             appuntamenti.append(b)
 
-    # --- LOGICA IDENTICA A orari_disponibili (per ricreare turni/intervalli) ---
+    # --- LOGICA IDENTICA A orari_disponibili ---
     durata_totale = sum([s.servizio_durata or 30 for s in servizi_objs])
     durata = timedelta(minutes=durata_totale)
     slot_step = timedelta(minutes=15)
@@ -742,43 +713,19 @@ def prenota(tenant_id):
             if curr_start <= last_end:
                 intervalli[-1] = (last_start, max(last_end, curr_end))
             else:
-                intervalli.append(intervallo)
+                intervalli.append((curr_start, curr_end))
 
-    # --- Ricostruisci la catena operatori in modo robusto con gli stessi vincoli della ricerca orari ---
-    servizi_ids = [int(s.get("servizio_id")) for s in servizi]
-    operatori_preferiti_ids = []
-    operatori_preferiti_per_servizio = []
-    for s in servizi:
-        op_id = s.get("operatore_id")
-        if op_id:
-            try:
-                op_int = int(op_id)
-                operatori_preferiti_ids.append(op_int)
-                # vincolo forte: questo servizio può usare SOLO questo operatore
-                operatori_preferiti_per_servizio.append([op_int])
-            except Exception:
-                operatori_preferiti_per_servizio.append([])
-        else:
-            operatori_preferiti_per_servizio.append([])
+    # Verifica che operatori_assegnati sia coerente
+    if not isinstance(operatori_assegnati, list) or len(operatori_assegnati) != len(servizi):
+        return jsonify({"success": False, "errori": ["Operatori assegnati mancanti o non coerenti. Ricarica la pagina e riprova."]}), 400
 
-    operatori_chain = scegli_operatori_automatici(
-        servizi_ids=servizi_ids,
-        data_str=data_str,
-        ora_str=ora,
-        operatori_possibili=operatori_disponibili,
-        turni_per_operatore=turni_per_operatore,
-        all_apps=appuntamenti,
-        operatori_preferiti_ids=operatori_preferiti_ids,
-        operatori_preferiti_per_servizio=operatori_preferiti_per_servizio
-    )
+    for idx, servizio_item in enumerate(servizi):
+        operatore_id = servizio_item.get("operatore_id")
+        if operatore_id:
+            if operatori_assegnati[idx] != int(operatore_id):
+                return jsonify({"success": False, "errori": ["La sequenza di operatori richiesta non è più disponibile per questo slot. Ricarica la pagina e riprova."]}), 400
 
-    if not operatori_chain or any(op_id is None for op_id in operatori_chain):
-        return jsonify({
-            "success": False,
-            "errori": ["La sequenza di operatori richiesta non è più disponibile per questo orario. Ricarica la pagina e riprova."]
-        }), 400
-
-    # Ora salva la prenotazione usando la catena calcolata
+    # Ora salva la prenotazione
     risultati = []
     slot_corrente = datetime.strptime(f"{data_str} {ora}", "%Y-%m-%d %H:%M")
     for idx, servizio_item in enumerate(servizi):
@@ -787,7 +734,7 @@ def prenota(tenant_id):
         durata_td = timedelta(minutes=durata_servizio)
         inizio = slot_corrente
         fine = slot_corrente + durata_td
-        operatore_id = operatori_chain[idx]
+        operatore_id = operatori_assegnati[idx]
         servizio = servizi_map.get(servizio_id)
         note = f"PRENOTATO DA BOOKING ONLINE - Nome: {escape(nome)}, Cognome: {escape(cognome)}, Telefono: {escape(telefono)}, Email: {escape(email)}"
         operatore = g.db_session.get(Operator, operatore_id)
