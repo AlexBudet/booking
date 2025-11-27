@@ -713,28 +713,89 @@ def prenota(tenant_id):
             if curr_start <= last_end:
                 intervalli[-1] = (last_start, max(last_end, curr_end))
             else:
-                intervalli.append((curr_start, curr_end))
+                intervalli.append(intervallo)
 
-    # Verifica che operatori_assegnati sia coerente
+    # Verifica che operatori_assegnati sia coerente con la richiesta e con i vincoli di disponibilità
     if not isinstance(operatori_assegnati, list) or len(operatori_assegnati) != len(servizi):
-        return jsonify({"success": False, "errori": ["Operatori assegnati mancanti o non coerenti. Ricarica la pagina e riprova."]}), 400
+        return jsonify({
+            "success": False,
+            "errori": ["Operatori assegnati mancanti o non coerenti. Ricarica la pagina e riprova."]
+        }), 400
 
+    # 1) dove l'utente ha scelto esplicitamente un operatore per il servizio,
+    #    la lista operatori_assegnati deve coincidere
     for idx, servizio_item in enumerate(servizi):
-        operatore_id = servizio_item.get("operatore_id")
-        if operatore_id:
-            if operatori_assegnati[idx] != int(operatore_id):
-                return jsonify({"success": False, "errori": ["La sequenza di operatori richiesta non è più disponibile per questo slot. Ricarica la pagina e riprova."]}), 400
+        operatore_id_richiesto = servizio_item.get("operatore_id")
+        if operatore_id_richiesto:
+            try:
+                if int(operatori_assegnati[idx]) != int(operatore_id_richiesto):
+                    return jsonify({
+                        "success": False,
+                        "errori": ["La sequenza di operatori richiesta non è più disponibile per questo slot. Ricarica la pagina e riprova."]
+                    }), 400
+            except Exception:
+                return jsonify({
+                    "success": False,
+                    "errori": ["Operatori assegnati non validi. Ricarica la pagina e riprova."]
+                }), 400
 
-    # Ora salva la prenotazione
+    # 2) controlla che ciascun operatore assegnato sia abilitato e disponibile per il servizio
     risultati = []
     slot_corrente = datetime.strptime(f"{data_str} {ora}", "%Y-%m-%d %H:%M")
+
     for idx, servizio_item in enumerate(servizi):
         servizio_id = int(servizio_item.get("servizio_id"))
         durata_servizio = servizi_map[servizio_id].servizio_durata or 30
         durata_td = timedelta(minutes=durata_servizio)
         inizio = slot_corrente
         fine = slot_corrente + durata_td
-        operatore_id = operatori_assegnati[idx]
+        try:
+            operatore_id = int(operatori_assegnati[idx])
+        except Exception:
+            return jsonify({
+                "success": False,
+                "errori": ["Operatori assegnati non validi. Ricarica la pagina e riprova."]
+            }), 400
+
+        # deve essere abilitato a quel servizio
+        if operatore_id not in servizi_operatori.get(servizio_id, []):
+            return jsonify({
+                "success": False,
+                "errori": ["La sequenza di operatori richiesta non è più disponibile per questo slot. Ricarica la pagina e riprova."]
+            }), 400
+
+        # e deve essere effettivamente libero in quell'intervallo
+        disponibile, _motivo = None, None
+        # riuso la stessa logica di orari_disponibili
+        turni = turni_per_operatore.get(operatore_id, [])
+        if not any(start <= inizio.time() and fine.time() <= end for start, end in turni):
+            disponibile = False
+        else:
+            disponibile = True
+            for app in appuntamenti:
+                if app.operator_id is None and app.note and "OFF" in app.note:
+                    app_start = app.start_time
+                    if getattr(app_start, "tzinfo", None) is not None:
+                        app_start = app_start.replace(tzinfo=None)
+                    app_end = app_start + timedelta(minutes=app._duration)
+                    if app_start < fine and app_end > inizio:
+                        disponibile = False
+                        break
+                if str(app.operator_id) == str(operatore_id):
+                    app_start = app.start_time
+                    if getattr(app_start, "tzinfo", None) is not None:
+                        app_start = app_start.replace(tzinfo=None)
+                    app_end = app_start + timedelta(minutes=app._duration)
+                    if app_start < fine and app_end > inizio:
+                        disponibile = False
+                        break
+
+        if not disponibile:
+            return jsonify({
+                "success": False,
+                "errori": ["La sequenza di operatori richiesta non è più disponibile per questo slot. Ricarica la pagina e riprova."]
+            }), 400
+
         servizio = servizi_map.get(servizio_id)
         note = f"PRENOTATO DA BOOKING ONLINE - Nome: {escape(nome)}, Cognome: {escape(cognome)}, Telefono: {escape(telefono)}, Email: {escape(email)}"
         operatore = g.db_session.get(Operator, operatore_id)
@@ -755,7 +816,11 @@ def prenota(tenant_id):
         except Exception as e:
             g.db_session.rollback()
             print("DB ERROR DURING COMMIT:", repr(e))
-            return jsonify({"success": False, "errori": ["Errore database: " + str(e)]}), 500
+            return jsonify({
+                "success": False,
+                "errori": ["Errore database: " + str(e)]
+            }), 500
+
         risultati.append({
             "success": True,
             "id": nuovo.id,
