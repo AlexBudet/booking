@@ -25,6 +25,10 @@ MONTH_ABBR_IT = {
 
 csrf_local = CSRFProtect()
 
+def csrf_token():
+    """Ritorna il token CSRF corrente per essere usato nei form HTML inline."""
+    return generate_csrf()
+
 def _fmt_date_it_short(date_str: str) -> str:
     """
     Converte 'YYYY-MM-DD' in 'DD MMM YYYY' (es: 2025-10-05 -> 05 OTT 2025).
@@ -1000,14 +1004,15 @@ def cancel_booking(tenant_id, token):
                   {% endif %}
                   <p>Questo annullerà {{ count }} appuntamento/i collegati a questa prenotazione.</p>
                   <form method="post">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" style="background:#c0392b;color:#fff;border:none;padding:10px 18px;border-radius:4px;cursor:pointer;font-size:clamp(1rem, 2.4vw, 1.4rem);">
-                    Conferma annullamento
+                      Conferma annullamento
                     </button>
                   </form>
                   <p style="margin-top:16px;color:#666;">{{ company_name }}</p>
                 </div>
             """, count=len(appts), company_name=company_name,
-                 data_str=data_str, ora_str=ora_str)
+                 data_str=data_str, ora_str=ora_str, csrf_token=csrf_token)
 
         # POST: esegue la cancellazione vera
         count = len(appts)
@@ -1030,15 +1035,6 @@ def cancel_booking(tenant_id, token):
         g.db_session.rollback()
         print(f"[CANCEL] error: {repr(e)}")
         return render_template_string("<p>Errore durante la cancellazione. Riprova più tardi.</p>"), 500
-# Esenta questa view dal CSRF globale di Flask-WTF (mantiene GET+POST con form di conferma)
-try:
-    csrf_ext = current_app.extensions.get("csrf")
-    if csrf_ext is not None:
-        csrf_ext.exempt(cancel_booking)
-except Exception:
-    # in fase di import può non esserci current_app; l'esenzione avverrà comunque
-    # quando l'app sarà inizializzata e il modulo ricaricato nel contesto dell'app
-    pass
     
 @booking_bp.route('/invia-codice', methods=['POST'])
 def invia_codice(tenant_id):
