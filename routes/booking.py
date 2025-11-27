@@ -575,6 +575,8 @@ def prenota(tenant_id):
     data_str = data.get('data')
     ora = data.get('ora')
     servizi = data.get('servizi', [])
+    # Flag: è stata scelta almeno un'operatrice per uno dei servizi?
+    operatrice_desiderata = any(bool(s.get("operatore_id")) for s in servizi)
     codice_conferma = data.get('codice_conferma')
     business_info = g.db_session.query(BusinessInfo).first()
 
@@ -777,7 +779,11 @@ def prenota(tenant_id):
             }), 400
 
         servizio = servizi_map.get(servizio_id)
-        note = f"PRENOTATO DA BOOKING ONLINE - Nome: {escape(nome)}, Cognome: {escape(cognome)}, Telefono: {escape(telefono)}, Email: {escape(email)}"
+        desiderata_str = "Sì" if operatrice_desiderata else "NO"
+        note = (
+            f"PRENOTATO DA BOOKING ONLINE - Nome: {escape(nome)}, Cognome: {escape(cognome)}, "
+            f"Telefono: {escape(telefono)}, Email: {escape(email)} - operatrice desiderata? {desiderata_str}"
+        )
         operatore = g.db_session.get(Operator, operatore_id)
         operatore_nome = f"{escape(operatore.user_nome)}" if operatore else ""
         nuovo = Appointment(
