@@ -153,14 +153,30 @@ def is_calendar_closed(op_id, inizio, fine, turni_per_operatore, all_apps):
                 return True
     return False
 
-def scegli_operatori_automatici(servizi_ids, data_str, ora_str, operatori_possibili, turni_per_operatore, all_apps, operatori_preferiti_ids=[]):
+def scegli_operatori_automatici(
+    servizi_ids,
+    data_str,
+    ora_str,
+    operatori_possibili,
+    turni_per_operatore,
+    all_apps,
+    operatori_preferiti_ids=[],
+    operatori_preferiti_per_servizio=None
+):
     """
     Restituisce una lista di operatori assegnati (uno per ogni servizio), seguendo le priorità:
     1. Tutti i servizi con lo stesso operatore (priorità alta).
     2. Se non possibile, assegnazione a cascata cercando di raggruppare il maggior numero di servizi
        sullo stesso operatore, preferendo gli operatori_preferiti_ids.
     3. Se neanche a cascata è possibile assegnare tutti i servizi, restituisce [None] * len(servizi_ids).
+
+    Se operatori_preferiti_per_servizio è passato, per ogni servizio i:
+    - []  => nessun vincolo (può usare qualunque operatore abilitato),
+    - [X] => per quel servizio può essere usato SOLO l'operatore X.
     """
+
+    if operatori_preferiti_per_servizio is None:
+        operatori_preferiti_per_servizio = [[] for _ in servizi_ids]
 
     servizi_objs = g.db_session.query(Service).filter(Service.id.in_(servizi_ids)).all()
     servizi_map = {s.id: s for s in servizi_objs}
@@ -171,16 +187,25 @@ def scegli_operatori_automatici(servizi_ids, data_str, ora_str, operatori_possib
     # e ordina gli operatori preferiti per primi
     operatori_rilevanti = sorted(
         [op for op in operatori_possibili if any(op.id in servizi_operatori_abilitati[sid] for sid in servizi_ids)],
-        key=lambda op: (op.id not in operatori_preferiti_ids, op.user_nome) # Metti i preferiti per primi
+        key=lambda op: (op.id not in operatori_preferiti_ids, op.user_nome)
     )
 
     start_time = datetime.strptime(f"{data_str} {ora_str}", "%Y-%m-%d %H:%M")
 
     # --- 1. Prova tutti con lo stesso operatore (PRIORITÀ ALTA) ---
-    # Inizia dagli operatori preferiti per questa ricerca
     for op in operatori_rilevanti:
-        # Se l'operatore non è abilitato per *tutti* i servizi, salta
+        # L'operatore deve essere abilitato per *tutti* i servizi
         if not all(op.id in servizi_operatori_abilitati.get(sid, []) for sid in servizi_ids):
+            continue
+
+        # E non deve violare i vincoli per singolo servizio
+        violates_constraint = False
+        for idx, _sid in enumerate(servizi_ids):
+            allowed = operatori_preferiti_per_servizio[idx]
+            if allowed and op.id not in allowed:
+                violates_constraint = True
+                break
+        if violates_constraint:
             continue
 
         slot_corrente_temp = start_time
@@ -188,50 +213,54 @@ def scegli_operatori_automatici(servizi_ids, data_str, ora_str, operatori_possib
         for durata_servizio in servizi_durate:
             inizio_temp = slot_corrente_temp
             fine_temp = slot_corrente_temp + timedelta(minutes=durata_servizio)
-            
+
             if is_calendar_closed(op.id, inizio_temp, fine_temp, turni_per_operatore, all_apps):
                 ok = False
                 break
-            slot_corrente_temp = fine_temp # Aggiorna lo slot per il servizio successivo
-        
+            slot_corrente_temp = fine_temp
+
         if ok:
-            # Trovato un singolo operatore per tutti i servizi! 🎉
             return [op.id] * len(servizi_ids)
 
     # --- 2. Assegnazione a cascata con raggruppamento e preferenza operatori (PRIORITÀ SECONDARIA) ---
     operatori_assegnati = []
     slot_corrente = start_time
-    
+
     for i, servizio_id in enumerate(servizi_ids):
         durata_servizio = servizi_durate[i]
         inizio_servizio = slot_corrente
         fine_servizio = slot_corrente + timedelta(minutes=durata_servizio)
-        
+        allowed_for_this = operatori_preferiti_per_servizio[i] or None
+
         found_operator_for_current_service = False
-        
-        # Prova prima con gli operatori preferiti che sono anche abilitati per questo servizio
+
+        # 2.a: prova prima con gli operatori preferiti (globali) abilitati per questo servizio
         for op in [o for o in operatori_rilevanti if o.id in servizi_operatori_abilitati.get(servizio_id, [])]:
+            # se c'è un vincolo forte per questo servizio, rispetta solo quelli
+            if allowed_for_this is not None and op.id not in allowed_for_this:
+                continue
             if not is_calendar_closed(op.id, inizio_servizio, fine_servizio, turni_per_operatore, all_apps):
                 operatori_assegnati.append(op.id)
                 slot_corrente = fine_servizio
                 found_operator_for_current_service = True
-                break # Operatore trovato per questo servizio, passa al prossimo
-        
+                break
+
         if not found_operator_for_current_service:
-            # Se nessuno degli operatori preferiti va bene, prova tutti gli altri operatori rilevanti
-            # (non preferiti, ma comunque abilitati e disponibili)
+            # 2.b: prova altri operatori possibili (abilitati) rispettando eventuale vincolo per questo servizio
             for op in [o for o in operatori_possibili if o.id in servizi_operatori_abilitati.get(servizio_id, []) and o.id not in operatori_preferiti_ids]:
+                if allowed_for_this is not None and op.id not in allowed_for_this:
+                    continue
                 if not is_calendar_closed(op.id, inizio_servizio, fine_servizio, turni_per_operatore, all_apps):
                     operatori_assegnati.append(op.id)
                     slot_corrente = fine_servizio
                     found_operator_for_current_service = True
                     break
-        
+
         if not found_operator_for_current_service:
             # Se non si trova nessun operatore per il servizio corrente, la catena fallisce
-            return [None] * len(servizi_ids) 
-            
-    return operatori_assegnati # Ritorna la lista completa di operatori assegnati
+            return [None] * len(servizi_ids)
+
+    return operatori_assegnati
 
 booking_bp = Blueprint('booking', __name__)
 
@@ -446,44 +475,92 @@ def orari_disponibili(tenant_id):
     durata = timedelta(minutes=durata_totale)
     slot_step = timedelta(minutes=15)
 
-    # Usa la stessa logica di scegli_operatori_automatici per ogni slot
-    orari = []
-    slot_operatori = {}
-
-    # Prepara la lista degli operatori possibili (tutti quelli visibili, già filtrati sopra)
-    operatori_possibili = operatori_disponibili
-
-    # Prepara i servizi_ids in ordine e le preferenze (operatori selezionati dall'utente)
-    servizi_ids = [int(item.get("servizio_id")) for item in servizi_items]
-    operatori_preferiti_ids = []
-    for item in servizi_items:
-        op_id = item.get("operatore_id")
-        if op_id:
-            try:
-                operatori_preferiti_ids.append(int(op_id))
-            except Exception:
-                pass
-
+    # Prova solo slot dove un singolo operatore può coprire TUTTI i servizi richiesti in sequenza
     for start, end in intervalli:
         slot = datetime.combine(data, start)
         fine = datetime.combine(data, end)
         while slot + durata <= fine:
-            ora_str = slot.strftime("%H:%M")
-            # Calcola la catena operatori per questo slot
-            op_chain = scegli_operatori_automatici(
-                servizi_ids=servizi_ids,
-                data_str=data_str,
-                ora_str=ora_str,
-                operatori_possibili=operatori_possibili,
-                turni_per_operatore=turni_per_operatore,
-                all_apps=appuntamenti,
-                operatori_preferiti_ids=operatori_preferiti_ids
-            )
-            # Se contiene None, lo slot non è valido per tutta la catena
-            if all(op_id is not None for op_id in op_chain):
-                orari.append(ora_str)
-                slot_operatori[ora_str] = op_chain
+            operatori_idonei = []
+            for op in operatori_disponibili:
+                slot_corrente_temp = slot
+                ok = True
+                for servizio_item in servizi_items:
+                    servizio_id = int(servizio_item.get("servizio_id"))
+                    durata_servizio = next((s.servizio_durata or 30 for s in servizi if s.id == servizio_id), 30)
+                    durata_td = timedelta(minutes=durata_servizio)
+                    inizio = slot_corrente_temp
+                    fine_servizio = slot_corrente_temp + durata_td
+
+                    # L'operatore deve essere abilitato e disponibile per ogni servizio della catena
+                    if op.id not in servizi_operatori[servizio_id]:
+                        ok = False
+                        break
+                    disponibile, _ = operatore_disponibile(op.id, inizio, fine_servizio)
+                    if not disponibile:
+                        ok = False
+                        break
+                    slot_corrente_temp = fine_servizio
+                if ok:
+                    operatori_idonei.append(op)
+
+            if operatori_idonei:
+                preferenze = [servizio_item.get("operatore_id") for servizio_item in servizi_items]
+                preferenze = [int(x) for x in preferenze if x]
+                op_scelto = None
+                if preferenze:
+                    if all(x == preferenze[0] for x in preferenze) and any(op.id == preferenze[0] for op in operatori_idonei):
+                        op_scelto = next(op for op in operatori_idonei if op.id == preferenze[0])
+                if not op_scelto:
+                    op_scelto = random.choice(operatori_idonei)
+
+                operatori_catena = [op_scelto.id] * len(servizi_items)
+                orari.append(slot.strftime("%H:%M"))
+                slot_operatori[slot.strftime("%H:%M")] = operatori_catena
             slot += slot_step
+
+        if servizi_items:
+            for start, end in intervalli:
+                slot = datetime.combine(data, start)
+                fine = datetime.combine(data, end)
+                while slot + durata <= fine:
+                    slot_str = slot.strftime("%H:%M")
+                    if slot_str in slot_operatori:
+                        slot += slot_step
+                        continue
+                    assegnati = []
+                    slot_corrente_temp = slot
+                    fallito = False
+                    for servizio_item in servizi_items:
+                        servizio_id = int(servizio_item.get("servizio_id"))
+                        durata_servizio = next((s.servizio_durata or 30 for s in servizi if s.id == servizio_id), 30)
+                        durata_td = timedelta(minutes=durata_servizio)
+                        inizio = slot_corrente_temp
+                        fine_servizio = slot_corrente_temp + durata_td
+                        prefer_op = servizio_item.get("operatore_id")
+                        candidate_ops = []
+                        if prefer_op:
+                            try:
+                                prefer_op_int = int(prefer_op)
+                                candidate_ops = [op for op in operatori_disponibili if op.id == prefer_op_int and op.id in servizi_operatori[servizio_id]]
+                            except:
+                                candidate_ops = []
+                        if not candidate_ops:
+                            candidate_ops = [op for op in operatori_disponibili if op.id in servizi_operatori[servizio_id]]
+                        scelto = None
+                        for op in candidate_ops:
+                            disponibile, _ = operatore_disponibile(op.id, inizio, fine_servizio)
+                            if disponibile:
+                                scelto = op
+                                break
+                        if not scelto:
+                            fallito = True
+                            break
+                        assegnati.append(scelto.id)
+                        slot_corrente_temp = fine_servizio
+                    if not fallito and len(assegnati) == len(servizi_items):
+                        orari.append(slot_str)
+                        slot_operatori[slot_str] = assegnati
+                    slot += slot_step
 
     orari = sorted(list(set(orari)))
 
@@ -646,7 +723,7 @@ def prenota(tenant_id):
         if b not in appuntamenti:
             appuntamenti.append(b)
 
-    # --- LOGICA IDENTICA A orari_disponibili ---
+    # --- LOGICA IDENTICA A orari_disponibili (per ricreare turni/intervalli) ---
     durata_totale = sum([s.servizio_durata or 30 for s in servizi_objs])
     durata = timedelta(minutes=durata_totale)
     slot_step = timedelta(minutes=15)
@@ -665,20 +742,25 @@ def prenota(tenant_id):
             if curr_start <= last_end:
                 intervalli[-1] = (last_start, max(last_end, curr_end))
             else:
-                intervalli.append((curr_start, curr_end))
+                intervalli.append(intervallo)
 
-    # Ricostruisci la catena operatori in modo robusto con la stessa logica di /orari
+    # --- Ricostruisci la catena operatori in modo robusto con gli stessi vincoli della ricerca orari ---
     servizi_ids = [int(s.get("servizio_id")) for s in servizi]
     operatori_preferiti_ids = []
+    operatori_preferiti_per_servizio = []
     for s in servizi:
         op_id = s.get("operatore_id")
         if op_id:
             try:
-                operatori_preferiti_ids.append(int(op_id))
+                op_int = int(op_id)
+                operatori_preferiti_ids.append(op_int)
+                # vincolo forte: questo servizio può usare SOLO questo operatore
+                operatori_preferiti_per_servizio.append([op_int])
             except Exception:
-                pass
+                operatori_preferiti_per_servizio.append([])
+        else:
+            operatori_preferiti_per_servizio.append([])
 
-    # Usa scegli_operatori_automatici come unica fonte di verità
     operatori_chain = scegli_operatori_automatici(
         servizi_ids=servizi_ids,
         data_str=data_str,
@@ -686,7 +768,8 @@ def prenota(tenant_id):
         operatori_possibili=operatori_disponibili,
         turni_per_operatore=turni_per_operatore,
         all_apps=appuntamenti,
-        operatori_preferiti_ids=operatori_preferiti_ids
+        operatori_preferiti_ids=operatori_preferiti_ids,
+        operatori_preferiti_per_servizio=operatori_preferiti_per_servizio
     )
 
     if not operatori_chain or any(op_id is None for op_id in operatori_chain):
@@ -769,19 +852,17 @@ def prenota(tenant_id):
         template = """
         <p>Ciao {{ nome }},</p>
         <p>La tua richiesta di prenotazione è stata ricevuta! Riceverai la conferma via Whatsapp in orario lavorativo, o comunque al più presto possibile.</p>
-        <ul style="list-style-type:none;padding-left:0;">
+        <ul>
         {% for a in appuntamenti %}
-          <li style="margin-bottom:14px;">
-            <div><b>Data:</b> {{ a.data }}</div>
-            <div><b>Ora:</b> {{ a.ora }}</div>
-            {% if a.operatore_nome %}
-              <div><b>Operatore:</b> {{ a.operatore_nome }}</div>
-            {% endif %}
-            <div><b>Servizio:</b> {{ a.servizio_nome }}</div>
-            <div style="font-size:0.9em;color:#555;">
-              <span>Durata: {{ a.durata }} min</span><br>
-              <span>Prezzo: {{ a.prezzo }} €</span>
-            </div>
+          <li>
+            <b>Data:</b> {{ a.data }}<br>
+            <b>Ora:</b> {{ a.ora }}<br>
+            {% if a.operatore_nome %}<b>Operatore:</b> {{ a.operatore_nome }}<br>{% endif %}
+            <b>Servizio:</b> {{ a.servizio_nome }}<br>
+            <small>
+              Durata: {{ a.durata }} min<br>
+              Prezzo: {{ a.prezzo }} €
+            </small>
           </li>
         {% endfor %}
         </ul>
@@ -817,26 +898,21 @@ def prenota(tenant_id):
         # Invio email all'admin (stesso approccio sicuro)
         admin_email = business_info.email if business_info and business_info.email else None
         admin_riepilogo = render_template_string(
-    """
-    <div style="font-size:1.5em;">Nuova prenotazione:</div>
-    <div style="font-size:2.8em; color:red;">{{ nome }} {{ cognome }}</div>
-    <div style="font-size:1.3em;">
-      <ul>
-      {% for a in appuntamenti %}
-        <li>
-          <b>Data:</b> {{ a.data }} - <b>Ora:</b> {{ a.ora }}
-          {% if a.operatore_nome %}
-            - <b>Operatore:</b> {{ a.operatore_nome }}
-          {% endif %}
-          - <b>Servizio:</b> {{ a.servizio_nome }}
-        </li>
-      {% endfor %}
-      </ul>
-    </div>
-    <div style="padding:12px; background:#f2f2f2; margin:20px 0; border-radius:8px; font-size:1.3em;">
-      <b>Totale durata:</b> {{ totale_durata }} min &nbsp; | &nbsp; <b>Totale costo:</b> €{{ totale_prezzo }}
-    </div>
-    """,
+            """
+    <div style="font-size:1.5em;">Nuova prenotazione:</div><div style="font-size:2.8em; color:red;"> {{ nome }} {{ cognome }}</div>
+            <div style="font-size:1.3em;">
+            <ul>
+            {% for a in appuntamenti %}
+              <li>
+                <b>Data:</b> {{ a.data }} - <b>Ora:</b> {{ a.ora }} - <b>Servizio:</b> {{ a.servizio_nome }}
+              </li>
+            {% endfor %}
+            </ul>
+            </div>
+            <div style="padding:12px; background:#f2f2f2; margin:20px 0; border-radius:8px; font-size:1.3em;">
+            <b>Totale durata:</b> {{ totale_durata }} min &nbsp; | &nbsp; <b>Totale costo:</b> €{{ totale_prezzo }}
+            </div>
+            """,
             nome=nome,
             cognome=cognome,
             appuntamenti=appuntamenti_data,
@@ -888,9 +964,7 @@ def cancel_booking(tenant_id, token):
         company_name = (getattr(biz, 'business_name', None) or "SunBooking")
 
         if request.method == 'GET':
-            # genera un token CSRF per questo form
-            csrf_token = generate_csrf()
-
+            # SOLO pagina di conferma, nessuna cancellazione ancora
             count = len(appts)
             first_appt = appts[0]
             dt = to_rome(first_appt.start_time) if first_appt.start_time else None
@@ -908,15 +982,14 @@ def cancel_booking(tenant_id, token):
                   {% endif %}
                   <p>Questo annullerà {{ count }} appuntamento/i collegati a questa prenotazione.</p>
                   <form method="post">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <button type="submit" style="background:#c0392b;color:#fff;border:none;padding:10px 18px;border-radius:4px;cursor:pointer;font-size:clamp(20px,4vw,28px);">
+                    <button type="submit" style="background:#c0392b;color:#fff;border:none;padding:10px 18px;border-radius:4px;cursor:pointer;">
                       Conferma annullamento
                     </button>
                   </form>
                   <p style="margin-top:16px;color:#666;">{{ company_name }}</p>
                 </div>
             """, count=len(appts), company_name=company_name,
-                 data_str=data_str, ora_str=ora_str, csrf_token=csrf_token)
+                 data_str=data_str, ora_str=ora_str)
 
         # POST: esegue la cancellazione vera
         count = len(appts)
@@ -939,7 +1012,7 @@ def cancel_booking(tenant_id, token):
         g.db_session.rollback()
         print(f"[CANCEL] error: {repr(e)}")
         return render_template_string("<p>Errore durante la cancellazione. Riprova più tardi.</p>"), 500
-    
+
 @booking_bp.route('/invia-codice', methods=['POST'])
 def invia_codice(tenant_id):
     business_info = g.db_session.query(BusinessInfo).first()
