@@ -2,6 +2,7 @@
 import string
 import json
 from flask import Blueprint, g, request, jsonify, render_template, render_template_string, session, url_for
+from flask_wtf import CSRFProtect
 from flask_wtf.csrf import generate_csrf
 from appl.models import Appointment, AppointmentSource, Service, Operator, OperatorShift, Client, BusinessInfo
 from datetime import date, datetime, timezone, timedelta, time
@@ -15,13 +16,14 @@ from markupsafe import escape
 import threading
 from azure.communication.email import EmailClient
 from wbiztool_client import WbizToolClient
-from appl import csrf
 
 # --- UTIL: formato data per email (solo output email, non DB) ---
 MONTH_ABBR_IT = {
     1: 'GEN', 2: 'FEB', 3: 'MAR', 4: 'APR', 5: 'MAG', 6: 'GIU',
     7: 'LUG', 8: 'AGO', 9: 'SET', 10: 'OTT', 11: 'NOV', 12: 'DIC'
 }
+
+csrf_local = CSRFProtect()
 
 def _fmt_date_it_short(date_str: str) -> str:
     """
@@ -955,7 +957,7 @@ def prenota(tenant_id):
     })
 
 @booking_bp.route('/cancel/<token>', methods=['GET', 'POST'])
-@csrf.exempt
+@csrf_local.exempt
 def cancel_booking(tenant_id, token):
     """
     Step 1 (GET): mostra pagina di conferma annullamento.
