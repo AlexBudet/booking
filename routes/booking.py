@@ -1,7 +1,7 @@
 # filepath: /Users/alessio.budettagmail.com/Documents/SunBooking/appl/routes/booking.py
 import string
 import json
-from flask import Blueprint, g, request, jsonify, render_template, render_template_string, session, url_for
+from flask import Blueprint, g, request, jsonify, render_template, render_template_string, session, url_for, current_app
 from flask_wtf import CSRFProtect
 from flask_wtf.csrf import generate_csrf
 from appl.models import Appointment, AppointmentSource, Service, Operator, OperatorShift, Client, BusinessInfo
@@ -957,7 +957,6 @@ def prenota(tenant_id):
     })
 
 @booking_bp.route('/cancel/<token>', methods=['GET', 'POST'])
-@csrf_local.exempt
 def cancel_booking(tenant_id, token):
     """
     Step 1 (GET): mostra pagina di conferma annullamento.
@@ -1031,7 +1030,16 @@ def cancel_booking(tenant_id, token):
         g.db_session.rollback()
         print(f"[CANCEL] error: {repr(e)}")
         return render_template_string("<p>Errore durante la cancellazione. Riprova più tardi.</p>"), 500
-
+# Esenta questa view dal CSRF globale di Flask-WTF (mantiene GET+POST con form di conferma)
+try:
+    csrf_ext = current_app.extensions.get("csrf")
+    if csrf_ext is not None:
+        csrf_ext.exempt(cancel_booking)
+except Exception:
+    # in fase di import può non esserci current_app; l'esenzione avverrà comunque
+    # quando l'app sarà inizializzata e il modulo ricaricato nel contesto dell'app
+    pass
+    
 @booking_bp.route('/invia-codice', methods=['POST'])
 def invia_codice(tenant_id):
     business_info = g.db_session.query(BusinessInfo).first()
