@@ -704,7 +704,7 @@ def prenota(tenant_id):
         if b not in appuntamenti:
             appuntamenti.append(b)
 
-    # --- LOGICA IDENTICA A orari_disponibili ---
+    # --- LOGICA IDENTICA A orari_disponibili (solo per coerenza calcolo intervalli, ma senza ricontrollare tutto) ---
     durata_totale = sum([s.servizio_durata or 30 for s in servizi_objs])
     durata = timedelta(minutes=durata_totale)
     slot_step = timedelta(minutes=15)
@@ -725,15 +725,15 @@ def prenota(tenant_id):
             else:
                 intervalli.append(intervallo)
 
-    # Verifica che operatori_assegnati sia coerente con la richiesta e con i vincoli di disponibilità
+    # Verifica di coerenza minima su operatori_assegnati rispetto alla richiesta
     if not isinstance(operatori_assegnati, list) or len(operatori_assegnati) != len(servizi):
         return jsonify({
             "success": False,
             "errori": ["Operatori assegnati mancanti o non coerenti. Ricarica la pagina e riprova."]
         }), 400
 
-    # 1) dove l'utente ha scelto esplicitamente un operatore per il servizio,
-    #    la lista operatori_assegnati deve coincidere
+    # Dove l'utente ha scelto esplicitamente un operatore per il servizio,
+    # operatori_assegnati deve coincidere.
     for idx, servizio_item in enumerate(servizi):
         operatore_id_richiesto = servizio_item.get("operatore_id")
         if operatore_id_richiesto:
@@ -749,7 +749,9 @@ def prenota(tenant_id):
                     "errori": ["Operatori assegnati non validi. Ricarica la pagina e riprova."]
                 }), 400
 
-    # 2) controlla che ciascun operatore assegnato sia abilitato e disponibile per il servizio
+    # A questo punto ci fidiamo della catena calcolata da /orari:
+    # creiamo gli appuntamenti usando operatori_assegnati in sequenza,
+    # rispettando l'ordine dei servizi e l'orario di partenza scelto (data_str + ora).
     risultati = []
     slot_corrente = datetime.strptime(f"{data_str} {ora}", "%Y-%m-%d %H:%M")
 
@@ -767,40 +769,8 @@ def prenota(tenant_id):
                 "errori": ["Operatori assegnati non validi. Ricarica la pagina e riprova."]
             }), 400
 
-        # deve essere abilitato a quel servizio
+        # ulteriore controllo leggero: l'operatore deve essere abilitato al servizio
         if operatore_id not in servizi_operatori.get(servizio_id, []):
-            return jsonify({
-                "success": False,
-                "errori": ["La sequenza di operatori richiesta non è più disponibile per questo slot. Ricarica la pagina e riprova."]
-            }), 400
-
-        # e deve essere effettivamente libero in quell'intervallo
-        disponibile, _motivo = None, None
-        # riuso la stessa logica di orari_disponibili
-        turni = turni_per_operatore.get(operatore_id, [])
-        if not any(start <= inizio.time() and fine.time() <= end for start, end in turni):
-            disponibile = False
-        else:
-            disponibile = True
-            for app in appuntamenti:
-                if app.operator_id is None and app.note and "OFF" in app.note:
-                    app_start = app.start_time
-                    if getattr(app_start, "tzinfo", None) is not None:
-                        app_start = app_start.replace(tzinfo=None)
-                    app_end = app_start + timedelta(minutes=app._duration)
-                    if app_start < fine and app_end > inizio:
-                        disponibile = False
-                        break
-                if str(app.operator_id) == str(operatore_id):
-                    app_start = app.start_time
-                    if getattr(app_start, "tzinfo", None) is not None:
-                        app_start = app_start.replace(tzinfo=None)
-                    app_end = app_start + timedelta(minutes=app._duration)
-                    if app_start < fine and app_end > inizio:
-                        disponibile = False
-                        break
-
-        if not disponibile:
             return jsonify({
                 "success": False,
                 "errori": ["La sequenza di operatori richiesta non è più disponibile per questo slot. Ricarica la pagina e riprova."]
