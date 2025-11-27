@@ -15,6 +15,7 @@ from markupsafe import escape
 import threading
 from azure.communication.email import EmailClient
 from wbiztool_client import WbizToolClient
+from appl import csrf
 
 # --- UTIL: formato data per email (solo output email, non DB) ---
 MONTH_ABBR_IT = {
@@ -954,6 +955,7 @@ def prenota(tenant_id):
     })
 
 @booking_bp.route('/cancel/<token>', methods=['GET', 'POST'])
+@csrf.exempt
 def cancel_booking(tenant_id, token):
     """
     Step 1 (GET): mostra pagina di conferma annullamento.
@@ -997,8 +999,8 @@ def cancel_booking(tenant_id, token):
                   {% endif %}
                   <p>Questo annullerà {{ count }} appuntamento/i collegati a questa prenotazione.</p>
                   <form method="post">
-                    <button type="submit" style="background:#c0392b;color:#fff;border:none;padding:10px 18px;border-radius:4px;cursor:pointer;">
-                      Conferma annullamento
+                    <button type="submit" style="background:#c0392b;color:#fff;border:none;padding:10px 18px;border-radius:4px;cursor:pointer;font-size:clamp(1rem, 2.4vw, 1.4rem);">
+                    Conferma annullamento
                     </button>
                   </form>
                   <p style="margin-top:16px;color:#666;">{{ company_name }}</p>
