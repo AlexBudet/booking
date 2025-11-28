@@ -510,7 +510,10 @@ def orari_disponibili(tenant_id):
                     fallito = False
                     for servizio_item in servizi_items:
                         servizio_id = int(servizio_item.get("servizio_id"))
-                        durata_servizio = next((s.servizio_durata or 30 for s in servizi if s.id == servizio_id), 30)
+                        durata_servizio = next(
+                            (s.servizio_durata or 30 for s in servizi if s.id == servizio_id),
+                            30
+                        )
                         durata_td = timedelta(minutes=durata_servizio)
                         inizio = slot_corrente_temp
                         fine_servizio = slot_corrente_temp + durata_td
@@ -536,8 +539,8 @@ def orari_disponibili(tenant_id):
                                     if op.id == prefer_op_int
                                 ]
                             else:
-                                # L'operatore scelto non è più abilitato al servizio:
-                                # questa catena fallisce subito
+                                # L'operatore scelto non è (più) abilitato al servizio:
+                                # questa catena fallisce subito su questo slot
                                 fallito = True
                                 break
                         else:
@@ -553,6 +556,11 @@ def orari_disponibili(tenant_id):
 
                         scelto = None
                         for op in candidate_ops:
+                            # operatore_disponibile considera:
+                            # - fuori turno
+                            # - blocchi OFF globali
+                            # - blocchi OFF per operatore
+                            # - altri appuntamenti
                             disponibile, _ = operatore_disponibile(op.id, inizio, fine_servizio)
                             if disponibile:
                                 scelto = op
