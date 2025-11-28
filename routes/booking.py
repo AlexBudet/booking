@@ -514,27 +514,57 @@ def orari_disponibili(tenant_id):
                         durata_td = timedelta(minutes=durata_servizio)
                         inizio = slot_corrente_temp
                         fine_servizio = slot_corrente_temp + durata_td
+
+                        # OPERATRICE SCELTA DAL CLIENTE?
                         prefer_op = servizio_item.get("operatore_id")
                         candidate_ops = []
+
                         if prefer_op:
+                            # Se il cliente ha scelto un operatore, CERCA SOLO SU QUELLA COLONNA
                             try:
                                 prefer_op_int = int(prefer_op)
-                                candidate_ops = [op for op in operatori_disponibili if op.id == prefer_op_int and op.id in servizi_operatori[servizio_id]]
-                            except:
-                                candidate_ops = []
+                            except Exception:
+                                prefer_op_int = None
+
+                            if (
+                                prefer_op_int is not None
+                                and prefer_op_int in servizi_operatori.get(servizio_id, [])
+                            ):
+                                # Usa SOLO quell'operatore come candidato
+                                candidate_ops = [
+                                    op for op in operatori_disponibili
+                                    if op.id == prefer_op_int
+                                ]
+                            else:
+                                # L'operatore scelto non è più abilitato al servizio:
+                                # questa catena fallisce subito
+                                fallito = True
+                                break
+                        else:
+                            # Nessun operatore scelto: prendi tutti gli operatori abilitati
+                            candidate_ops = [
+                                op for op in operatori_disponibili
+                                if op.id in servizi_operatori.get(servizio_id, [])
+                            ]
+
                         if not candidate_ops:
-                            candidate_ops = [op for op in operatori_disponibili if op.id in servizi_operatori[servizio_id]]
+                            fallito = True
+                            break
+
                         scelto = None
                         for op in candidate_ops:
                             disponibile, _ = operatore_disponibile(op.id, inizio, fine_servizio)
                             if disponibile:
                                 scelto = op
                                 break
+
                         if not scelto:
                             fallito = True
                             break
+
                         assegnati.append(scelto.id)
                         slot_corrente_temp = fine_servizio
+
                     if not fallito and len(assegnati) == len(servizi_items):
                         orari.append(slot_str)
                         slot_operatori[slot_str] = assegnati
