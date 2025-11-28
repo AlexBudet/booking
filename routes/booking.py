@@ -453,92 +453,148 @@ def orari_disponibili(tenant_id):
     durata = timedelta(minutes=durata_totale)
     slot_step = timedelta(minutes=15)
 
+    # Controlla se ci sono preferenze per operatrici DIVERSE:
+    # se sì, salta il primo pass (singolo operatore) e vai direttamente al secondo pass (a cascata)
+    preferenze_operatori = [item.get("operatore_id") for item in servizi_items]
+    preferenze_univoche = set(p for p in preferenze_operatori if p is not None)
+    has_diverse_preferenze = len(preferenze_univoche) > 1  # più di una operatrice scelta diversa
+
     # Prova solo slot dove un singolo operatore può coprire TUTTI i servizi richiesti in sequenza
-    for start, end in intervalli:
-        slot = datetime.combine(data, start)
-        fine = datetime.combine(data, end)
-        while slot + durata <= fine:
-            operatori_idonei = []
-            for op in operatori_disponibili:
-                slot_corrente_temp = slot
-                ok = True
-                for servizio_item in servizi_items:
-                    servizio_id = int(servizio_item.get("servizio_id"))
-                    durata_servizio = next((s.servizio_durata or 30 for s in servizi if s.id == servizio_id), 30)
-                    durata_td = timedelta(minutes=durata_servizio)
-                    inizio = slot_corrente_temp
-                    fine_servizio = slot_corrente_temp + durata_td
-
-                    # L'operatore deve essere abilitato e disponibile per ogni servizio della catena
-                    if op.id not in servizi_operatori[servizio_id]:
-                        ok = False
-                        break
-                    disponibile, _ = operatore_disponibile(op.id, inizio, fine_servizio)
-                    if not disponibile:
-                        ok = False
-                        break
-                    slot_corrente_temp = fine_servizio
-                if ok:
-                    operatori_idonei.append(op)
-
-            if operatori_idonei:
-                preferenze = [servizio_item.get("operatore_id") for servizio_item in servizi_items]
-                preferenze = [int(x) for x in preferenze if x]
-                op_scelto = None
-                if preferenze:
-                    if all(x == preferenze[0] for x in preferenze) and any(op.id == preferenze[0] for op in operatori_idonei):
-                        op_scelto = next(op for op in operatori_idonei if op.id == preferenze[0])
-                if not op_scelto:
-                    op_scelto = random.choice(operatori_idonei)
-
-                operatori_catena = [op_scelto.id] * len(servizi_items)
-                orari.append(slot.strftime("%H:%M"))
-                slot_operatori[slot.strftime("%H:%M")] = operatori_catena
-            slot += slot_step
-
-        if servizi_items:
-            for start, end in intervalli:
-                slot = datetime.combine(data, start)
-                fine = datetime.combine(data, end)
-                while slot + durata <= fine:
-                    slot_str = slot.strftime("%H:%M")
-                    if slot_str in slot_operatori:
-                        slot += slot_step
-                        continue
-                    assegnati = []
+    # MA SOLO se non ci sono preferenze per operatrici diverse
+    if not has_diverse_preferenze:
+        for start, end in intervalli:
+            slot = datetime.combine(data, start)
+            fine = datetime.combine(data, end)
+            while slot + durata <= fine:
+                operatori_idonei = []
+                for op in operatori_disponibili:
                     slot_corrente_temp = slot
-                    fallito = False
+                    ok = True
                     for servizio_item in servizi_items:
                         servizio_id = int(servizio_item.get("servizio_id"))
                         durata_servizio = next((s.servizio_durata or 30 for s in servizi if s.id == servizio_id), 30)
                         durata_td = timedelta(minutes=durata_servizio)
                         inizio = slot_corrente_temp
                         fine_servizio = slot_corrente_temp + durata_td
+
+                        # L'operatore deve essere abilitato e disponibile per ogni servizio della catena
+                        if op.id not in servizi_operatori[servizio_id]:
+                            ok = False
+                            break
+                        disponibile, _ = operatore_disponibile(op.id, inizio, fine_servizio)
+                        if not disponibile:
+                            ok = False
+                            break
+                        slot_corrente_temp = fine_servizio
+                    if ok:
+                        operatori_idonei.append(op)
+
+                if operatori_idonei:
+                    preferenze = [servizio_item.get("operatore_id") for servizio_item in servizi_items]
+                    preferenze = [int(x) for x in preferenze if x]
+                    op_scelto = None
+                    if preferenze:
+                        if all(x == preferenze[0] for x in preferenze) and any(op.id == preferenze[0] for op in operatori_idonei):
+                            op_scelto = next(op for op in operatori_idonei if op.id == preferenze[0])
+                    if not op_scelto:
+                        op_scelto = random.choice(operatori_idonei)
+
+                    operatori_catena = [op_scelto.id] * len(servizi_items)
+                    orari.append(slot.strftime("%H:%M"))
+                    slot_operatori[slot.strftime("%H:%M")] = operatori_catena
+                slot += slot_step
+
+    # Secondo pass (a cascata): eseguito SEMPRE, per rispettare preferenze individuali
+    if servizi_items:
+        for start, end in intervalli:
+            slot = datetime.combine(data, start)
+            fine = datetime.combine(data, end)
+            while slot + durata <= fine:
+                slot_str = slot.strftime("%H:%M")
+                if slot_str in slot_operatori:
+                    slot += slot_step
+                    continue
+                assegnati = []
+                slot_corrente_temp = slot
+                fallito = False
+                for servizio_item in servizi_items:
+                    servizio_id = int(servizio_item.get("servizio_id"))
+                    durata_servizio = next(
+                        (s.servizio_durata or 30 for s in servizi if s.id == servizio_id),
+                        30
+                    )
+                    durata_td = timedelta(minutes=durata_servizio)
+                    inizio = slot_corrente_temp
+                    fine_servizio = slot_corrente_temp + durata_td
+
+                    prefer_op = servizio_item.get("operatore_id")
+                    candidate_ops = []
+
+                    if prefer_op:
+                        # Se il cliente ha scelto un'operatrice, CERCA SOLO SU QUELLA COLONNA
+                        try:
+                            prefer_op_int = int(prefer_op)
+                        except Exception:
+                            prefer_op_int = None
+
+                        if (
+                            prefer_op_int is not None
+                            and prefer_op_int in servizi_operatori.get(servizio_id, [])
+                        ):
+                            # Usa SOLO quell'operatrice come candidata
+                            candidate_ops = [
+                                op for op in operatori_disponibili
+                                if op.id == prefer_op_int
+                            ]
+                        else:
+                            # L'operatrice scelta non è (più) abilitata al servizio:
+                            # questa catena fallisce subito su questo slot
+                            fallito = True
+                            break
+                    else:
+                        # Nessuna operatrice scelta: tutti gli operatori abilitati al servizio
+                        candidate_ops = [
+                            op for op in operatori_disponibili
+                            if op.id in servizi_operatori.get(servizio_id, [])
+                        ]
+
+                    if not candidate_ops:
+                        fallito = True
+                        break
+
+                    scelto = None
+                    for op in candidate_ops:
+                        disponibile, _ = operatore_disponibile(op.id, inizio, fine_servizio)
+                        if disponibile:
+                            scelto = op
+                            break
+
+                    if not scelto:
+                        fallito = True
+                        break
+
+                    assegnati.append(scelto.id)
+                    slot_corrente_temp = fine_servizio
+
+                if not fallito and len(assegnati) == len(servizi_items):
+                    # CONTROLLO FINALE: per ogni servizio che ha un'operatrice scelta,
+                    # la catena assegnati DEVE usare esattamente quell'ID in quella posizione.
+                    for idx, servizio_item in enumerate(servizi_items):
                         prefer_op = servizio_item.get("operatore_id")
-                        candidate_ops = []
                         if prefer_op:
                             try:
                                 prefer_op_int = int(prefer_op)
-                                candidate_ops = [op for op in operatori_disponibili if op.id == prefer_op_int and op.id in servizi_operatori[servizio_id]]
-                            except:
-                                candidate_ops = []
-                        if not candidate_ops:
-                            candidate_ops = [op for op in operatori_disponibili if op.id in servizi_operatori[servizio_id]]
-                        scelto = None
-                        for op in candidate_ops:
-                            disponibile, _ = operatore_disponibile(op.id, inizio, fine_servizio)
-                            if disponibile:
-                                scelto = op
+                            except Exception:
+                                prefer_op_int = None
+                            if prefer_op_int is None or assegnati[idx] != prefer_op_int:
+                                fallito = True
                                 break
-                        if not scelto:
-                            fallito = True
-                            break
-                        assegnati.append(scelto.id)
-                        slot_corrente_temp = fine_servizio
-                    if not fallito and len(assegnati) == len(servizi_items):
-                        orari.append(slot_str)
-                        slot_operatori[slot_str] = assegnati
-                    slot += slot_step
+
+                if not fallito and len(assegnati) == len(servizi_items):
+                    orari.append(slot_str)
+                    slot_operatori[slot_str] = assegnati
+
+                slot += slot_step
 
     orari = sorted(list(set(orari)))
 
