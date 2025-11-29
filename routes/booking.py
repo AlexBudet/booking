@@ -362,7 +362,9 @@ def orari_disponibili(tenant_id):
     # Carica tutti gli operatori disponibili e relativi turni
     operatori_disponibili = g.db_session.query(Operator).filter_by(is_deleted=False, is_visible=True).all()
     operatore_id = request.args.get('operatore_id')
-    if operatore_id:
+    # NUOVO: non restringere agli operatori del filtro globale se ci sono preferenze per-servizio
+    has_per_service_prefs = any(item.get("operatore_id") for item in servizi_items)
+    if operatore_id and not has_per_service_prefs:
         operatori_disponibili = [op for op in operatori_disponibili if str(op.id) == str(operatore_id)]
 
     turni_disponibili = g.db_session.query(OperatorShift).filter(
