@@ -362,10 +362,25 @@ def orari_disponibili(tenant_id):
     # Carica tutti gli operatori disponibili e relativi turni
     operatori_disponibili = g.db_session.query(Operator).filter_by(is_deleted=False, is_visible=True).all()
     operatore_id = request.args.get('operatore_id')
-    # NUOVO: non restringere agli operatori del filtro globale se ci sono preferenze per-servizio
-    has_per_service_prefs = any(item.get("operatore_id") for item in servizi_items)
-    if operatore_id and not has_per_service_prefs:
-        operatori_disponibili = [op for op in operatori_disponibili if str(op.id) == str(operatore_id)]
+
+    # NUOVO: se il cliente ha scelto una o più operatrici per i servizi,
+    # restringi SEMPRE agli operatori scelti per-servizio.
+    preferred_ids = set()
+    for item in servizi_items:
+        try:
+            if item.get("operatore_id") is not None:
+                preferred_ids.add(int(item["operatore_id"]))
+        except Exception:
+            pass
+
+    has_per_service_prefs = len(preferred_ids) > 0
+
+    if has_per_service_prefs:
+        operatori_disponibili = [op for op in operatori_disponibili if op.id in preferred_ids]
+    else:
+        # Altrimenti applica il filtro globale (colonna singola) se presente
+        if operatore_id:
+            operatori_disponibili = [op for op in operatori_disponibili if str(op.id) == str(operatore_id)]
 
     turni_disponibili = g.db_session.query(OperatorShift).filter(
         OperatorShift.operator_id.in_([o.id for o in operatori_disponibili]),
@@ -391,6 +406,11 @@ def orari_disponibili(tenant_id):
         ]
         if op_turni:
             turni_per_operatore[op.id] = op_turni
+
+    # NUOVO: se ci sono preferenze per-servizio e dopo il filtro non ci sono turni
+    # per le operatrici scelte, restituisci subito nessuna disponibilità.
+    if has_per_service_prefs and not turni_per_operatore:
+        return jsonify({"orari_disponibili": [], "operatori_assegnati": {}, "debug": ["Nessun turno per le operatrici selezionate"]})
 
     appuntamenti = g.db_session.query(Appointment).filter(
         Appointment.start_time >= datetime.combine(data, time.min),
@@ -455,15 +475,13 @@ def orari_disponibili(tenant_id):
     durata = timedelta(minutes=durata_totale)
     slot_step = timedelta(minutes=15)
 
-    # Controlla se ci sono preferenze per operatrici DIVERSE:
-    # se sì, salta il primo pass (singolo operatore) e vai direttamente al secondo pass (a cascata)
+    # Controlla se ci sono preferenze per operatrici DIVERSE
     preferenze_operatori = [item.get("operatore_id") for item in servizi_items]
     preferenze_univoche = set(p for p in preferenze_operatori if p is not None)
-    has_diverse_preferenze = len(preferenze_univoche) > 1  # più di una operatrice scelta diversa
+    has_diverse_preferenze = len(preferenze_univoche) > 1
 
-    # Prova solo slot dove un singolo operatore può coprire TUTTI i servizi richiesti in sequenza
-    # MA SOLO se non ci sono preferenze per operatrici diverse
-    if not has_diverse_preferenze:
+    # NUOVO: disabilita il primo pass se esistono preferenze per-servizio
+    if not has_diverse_preferenze and not has_per_service_prefs:
         for start, end in intervalli:
             slot = datetime.combine(data, start)
             fine = datetime.combine(data, end)
@@ -479,7 +497,6 @@ def orari_disponibili(tenant_id):
                         inizio = slot_corrente_temp
                         fine_servizio = slot_corrente_temp + durata_td
 
-                        # L'operatore deve essere abilitato e disponibile per ogni servizio della catena
                         if op.id not in servizi_operatori[servizio_id]:
                             ok = False
                             break
@@ -506,7 +523,7 @@ def orari_disponibili(tenant_id):
                     slot_operatori[slot.strftime("%H:%M")] = operatori_catena
                 slot += slot_step
 
-    # Secondo pass (a cascata): eseguito SEMPRE, per rispettare preferenze individuali
+    # Secondo pass (a cascata): eseguito SEMPRE
     if servizi_items:
         for start, end in intervalli:
             slot = datetime.combine(data, start)
@@ -533,7 +550,6 @@ def orari_disponibili(tenant_id):
                     candidate_ops = []
 
                     if prefer_op:
-                        # Se il cliente ha scelto un'operatrice, CERCA SOLO SU QUELLA COLONNA
                         try:
                             prefer_op_int = int(prefer_op)
                         except Exception:
@@ -543,18 +559,14 @@ def orari_disponibili(tenant_id):
                             prefer_op_int is not None
                             and prefer_op_int in servizi_operatori.get(servizio_id, [])
                         ):
-                            # Usa SOLO quell'operatrice come candidata
                             candidate_ops = [
                                 op for op in operatori_disponibili
                                 if op.id == prefer_op_int
                             ]
                         else:
-                            # L'operatrice scelta non è (più) abilitata al servizio:
-                            # questa catena fallisce subito su questo slot
                             fallito = True
                             break
                     else:
-                        # Nessuna operatrice scelta: tutti gli operatori abilitati al servizio
                         candidate_ops = [
                             op for op in operatori_disponibili
                             if op.id in servizi_operatori.get(servizio_id, [])
@@ -579,8 +591,6 @@ def orari_disponibili(tenant_id):
                     slot_corrente_temp = fine_servizio
 
                 if not fallito and len(assegnati) == len(servizi_items):
-                    # CONTROLLO FINALE: per ogni servizio che ha un'operatrice scelta,
-                    # la catena assegnati DEVE usare esattamente quell'ID in quella posizione.
                     for idx, servizio_item in enumerate(servizi_items):
                         prefer_op = servizio_item.get("operatore_id")
                         if prefer_op:
@@ -600,7 +610,6 @@ def orari_disponibili(tenant_id):
 
     orari = sorted(list(set(orari)))
 
-    # FILTRO: escludi orari già passati se la data è oggi
     now = datetime.now(pytz_timezone('Europe/Rome')).replace(second=0, microsecond=0)
     if data == now.date():
         orari = [
@@ -609,7 +618,6 @@ def orari_disponibili(tenant_id):
         ]
         slot_operatori = {o: slot_operatori[o] for o in orari}
 
-    # FILTRO: escludi completamente le date precedenti a oggi
     if data < now.date():
         return jsonify({
             "orari_disponibili": [],
