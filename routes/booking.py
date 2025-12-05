@@ -363,8 +363,7 @@ def orari_disponibili(tenant_id):
     operatori_disponibili = g.db_session.query(Operator).filter_by(is_deleted=False, is_visible=True).all()
     operatore_id = request.args.get('operatore_id')
 
-    # NUOVO: se il cliente ha scelto una o più operatrici per i servizi,
-    # restringi SEMPRE agli operatori scelti per-servizio.
+    # Preferenze per-servizio: raccogli gli ID scelti
     preferred_ids = set()
     for item in servizi_items:
         try:
@@ -375,12 +374,11 @@ def orari_disponibili(tenant_id):
 
     has_per_service_prefs = len(preferred_ids) > 0
 
-    if has_per_service_prefs:
-        operatori_disponibili = [op for op in operatori_disponibili if op.id in preferred_ids]
-    else:
-        # Altrimenti applica il filtro globale (colonna singola) se presente
-        if operatore_id:
-            operatori_disponibili = [op for op in operatori_disponibili if str(op.id) == str(operatore_id)]
+    # NON restringere l'elenco globale agli ID preferiti: la scelta per-servizio
+    # va applicata solo dentro la costruzione della catena.
+    # Applica solo il filtro globale (colonna singola) se NON ci sono preferenze per-servizio.
+    if not has_per_service_prefs and operatore_id:
+        operatori_disponibili = [op for op in operatori_disponibili if str(op.id) == str(operatore_id)]
 
     turni_disponibili = g.db_session.query(OperatorShift).filter(
         OperatorShift.operator_id.in_([o.id for o in operatori_disponibili]),
@@ -547,8 +545,8 @@ def orari_disponibili(tenant_id):
                     fine_servizio = slot_corrente_temp + durata_td
 
                     prefer_op = servizio_item.get("operatore_id")
-                    candidate_ops = []
 
+                    # Costruzione candidati
                     if prefer_op:
                         try:
                             prefer_op_int = int(prefer_op)
@@ -559,18 +557,22 @@ def orari_disponibili(tenant_id):
                             prefer_op_int is not None
                             and prefer_op_int in servizi_operatori.get(servizio_id, [])
                         ):
-                            candidate_ops = [
-                                op for op in operatori_disponibili
-                                if op.id == prefer_op_int
-                            ]
+                            candidate_ops = [op for op in operatori_disponibili if op.id == prefer_op_int]
                         else:
                             fallito = True
                             break
                     else:
-                        candidate_ops = [
-                            op for op in operatori_disponibili
-                            if op.id in servizi_operatori.get(servizio_id, [])
-                        ]
+                        # Nessuna operatrice scelta:
+                        # 1) prova PRIMA sulla stessa colonna dell'operatrice assegnata al servizio precedente (se esiste),
+                        # 2) se non disponibile, prova su tutte le altre colonne abilitate.
+                        candidate_ops = [op for op in operatori_disponibili if op.id in servizi_operatori.get(servizio_id, [])]
+
+                        # Priorità stessa colonna: se esiste assegnazione precedente
+                        if assegnati:
+                            prev_op_id = assegnati[-1]
+                            # se la precedente colonna è abilitata per questo servizio, mettila davanti
+                            if prev_op_id in servizi_operatori.get(servizio_id, []):
+                                candidate_ops.sort(key=lambda op: (op.id != prev_op_id, op.user_nome))
 
                     if not candidate_ops:
                         fallito = True
@@ -591,6 +593,7 @@ def orari_disponibili(tenant_id):
                     slot_corrente_temp = fine_servizio
 
                 if not fallito and len(assegnati) == len(servizi_items):
+                    # Verifica coerenza: dove c'è preferenza, l'ID deve combaciare
                     for idx, servizio_item in enumerate(servizi_items):
                         prefer_op = servizio_item.get("operatore_id")
                         if prefer_op:
@@ -607,7 +610,7 @@ def orari_disponibili(tenant_id):
                     slot_operatori[slot_str] = assegnati
 
                 slot += slot_step
-
+                
     orari = sorted(list(set(orari)))
 
     now = datetime.now(pytz_timezone('Europe/Rome')).replace(second=0, microsecond=0)
