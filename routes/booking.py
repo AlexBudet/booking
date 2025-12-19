@@ -1177,8 +1177,12 @@ def _prepare_wbiz_phone(phone: str):
         numero_pulito = numero_pulito.lstrip('0')
     if not numero_pulito:
         return '', ''
-    if not numero_pulito.startswith('39'):
+    
+    # MODIFICA: Aggiungi 39 solo se non c'è già E se la lunghezza suggerisce un numero italiano senza prefisso (<= 10 cifre)
+    # I numeri internazionali (es. 41...) o italiani con prefisso (39...) sono solitamente > 10 cifre.
+    if not numero_pulito.startswith('39') and len(numero_pulito) <= 10:
         numero_pulito = '39' + numero_pulito
+        
     country_code = '39' if numero_pulito.startswith('39') else numero_pulito[:2]
     return numero_pulito, country_code
 
