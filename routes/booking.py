@@ -267,7 +267,8 @@ def booking_page(tenant_id):
         'servizio_durata': s.servizio_durata,
         'servizio_prezzo': str(s.servizio_prezzo),
         'operator_ids': [op.id for op in s.operators if op.is_visible and not op.is_deleted],
-        'sottocategoria': s.servizio_sottocategoria.nome if s.servizio_sottocategoria else None
+        'sottocategoria': s.servizio_sottocategoria.nome if s.servizio_sottocategoria else None,
+        'servizio_descrizione': s.servizio_descrizione
     } for s in servizi]
     
     operatori_json = [{
@@ -308,7 +309,8 @@ def search_servizi(tenant_id):
         {
             "id": s.id,
             "servizio_nome": s.servizio_nome,
-            "sottocategoria": s.servizio_sottocategoria.nome if s.servizio_sottocategoria else None
+            "sottocategoria": s.servizio_sottocategoria.nome if s.servizio_sottocategoria else None,
+            "servizio_descrizione": s.servizio_descrizione
         }
         for s in risultati
     ])

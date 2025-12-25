@@ -50,7 +50,7 @@ db_bases = {
     for tenant in db_engines
 }
 for tenant, base in db_bases.items():
-    base.prepare(db_engines[tenant], reflect=True)
+    base.prepare(autoload_with=db_engines[tenant])
 
 # Espone i riferimenti per uso altrove (es. job schedulati)
 app.config['DB_SESSIONS'] = db_sessions

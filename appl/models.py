@@ -74,7 +74,7 @@ class Operator(db.Model):
     user_tipo = db.Column(Enum('estetista', 'macchinario', name='user_tipo_enum'), nullable=False)
     is_deleted = db.Column(db.Boolean, default=False)
     is_visible = db.Column(db.Boolean, default=True)
-    order = db.Column(db.Integer, default=0)  # Add the 'order' column
+    order = db.Column(db.Integer, default=0) 
     use_twenty_minutes = db.Column(db.Boolean, default=False)
 
     services = db.relationship(
@@ -121,7 +121,7 @@ class Client(db.Model):
                 cliente_nome="dummy",
                 cliente_cognome="dummy",
                 cliente_cellulare="0000000000",
-                cliente_sesso="-"  # oppure "F" in base alle tue esigenze
+                cliente_sesso="-" 
             )
             db.session.add(dummy)
             db.session.commit()
@@ -190,9 +190,9 @@ class Appointment(db.Model):
     operator_id = db.Column(db.Integer, db.ForeignKey('operatori.id'), nullable=False)
     service_id = db.Column(db.Integer, db.ForeignKey('servizi.id'), nullable=False)
     start_time = db.Column(db.DateTime, nullable=False)
-    _duration = db.Column("duration", db.Integer, nullable=False)  # Rinominata in _duration
-    colore = db.Column(db.String(7), nullable=True)  # Codice colore HEX (es. #FF5733)
-    colore_font = db.Column(db.String(20), nullable=True) # Codice colore più esteso
+    _duration = db.Column("duration", db.Integer, nullable=False)
+    colore = db.Column(db.String(7), nullable=True)
+    colore_font = db.Column(db.String(20), nullable=True)
     note = db.Column(db.String(1000), nullable=True)
     source = db.Column(db.Enum(AppointmentSource, native_enum=False), default=AppointmentSource.gestionale, nullable=False)
     stato = db.Column(db.Enum(AppointmentStatus, native_enum=False), 
