@@ -199,6 +199,7 @@ class Appointment(db.Model):
                       default=AppointmentStatus.DEFAULT, 
                       nullable=False)
     booking_session_id = db.Column(db.String(64), nullable=True, index=True) 
+    is_cancelled_by_client = db.Column(db.Boolean, default=False)
 
     # Relazioni
     client = db.relationship('Client', backref='appointments')
