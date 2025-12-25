@@ -70,6 +70,7 @@ class Operator(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     user_nome = db.Column(db.String(50))
     user_cognome = db.Column(db.String(50))
+    user_cellulare = db.Column(db.String, nullable=False, server_default='0')
     user_tipo = db.Column(Enum('estetista', 'macchinario', name='user_tipo_enum'), nullable=False)
     is_deleted = db.Column(db.Boolean, default=False)
     is_visible = db.Column(db.Boolean, default=True)
