@@ -152,6 +152,7 @@ class Service(db.Model):
     servizio_categoria = db.Column(Enum(ServiceCategory), nullable=False)
     servizio_sottocategoria_id = db.Column(db.Integer, db.ForeignKey('sottocategorie.id'), nullable=True)
     servizio_sottocategoria = db.relationship('Subcategory', backref='servizi')
+    servizio_descrizione = db.Column(db.String(2000), nullable=True)
     is_deleted = db.Column(db.Boolean, default=False)
     is_visible_in_calendar = db.Column(db.Boolean, default=True)
     is_visible_online = db.Column(db.Boolean, default=True)
