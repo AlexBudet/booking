@@ -144,6 +144,8 @@ def is_calendar_closed(op_id, inizio, fine, turni_per_operatore, all_apps):
     if not any(s <= inizio.time() and fine.time() <= e for s, e in shifts):
         return True
     for a in all_apps:
+        if a.is_cancelled_by_client:  # Salta quelli soft-deleted
+            continue
         a_start = to_naive(a.start_time)
         a_end = to_naive(a.start_time + timedelta(minutes=a._duration))
         # Blocco OFF globale
@@ -414,7 +416,8 @@ def orari_disponibili(tenant_id):
 
     appuntamenti = g.db_session.query(Appointment).filter(
         Appointment.start_time >= datetime.combine(data, time.min),
-        Appointment.start_time < datetime.combine(data + timedelta(days=1), time.min)
+        Appointment.start_time < datetime.combine(data + timedelta(days=1), time.min),
+        Appointment.is_cancelled_by_client == False
     ).all()
     blocchi_off = g.db_session.query(Appointment).filter(
         Appointment.start_time >= datetime.combine(data, time.min),
@@ -761,7 +764,8 @@ def prenota(tenant_id):
 
     appuntamenti = g.db_session.query(Appointment).filter(
         Appointment.start_time >= datetime.combine(data, time.min),
-        Appointment.start_time < datetime.combine(data + timedelta(days=1), time.min)
+        Appointment.start_time < datetime.combine(data + timedelta(days=1), time.min),
+        Appointment.is_cancelled_by_client == False
     ).all()
     blocchi_off = g.db_session.query(Appointment).filter(
         Appointment.start_time >= datetime.combine(data, time.min),
@@ -1061,11 +1065,103 @@ def cancel_booking(tenant_id, token):
             """, count=len(appts), company_name=company_name,
                  data_str=data_str, ora_str=ora_str, csrf_token=csrf_token)
 
-        # POST: esegue la cancellazione vera
-        count = len(appts)
+        # POST: soft-delete invece di hard-delete
         for a in appts:
-            g.db_session.delete(a)
-        g.db_session.commit()
+            a.is_cancelled_by_client = True  # Imposta soft-delete
+        g.db_session.commit()  # Commit delle modifiche
+
+        # --- INVIO EMAIL NOTIFICA ALL'ADMIN ---
+        admin_email = getattr(biz, 'email', None)
+        if admin_email:
+            # Estrai dati dal primo appuntamento (assumendo sessione multi-servizio)
+            first_appt = appts[0]
+            note = first_appt.note or ""
+            # Parsing semplice delle note per estrarre dati cliente (fallback se non presente)
+            nome = "N/A"
+            cognome = "N/A"
+            telefono = "N/A"
+            email_cliente = "N/A"
+            if "Nome:" in note and "Cognome:" in note:
+                try:
+                    nome_part = note.split("Nome: ")[1].split(",")[0].strip()
+                    cognome_part = note.split("Cognome: ")[1].split(",")[0].strip()
+                    telefono_part = note.split("Telefono: ")[1].split(",")[0].strip()
+                    email_part = note.split("Email: ")[1].split(" - ")[0].strip()
+                    nome = nome_part
+                    cognome = cognome_part
+                    telefono = telefono_part
+                    email_cliente = email_part
+                except:
+                    pass  # Fallback a N/A
+
+            # Costruisci lista appuntamenti annullati
+            appuntamenti_annullati = []
+            totale_durata = 0
+            totale_prezzo = 0
+            for a in appts:
+                servizio = g.db_session.get(Service, a.service_id)
+                operatore = g.db_session.get(Operator, a.operator_id)
+                durata = int(getattr(a, '_duration', 0) or 30)
+                prezzo = float(getattr(servizio, 'servizio_prezzo', 0) or 0)
+                totale_durata += durata
+                totale_prezzo += prezzo
+                appuntamenti_annullati.append({
+                    "data": _fmt_date_it_short(a.start_time.strftime('%Y-%m-%d') if a.start_time else ''),
+                    "ora": a.start_time.strftime('%H:%M') if a.start_time else '',
+                    "operatore_nome": getattr(operatore, 'user_nome', '') if operatore else '',
+                    "servizio_nome": getattr(servizio, 'servizio_nome', '') if servizio else '',
+                    "durata": durata,
+                    "prezzo": f"{prezzo:.2f}",
+                    "note": a.note or ''
+                })
+
+            # Template email distintivo per annullamento (rosso, titolo "Annullamento Prenotazione")
+            cancel_template = """
+            <div style="font-size:1.5em; color:red;">Annullamento Prenotazione</div>
+            <div style="font-size:2.8em; color:red;">{{ nome }} {{ cognome }}</div>
+            <div style="font-size:1.1em; margin-bottom:16px;">
+                <b>Email:</b> {{ email_cliente }}<br>
+                <b>Telefono:</b> {{ telefono }}
+            </div>
+            <div style="font-size:1.3em;">
+            <ul>
+            {% for a in appuntamenti %}
+              <li>
+                <b>Data:</b> {{ a.data }} - <b>Ora:</b> {{ a.ora }} - <b>Servizio:</b> {{ a.servizio_nome }}
+                {% if a.operatore_nome %}<br><b>Operatore:</b> {{ a.operatore_nome }}{% endif %}
+                <br><small>Durata: {{ a.durata }} min - Prezzo: {{ a.prezzo }} €</small>
+                {% if a.note %}<br><small>Note: {{ a.note }}</small>{% endif %}
+              </li>
+            {% endfor %}
+            </ul>
+            </div>
+            <div style="padding:12px; background:#ffe6e6; margin:20px 0; border-radius:8px; font-size:1.3em; border:1px solid #ffcccc;">
+            <b>Totale durata:</b> {{ totale_durata }} min &nbsp; | &nbsp; <b>Totale costo:</b> €{{ totale_prezzo }}
+            </div>
+            <p style="color:#666;">{{ company_name }} - Annullamento effettuato dal cliente via email.</p>
+            """
+
+            riepilogo_admin = render_template_string(
+                cancel_template,
+                nome=nome,
+                cognome=cognome,
+                email_cliente=email_cliente,
+                telefono=telefono,
+                appuntamenti=appuntamenti_annullati,
+                totale_durata=totale_durata,
+                totale_prezzo=f"{totale_prezzo:.2f}",
+                company_name=company_name
+            )
+
+            try:
+                invia_email_async(
+                    to_email=admin_email,
+                    subject=f'{company_name} - Annullamento Prenotazione - {nome} {cognome}',
+                    html_content=riepilogo_admin,
+                    from_email=None
+                )
+            except Exception as e:
+                print(f"[CANCEL] ERROR sending admin email: {repr(e)}")
 
         return render_template_string("""
             <!doctype html>
@@ -1206,7 +1302,8 @@ def _services_bullet_for_contiguous_block(session, appt) -> str:
                 Appointment.start_time >= datetime.combine(day, time.min),
                 Appointment.start_time < datetime.combine(day + timedelta(days=1), time.min),
                 ~Appointment.note.ilike('%OFF%'),
-                Appointment.service_id != 9999
+                Appointment.service_id != 9999,
+                Appointment.is_cancelled_by_client == False
             )
             .order_by(Appointment.start_time.asc())
             .all()
@@ -1336,6 +1433,7 @@ def _build_today_targets(session, start_from=None) -> list:
         Appointment.start_time < end,
         ~Appointment.note.ilike('%OFF%'),
         Appointment.service_id != 9999,
+        Appointment.is_cancelled_by_client == False
     )
     if dummy_id:
         q = q.filter(Appointment.client_id != dummy_id)
