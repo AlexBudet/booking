@@ -1036,9 +1036,10 @@ def cancel_booking(tenant_id, token):
         biz = g.db_session.query(BusinessInfo).first()
         company_name = (getattr(biz, 'business_name', None) or "SunBooking")
 
+        count = len(appts)
+
         if request.method == 'GET':
             # SOLO pagina di conferma, nessuna cancellazione ancora
-            count = len(appts)
             first_appt = appts[0]
             dt = to_rome(first_appt.start_time) if first_appt.start_time else None
             data_str = dt.strftime('%d/%m/%Y') if dt else ''
@@ -1177,7 +1178,7 @@ def cancel_booking(tenant_id, token):
     except Exception as e:
         g.db_session.rollback()
         print(f"[CANCEL] error: {repr(e)}")
-        return render_template_string("<p>Errore durante la cancellazione. Riprova più tardi.</p>"), 500
+        return render_template_string("<p>Errore durante la cancellazione.</p>"), 500
     
 @booking_bp.route('/invia-codice', methods=['POST'])
 def invia_codice(tenant_id):
