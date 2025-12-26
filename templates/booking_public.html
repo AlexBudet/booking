@@ -815,8 +815,10 @@ if (res.success && res.prenotazioni && res.prenotazioni.length) {
     </div>`;
   });
   sommario += `<div class="alert alert-dark mt-2"><b>Totale durata:</b> ${totaleDurata} min &nbsp; | &nbsp; <b>Totale costo:</b> €${totalePrezzo.toFixed(2)}</div>`;
-  msg.innerHTML = sommario + '<div class="alert alert-success">Prenotazione confermata! Per ulteriori informazioni, contattaci al telefono fisso o scrivici su Whatsapp!.</div>';
+  msg.innerHTML = sommario + '<div class="alert alert-success">Richiesta di prenotazione inviata! Riceverai al più presto una conferma di prenotazione su Whatsapp!.<br><button class="btn btn-primary mt-2" onclick="location.reload()">Prendi un altro appuntamento</button></div>';
       document.getElementById('bookingForm').reset();
+      document.getElementById('selezione-iniziale-servizio').style.display = 'none';
+      document.getElementById('pseudoblocchi-servizi').style.display = 'none';
       document.getElementById('data_wrapper').style.display = 'none';
       document.getElementById('ora_wrapper').style.display = 'none';
       document.getElementById('dati-cliente').style.display = 'none';
