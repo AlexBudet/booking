@@ -74,8 +74,9 @@ class Operator(db.Model):
     user_tipo = db.Column(Enum('estetista', 'macchinario', name='user_tipo_enum'), nullable=False)
     is_deleted = db.Column(db.Boolean, default=False)
     is_visible = db.Column(db.Boolean, default=True)
-    order = db.Column(db.Integer, default=0) 
+    order = db.Column(db.Integer, default=0)  # Add the 'order' column
     use_twenty_minutes = db.Column(db.Boolean, default=False)
+    notify_turni_via_whatsapp = db.Column(db.Boolean, default=False)
 
     services = db.relationship(
     'Service',
@@ -264,6 +265,9 @@ class BusinessInfo(db.Model):
     booking_max_prezzo = db.Column(db.Float, default=0)
     booking_rule_type_prezzo = db.Column(db.String(20), default="none")
     booking_rule_message_prezzo = db.Column(db.String(255), default="none")
+    operator_whatsapp_notification_enabled = db.Column(db.Boolean, default=False)
+    operator_whatsapp_notification_time = db.Column(db.Time, default=datetime.strptime("20:00", "%H:%M").time())
+    operator_whatsapp_message_template = db.Column(db.Text, nullable=True)
 
     @property
     def closing_days_list(self):
