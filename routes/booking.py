@@ -136,7 +136,7 @@ def invia_email_async(to_email, subject, html_content, from_email=None, plain_te
             print(f"ERROR sending email: {repr(e)}")
     thread = threading.Thread(target=send_email, daemon=True)
     thread.start()
-    
+
 def to_rome(dt):
     if dt is None:
         return None
@@ -1243,14 +1243,13 @@ def invia_codice(tenant_id):
     session['last_code_sent_at'] = now_ts
     session['code_send_attempts'] = attempts + 1
 
-    admin_email = business_info.email if business_info and business_info.email else None
     html_content = f"""
         <p>Ciao {escape(nome)},</p>
         <p>Hai richiesto un codice per confermare una prenotazione su <b>{escape(company_name)}</b>.</p>
         <p>Il tuo codice di conferma (one-time code) è: <b>{escape(codice)}</b></p>
         <p>Inseriscilo nella pagina di prenotazione per completare la conferma.</p>
         <p>Se non hai richiesto questo codice, ignora questa email.</p>
-        {f'<p>Assistenza: {escape(admin_email)}</p>' if admin_email else ''}
+        <p>Per assistenza vi invitiamo a contattarci telefonicamente o via Whatsapp.</p>
     """
 
     # Queue email in background to avoid blocking gunicorn worker
