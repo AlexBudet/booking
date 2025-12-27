@@ -1244,9 +1244,9 @@ def invia_codice(tenant_id):
     session['code_send_attempts'] = attempts + 1
 
     html_content = f"""
-        <p>Ciao {escape(nome)},</p>
-        <p>Hai richiesto un codice per confermare una prenotazione su <b>{escape(company_name)}</b>.</p>
+        <p>Ciao {escape(nome)} {escape(cognome)},</p>
         <p>Il tuo codice di conferma (one-time code) è: <b>{escape(codice)}</b></p>
+        <p>Hai richiesto un codice per confermare una prenotazione su <b>{escape(company_name)}</b>.</p>
         <p>Inseriscilo nella pagina di prenotazione per completare la conferma.</p>
         <p>Se non hai richiesto questo codice, ignora questa email.</p>
         <p>Per assistenza vi invitiamo a contattarci telefonicamente o via Whatsapp.</p>
