@@ -16,6 +16,7 @@ from markupsafe import escape
 import threading
 from azure.communication.email import EmailClient
 from wbiztool_client import WbizToolClient
+import html as html_lib
 
 # --- UTIL: formato data per email (solo output email, non DB) ---
 MONTH_ABBR_IT = {
@@ -40,6 +41,21 @@ def _fmt_date_it_short(date_str: str) -> str:
         return f"{d.day:02d} {MONTH_ABBR_IT.get(d.month, '')} {d.year}"
     except Exception:
         return date_str
+    
+def _html_to_text(html_content: str) -> str:
+    """Converte un frammento HTML in testo semplice leggibile."""
+    try:
+        if not html_content:
+            return ""
+        txt = re.sub(r'(?i)<br\s*/?>', '\n', html_content)
+        txt = re.sub(r'(?i)</p>', '\n', txt)
+        txt = re.sub(r'<[^>]+>', '', txt)
+        txt = html_lib.unescape(txt)
+        lines = [l.strip() for l in txt.splitlines()]
+        txt = "\n".join([l for l in lines if l])
+        return txt.strip()
+    except Exception:
+        return (html_content or "").strip()
 
 def _now_rome():
     return datetime.now(pytz_timezone('Europe/Rome'))
@@ -68,7 +84,7 @@ def _tenant_env_prefix(tenant_id: str) -> str:
     digits = ''.join(ch for ch in raw if ch.isdigit())
     return f'T{digits}' if digits else raw
 
-def invia_email_azure(to_email, subject, html_content, from_email=None):
+def invia_email_azure(to_email, subject, html_content, from_email=None, plain_text=None):
     connection_string = os.environ.get('AZURE_EMAIL_CONNECTION_STRING')
     if not connection_string:
         print("ERROR: AZURE_EMAIL_CONNECTION_STRING not set")
@@ -78,10 +94,12 @@ def invia_email_azure(to_email, subject, html_content, from_email=None):
         print("ERROR: AZURE_EMAIL_SENDER not set")
         return False
     client = EmailClient.from_connection_string(connection_string)
+    content = {"subject": subject, "html": html_content}
+    content["plainText"] = plain_text or _html_to_text(html_content)
     message = {
         "senderAddress": sender,
         "recipients": {"to": [{"address": to_email}]},
-        "content": {"subject": subject, "html": html_content}
+        "content": content
     }
     poller = client.begin_send(message)
     try:
@@ -92,7 +110,7 @@ def invia_email_azure(to_email, subject, html_content, from_email=None):
         print(f"[EMAIL] ERROR result: {repr(e)}")
         return False
 
-def invia_email_async(to_email, subject, html_content, from_email=None):
+def invia_email_async(to_email, subject, html_content, from_email=None, plain_text=None):
     def send_email():
         try:
             connection_string = os.environ.get('AZURE_EMAIL_CONNECTION_STRING')
@@ -104,10 +122,12 @@ def invia_email_async(to_email, subject, html_content, from_email=None):
                 print("ERROR: AZURE_EMAIL_SENDER not set")
                 return
             client = EmailClient.from_connection_string(connection_string)
+            content = {"subject": subject, "html": html_content}
+            content["plainText"] = plain_text or _html_to_text(html_content)
             message = {
                 "senderAddress": sender,
                 "recipients": {"to": [{"address": to_email}]},
-                "content": {"subject": subject, "html": html_content}
+                "content": content
             }
             poller = client.begin_send(message)
             result = poller.result()
@@ -116,7 +136,7 @@ def invia_email_async(to_email, subject, html_content, from_email=None):
             print(f"ERROR sending email: {repr(e)}")
     thread = threading.Thread(target=send_email, daemon=True)
     thread.start()
-
+    
 def to_rome(dt):
     if dt is None:
         return None
@@ -1223,18 +1243,21 @@ def invia_codice(tenant_id):
     session['last_code_sent_at'] = now_ts
     session['code_send_attempts'] = attempts + 1
 
+    admin_email = business_info.email if business_info and business_info.email else None
     html_content = f"""
         <p>Ciao {escape(nome)},</p>
-        <p>Il tuo codice di conferma one-time-code è: <b>{escape(codice)}</b></p>
+        <p>Hai richiesto un codice per confermare una prenotazione su <b>{escape(company_name)}</b>.</p>
+        <p>Il tuo codice di conferma (one-time code) è: <b>{escape(codice)}</b></p>
         <p>Inseriscilo nella pagina di prenotazione per completare la conferma.</p>
-        <p>Grazie!</p>
+        <p>Se non hai richiesto questo codice, ignora questa email.</p>
+        {f'<p>Assistenza: {escape(admin_email)}</p>' if admin_email else ''}
     """
 
     # Queue email in background to avoid blocking gunicorn worker
     try:
         invia_email_async(
             to_email=email,
-            subject=f'{company_name} - Il tuo codice di conferma',
+            subject=f'{company_name} - Codice di conferma prenotazione',
             html_content=html_content,
             from_email=None
         )
