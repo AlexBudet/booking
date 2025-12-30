@@ -1623,7 +1623,6 @@ def process_morning_tick(app, tenant_id: str):
 
 
 #===== SETTAGGI PER INVIO WHATSAPP OPERATORI ================================
-
 def _build_operator_targets_for_tomorrow(session, require_phone=True) -> list:
     """
     Ritorna una lista di dict per gli operatori con turno DOMANI:
@@ -1683,14 +1682,24 @@ def _build_operator_targets_for_tomorrow(session, require_phone=True) -> list:
                 .order_by(Appointment.start_time.asc())
                 .all()
             )
-            # Stringa sintetica orari (max 8 orari per evitare messaggi troppo lunghi)
-            times = []
+
+            # Stringa sintetica app+titoli servizi (max 8 per evitare messaggi troppo lunghi)
+            slots = []
             for a in apps[:8]:
                 try:
-                    times.append(a.start_time.strftime('%H:%M'))
+                    svc = session.get(Service, a.service_id) if a.service_id else None
+                    label = (getattr(svc, "servizio_nome", "") or "").strip()
                 except Exception:
-                    pass
-            app_str = ("ore: " + ", ".join(times)) if times else "nessun appuntamento pianificato"
+                    label = ""
+                try:
+                    time_str = a.start_time.strftime('%H:%M') if a.start_time else ''
+                except Exception:
+                    time_str = ''
+                if time_str:
+                    slots.append(f"{time_str} {label}".strip())
+            if len(apps) > 8:
+                slots.append(f"... (+{len(apps) - 8} altri)")
+            app_str = " ; ".join(slots) if slots else "nessun appuntamento pianificato"
 
             targets.append({
                 "operator_id": op_id,
@@ -1707,7 +1716,6 @@ def _build_operator_targets_for_tomorrow(session, require_phone=True) -> list:
     except Exception as e:
         _op_dbg("?", f"error build targets: {repr(e)}")
         return []
-
 
 def _render_operator_msg(template: str, item: dict) -> str:
     """
