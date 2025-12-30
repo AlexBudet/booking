@@ -88,6 +88,32 @@ def _start_morning_scheduler_once(app):
     t = threading.Thread(target=worker, name="wa_morning_scheduler", daemon=True)
     t.start()
 
+def _start_operator_scheduler_once(app):
+    if app.config.get('OP_SCHEDULER_STARTED'):
+        return
+    app.config['OP_SCHEDULER_STARTED'] = True
+
+    def worker():
+        import importlib
+        booking_mod = importlib.import_module('routes.booking')
+        poll_seconds = getattr(booking_mod, 'MORNING_POLL_SECONDS', 60)
+        process_operator_tick = getattr(booking_mod, 'process_operator_tick')
+        while True:
+            try:
+                with app.app_context():
+                    sessions = app.config.get('DB_SESSIONS', {})
+                    for tenant_id in sessions.keys():
+                        try:
+                            process_operator_tick(app, tenant_id)
+                        except Exception as e:
+                            print(f"[WA-OP][{tenant_id}] tick error: {repr(e)}")
+            except Exception as e:
+                print(f"[WA-OP] loop error: {repr(e)}")
+            time_mod.sleep(poll_seconds)
+
+    t = threading.Thread(target=worker, name="wa_operator_scheduler", daemon=True)
+    t.start()
+
 # 4. Registra il blueprint con un prefisso dinamico
 #    Questo renderà le tue routes accessibili tramite /negozio1/booking, /negozio2/booking, etc.
 app.register_blueprint(booking_bp, url_prefix='/<tenant_id>')
@@ -174,6 +200,7 @@ def shutdown_session(exception=None):
         g.db_session.remove()
 
 _start_morning_scheduler_once(app)
+_start_operator_scheduler_once(app)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
