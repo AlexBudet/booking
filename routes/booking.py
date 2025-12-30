@@ -1659,6 +1659,9 @@ def _build_operator_targets_for_tomorrow(session, require_phone=True) -> list:
                 continue
             if not getattr(op, "notify_turni_via_whatsapp", False):
                 continue
+            if isinstance(span.get("start"), time) and isinstance(span.get("end"), time) and span["start"] == span["end"]:
+                _op_dbg(op_id, "turno nullo (inizio=fine), skip invio")
+                continue
 
             raw_phone = getattr(op, "user_cellulare", "") or ""
             numero_pulito, country = _prepare_wbiz_phone(raw_phone)
