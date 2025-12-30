@@ -68,6 +68,14 @@ MORNING_RATE_SECONDS = 60  # ogni quanto inviare un messaggio
 WA_MORNING_DEBUG = True  # metti a False quando hai finito i test
 PROCESS_START_AT = _now_rome() # Registra l'orario di avvio del processo (serve per capire se il riavvio è avvenuto dopo il cutoff)
 
+WA_OPERATOR_DEBUG = True  # metti a False quando hai finito i test per operatori
+_OP_STATE_MAP = {}        # tenant_id -> {"date": date, "queue": [dict], "idx": int, "last_sent_minute": datetime}
+_OP_LOCKS = {}            # tenant_id -> threading.Lock()
+
+def _op_dbg(tenant_id, msg):
+    if WA_OPERATOR_DEBUG:
+        print(f"[WA-OP][{tenant_id}] {msg}")
+
 def _wa_dbg(tenant_id, msg):
     if WA_MORNING_DEBUG:
         print(f"[WA-MORNING][{tenant_id}] {msg}")
@@ -1612,3 +1620,278 @@ def process_morning_tick(app, tenant_id: str):
                     SessionFactory.remove()
                 except Exception:
                     pass
+
+
+#===== SETTAGGI PER INVIO WHATSAPP OPERATORI ================================
+
+def _build_operator_targets_for_tomorrow(session, require_phone=True) -> list:
+    """
+    Ritorna una lista di dict per gli operatori con turno DOMANI:
+    [{"operator_id", "phone", "country_code", "operatore_nome",
+      "data", "ora_inizio", "ora_fine", "appuntamenti"}]
+    - Richiede che l'operatore abbia `notify_turni_via_whatsapp = True`
+    - Usa `OperatorShift` per individuare la fascia oraria totale del giorno
+    - `appuntamenti` è una stringa breve con gli orari degli appuntamenti previsti
+    """
+    try:
+        tz_day = _now_rome().date()
+        tomorrow = tz_day + timedelta(days=1)
+        shifts = session.query(OperatorShift).filter(OperatorShift.shift_date == tomorrow).all()
+        if not shifts:
+            return []
+
+        # Aggrega earliest start e latest end per ogni operatore
+        agg = {}
+        for s in shifts:
+            op_id = s.operator_id
+            start = s.shift_start_time
+            end = s.shift_end_time
+            if op_id not in agg:
+                agg[op_id] = {"start": start, "end": end}
+            else:
+                prev = agg[op_id]
+                prev["start"] = min(prev["start"], start)
+                prev["end"] = max(prev["end"], end)
+
+        targets = []
+        for op_id, span in agg.items():
+            op = session.get(Operator, op_id)
+            if not op or op.is_deleted:
+                continue
+            if not getattr(op, "notify_turni_via_whatsapp", False):
+                continue
+
+            raw_phone = getattr(op, "user_cellulare", "") or ""
+            numero_pulito, country = _prepare_wbiz_phone(raw_phone)
+            if require_phone and not numero_pulito:
+                _op_dbg(op_id, f"operator {op_id} telefono non valido: '{raw_phone}'")
+                continue
+
+            # Carica appuntamenti dell'operatore per domani (escludi OFF e 9999, salta cancellati)
+            start_dt = datetime.combine(tomorrow, time.min)
+            end_dt = datetime.combine(tomorrow + timedelta(days=1), time.min)
+            apps = (
+                session.query(Appointment)
+                .filter(
+                    Appointment.start_time >= start_dt,
+                    Appointment.start_time < end_dt,
+                    Appointment.operator_id == op_id,
+                    ~Appointment.note.ilike('%OFF%'),
+                    Appointment.service_id != 9999,
+                    Appointment.is_cancelled_by_client == False
+                )
+                .order_by(Appointment.start_time.asc())
+                .all()
+            )
+            # Stringa sintetica orari (max 8 orari per evitare messaggi troppo lunghi)
+            times = []
+            for a in apps[:8]:
+                try:
+                    times.append(a.start_time.strftime('%H:%M'))
+                except Exception:
+                    pass
+            app_str = ("ore: " + ", ".join(times)) if times else "nessun appuntamento pianificato"
+
+            targets.append({
+                "operator_id": op_id,
+                "phone": numero_pulito,
+                "country_code": country,
+                "operatore_nome": (op.user_nome or "").strip(),
+                "data": tomorrow.strftime('%d/%m/%Y'),
+                "ora_inizio": (span["start"].strftime('%H:%M') if isinstance(span["start"], time) else ""),
+                "ora_fine": (span["end"].strftime('%H:%M') if isinstance(span["end"], time) else ""),
+                "appuntamenti": app_str
+            })
+        return targets
+    except Exception as e:
+        _op_dbg("?", f"error build targets: {repr(e)}")
+        return []
+
+
+def _render_operator_msg(template: str, item: dict) -> str:
+    """
+    Sostituisce {{operatore}}, {{data}}, {{ora_inizio}}, {{ora_fine}}, {{appuntamenti}} nel template.
+    """
+    try:
+        txt = template or "Ciao {{operatore}}, domani {{data}} il tuo turno: {{ora_inizio}}-{{ora_fine}}. Appuntamenti: {{appuntamenti}}"
+        return (txt.replace('{{operatore}}', item.get('operatore_nome', ''))
+                   .replace('{{data}}', item.get('data', ''))
+                   .replace('{{ora_inizio}}', item.get('ora_inizio', ''))
+                   .replace('{{ora_fine}}', item.get('ora_fine', ''))
+                   .replace('{{appuntamenti}}', item.get('appuntamenti', '')))
+    except Exception:
+        return template or ''
+    
+def process_operator_tick(app, tenant_id: str):
+    """
+    Ogni 60s: al minuto del reminder costruisce la coda degli operatori per DOMANI.
+    Poi invia 1 messaggio al minuto finché la coda non è vuota.
+    Logica multi-tenant allineata a process_morning_tick.
+    """
+    lock = _OP_LOCKS.get(tenant_id)
+    if lock is None:
+        lock = threading.Lock()
+        _OP_LOCKS[tenant_id] = lock
+
+    with lock:
+        SessionFactory = app.config['DB_SESSIONS'][tenant_id]
+        session = SessionFactory()
+        try:
+            biz = session.query(BusinessInfo).first()
+            if not biz or not getattr(biz, 'operator_whatsapp_notification_enabled', False):
+                _op_dbg(tenant_id, "disabilitato o BusinessInfo assente")
+                _OP_STATE_MAP.pop(tenant_id, None)
+                return
+
+            reminder_time = getattr(biz, 'operator_whatsapp_notification_time', time(20, 0))
+            msg_text = getattr(biz, 'operator_whatsapp_message_template', None)
+            if not msg_text or not isinstance(reminder_time, time):
+                _op_dbg(tenant_id, "config mancante (msg/time)")
+                return
+
+            now = _now_rome()
+            now_time = now.time()
+            if getattr(now_time, 'tzinfo', None) is not None:
+                now_time = now_time.replace(tzinfo=None)
+
+            st = _OP_STATE_MAP.get(tenant_id)
+            has_active_queue = bool(st and st.get("date") == now.date() and st.get("idx", 0) < len(st.get("queue", [])))
+            is_reminder_minute = (now_time.hour == reminder_time.hour and now_time.minute == reminder_time.minute)
+
+            # Costruisci la coda SOLO al minuto del reminder e una volta al giorno
+            if is_reminder_minute and (not st or st.get("date") != now.date()):
+                queue = _build_operator_targets_for_tomorrow(session, require_phone=True)
+                if not queue:
+                    _op_dbg(tenant_id, "coda vuota per domani")
+                    return
+                _OP_STATE_MAP[tenant_id] = {
+                    "date": now.date(),
+                    "queue": queue,
+                    "idx": 0,
+                    "last_sent_minute": None
+                }
+                st = _OP_STATE_MAP[tenant_id]
+                _op_dbg(tenant_id, f"coda operatori costruita: {len(queue)} target")
+
+            if not (is_reminder_minute or has_active_queue):
+                _op_dbg(tenant_id, f"skip: no reminder minute and no active queue. ora={now_time.strftime('%H:%M')}")
+                return
+
+            if not st or st.get("idx", 0) >= len(st.get("queue", [])):
+                _op_dbg(tenant_id, "nessun messaggio da inviare")
+                _OP_STATE_MAP.pop(tenant_id, None)
+                return
+
+            current_slot = now.replace(second=0, microsecond=0)
+            last_slot = st.get("last_sent_minute")
+            can_send = (last_slot is None) or (current_slot > last_slot)
+
+            _op_dbg(tenant_id, f"tick: idx={st['idx']}/{len(st['queue'])}, last_slot={last_slot}, current_slot={current_slot}, can_send={can_send}")
+
+            if can_send:
+                item = st["queue"][st["idx"]]
+                st["idx"] += 1
+
+                try:
+                    text_to_send = _render_operator_msg(msg_text, item)
+                except Exception as e:
+                    _op_dbg(tenant_id, f"render error operator_id={item.get('operator_id')}: {repr(e)}")
+                    text_to_send = msg_text or ""
+
+                creds = _get_wbiztool_creds(tenant_id)
+                ok = False
+                if creds:
+                    try:
+                        ok = _send_wbiztool_message(creds, item["phone"], text_to_send)
+                    except Exception as e:
+                        _op_dbg(tenant_id, f"send error: {repr(e)}")
+                        ok = False
+                else:
+                    _op_dbg(tenant_id, "credenziali mancanti")
+
+                _op_dbg(tenant_id, f"inviato={ok} operator_id={item['operator_id']} -> {item['phone']}")
+                st["last_sent_minute"] = current_slot
+
+            if st.get("idx", 0) >= len(st.get("queue", [])):
+                _op_dbg(tenant_id, "tutti i messaggi operatori inviati: reset")
+                _OP_STATE_MAP.pop(tenant_id, None)
+            else:
+                _OP_STATE_MAP[tenant_id] = st
+
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            print(f"[WA-OP][{tenant_id}] error: {repr(e)}")
+            raise
+        finally:
+            try:
+                session.close()
+            finally:
+                try:
+                    SessionFactory.remove()
+                except Exception:
+                    pass
+
+@booking_bp.route('/operator-notifications/tick', methods=['POST'])
+def operator_notifications_tick(tenant_id):
+    """
+    Endpoint da richiamare ogni minuto (Logic App/Function/WebJob).
+    Costruisce la coda degli operatori (domani) al minuto configurato e invia 1 messaggio/minuto.
+    """
+    try:
+        process_operator_tick(current_app, tenant_id)
+        return jsonify({"success": True}), 200
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@booking_bp.route('/operator-notifications/trigger', methods=['POST'])
+def operator_notifications_trigger(tenant_id):
+    """
+    Invio immediato (forzato) di tutti i messaggi operatori per domani.
+    Non rispetta il rate di 1/minuto. Utile per test.
+    """
+    try:
+        SessionFactory = current_app.config['DB_SESSIONS'][tenant_id]
+        session = SessionFactory()
+        biz = session.query(BusinessInfo).first()
+        if not biz:
+            return jsonify({"success": False, "error": "BusinessInfo assente"}), 400
+
+        tpl = getattr(biz, 'operator_whatsapp_message_template', None) or \
+              "Ciao {{operatore}}, domani {{data}} il tuo turno: {{ora_inizio}}-{{ora_fine}}. Appuntamenti: {{appuntamenti}}"
+        queue = _build_operator_targets_for_tomorrow(session, require_phone=True)
+        creds = _get_wbiztool_creds(tenant_id)
+
+        sent = 0
+        results = []
+        for item in queue:
+            try:
+                text = _render_operator_msg(tpl, item)
+            except Exception:
+                text = tpl or ""
+            ok = False
+            if creds:
+                try:
+                    ok = _send_wbiztool_message(creds, item["phone"], text)
+                except Exception as e:
+                    ok = False
+                    results.append({"operator_id": item["operator_id"], "ok": False, "error": str(e)})
+                    continue
+            else:
+                results.append({"operator_id": item["operator_id"], "ok": False, "error": "credenziali mancanti"})
+                continue
+            if ok:
+                sent += 1
+            results.append({"operator_id": item["operator_id"], "ok": ok})
+
+        try:
+            session.close()
+        finally:
+            try:
+                SessionFactory.remove()
+            except Exception:
+                pass
+
+        return jsonify({"success": True, "sent": sent, "total": len(queue), "results": results}), 200
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
