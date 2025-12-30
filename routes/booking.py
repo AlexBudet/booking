@@ -1700,7 +1700,8 @@ def _build_operator_targets_for_tomorrow(session, require_phone=True) -> list:
                 "data": tomorrow.strftime('%d/%m/%Y'),
                 "ora_inizio": (span["start"].strftime('%H:%M') if isinstance(span["start"], time) else ""),
                 "ora_fine": (span["end"].strftime('%H:%M') if isinstance(span["end"], time) else ""),
-                "appuntamenti": app_str
+                "appuntamenti": app_str,
+                "servizi": app_str 
             })
         return targets
     except Exception as e:
@@ -1718,7 +1719,8 @@ def _render_operator_msg(template: str, item: dict) -> str:
                    .replace('{{data}}', item.get('data', ''))
                    .replace('{{ora_inizio}}', item.get('ora_inizio', ''))
                    .replace('{{ora_fine}}', item.get('ora_fine', ''))
-                   .replace('{{appuntamenti}}', item.get('appuntamenti', '')))
+                   .replace('{{appuntamenti}}', item.get('appuntamenti', ''))
+                   .replace('{{servizi}}', item.get('servizi', item.get('appuntamenti', ''))))
     except Exception:
         return template or ''
     
