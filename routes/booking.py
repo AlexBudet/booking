@@ -1627,10 +1627,10 @@ def _build_operator_targets_for_tomorrow(session, require_phone=True) -> list:
     """
     Ritorna una lista di dict per gli operatori con turno DOMANI:
     [{"operator_id", "phone", "country_code", "operatore_nome",
-      "data", "ora_inizio", "ora_fine", "appuntamenti"}]
+      "data", "ora_inizio", "ora_fine", "primo_app_time", "primo_app_label", "pausa_time", "pausa_label"}]
     - Richiede che l'operatore abbia `notify_turni_via_whatsapp = True`
     - Usa `OperatorShift` per individuare la fascia oraria totale del giorno
-    - `appuntamenti` è una stringa breve con gli orari degli appuntamenti previsti
+    - NON include più campi 'servizi' o 'appuntamenti'
     """
     try:
         tz_day = _now_rome().date()
@@ -1686,23 +1686,24 @@ def _build_operator_targets_for_tomorrow(session, require_phone=True) -> list:
                 .all()
             )
 
-            # Stringa sintetica app+titoli servizi (max 8 per evitare messaggi troppo lunghi)
-            slots = []
-            for a in apps[:8]:
+            # Primo impegno (se presente) — manteniamo solo il primo appuntamento
+            primo_app_time = ""
+            primo_app_label = ""
+            if apps:
+                first = apps[0]
                 try:
-                    svc = session.get(Service, a.service_id) if a.service_id else None
-                    label = (getattr(svc, "servizio_nome", "") or "").strip()
+                    primo_app_time = first.start_time.strftime('%H:%M') if first.start_time else ""
                 except Exception:
-                    label = ""
+                    primo_app_time = ""
                 try:
-                    time_str = a.start_time.strftime('%H:%M') if a.start_time else ''
+                    svc = session.get(Service, first.service_id) if first.service_id else None
+                    primo_app_label = (getattr(svc, "servizio_nome", "") or "").strip()
                 except Exception:
-                    time_str = ''
-                if time_str:
-                    slots.append(f"{time_str} {label}".strip())
-            if len(apps) > 8:
-                slots.append(f"... (+{len(apps) - 8} altri)")
-            app_str = " ; ".join(slots) if slots else "nessun appuntamento pianificato"
+                    primo_app_label = ""
+
+            # Pausa: campo vuoto per ora (renderer deciderà come mostrarla)
+            pausa_time = ""
+            pausa_label = ""
 
             targets.append({
                 "operator_id": op_id,
@@ -1712,8 +1713,10 @@ def _build_operator_targets_for_tomorrow(session, require_phone=True) -> list:
                 "data": tomorrow.strftime('%d/%m/%Y'),
                 "ora_inizio": (span["start"].strftime('%H:%M') if isinstance(span["start"], time) else ""),
                 "ora_fine": (span["end"].strftime('%H:%M') if isinstance(span["end"], time) else ""),
-                "appuntamenti": app_str,
-                "servizi": app_str 
+                "primo_app_time": primo_app_time,
+                "primo_app_label": primo_app_label,
+                "pausa_time": pausa_time,
+                "pausa_label": pausa_label
             })
         return targets
     except Exception as e:
@@ -1723,48 +1726,56 @@ def _build_operator_targets_for_tomorrow(session, require_phone=True) -> list:
 def _fmt_data_italiana(dt):
     giorni = ["Lunedì","Martedì","Mercoledì","Giovedì","Venerdì","Sabato","Domenica"]
     mesi = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
-    return f"{giorni[dt.weekday()]} {dt.day} {mesi[dt.month - 1]}"
+    return f"{giorni[dt.weekday()]}, {dt.day} {mesi[dt.month - 1]}"
 
 def _render_operator_msg(template: str, item: dict) -> str:
     """
-    Sostituisce {{operatore}}, {{data}}, {{ora_inizio}}, {{ora_fine}}, {{appuntamenti}}, {{sezione_pausa}}, etc. nel template.
+    Sostituisce solo i placeholder usati nel template operatore:
+    {{operatore}}, {{data}}, {{ora_inizio}}, {{ora_fine}}, {{sezione_pausa}},
+    {{ora_primo_app}}, {{primo_app}}.
+    Usa _fmt_data_italiana per formattare la data nel formato 'Giovedì, 1 Gennaio'.
     """
     try:
         tpl = (template or "")
-        
-        lines = []
-        for x in item.get('schedule', []):
-            if not x:
-                continue
-            if x.get('is_off'):
-                dur = x.get('durata')
-                dur_txt = f" ({dur} minuti)" if (isinstance(dur, int) and dur > 0) else ""
-                lines.append(f"- {x.get('ora')} {x.get('label')}{dur_txt}")
-            else:
-                lines.append(f"- {x.get('ora')} {x.get('label')}")
-        
-        appuntamenti_list = "\n".join(lines)
-        
-        data_it = _fmt_data_italiana(datetime.strptime(item["date"], "%Y-%m-%d"))
 
-        pausa_section = ""
-        if item.get("pausa_time"):
-            pausa_section = f"Pausa alle {item.get('pausa_time')}"
-        
+        # Data: usa _fmt_data_italiana per formato 'Giovedì, 1 Gennaio'
+        raw_date = item.get("data") or item.get("date") or ""
+        data_txt = ""
+        if raw_date:
+            try:
+                dt = datetime.strptime(raw_date, "%d/%m/%Y")
+                data_txt = _fmt_data_italiana(dt)
+            except Exception:
+                data_txt = raw_date
+
+        ora_inizio = item.get("ora_inizio") or item.get("shift_start") or ""
+        ora_fine = item.get("ora_fine") or item.get("shift_end") or ""
+
+        # Pausa: supporta sia time che label; se vuoto restituisce stringa vuota
+        pausa_time = item.get("pausa_time") or ""
+        pausa_label = item.get("pausa_label") or ""
+        if pausa_time and pausa_label:
+            sezione_pausa = f"{pausa_label} alle {pausa_time}"
+        elif pausa_time:
+            sezione_pausa = f"Pausa alle {pausa_time}"
+        elif pausa_label:
+            sezione_pausa = pausa_label
+        else:
+            sezione_pausa = ""
+
+        primo_app_time = item.get("primo_app_time") or "N/D"
+        primo_app_label = item.get("primo_app_label") or "N/D"
+
         return (tpl
             .replace("{{operatore}}", item.get("operatore_nome", ""))
-            .replace("{{data}}", data_it)
-            .replace("{{ora_inizio}}", item.get("shift_start") or "OFF")
-            .replace("{{ora_fine}}", item.get("shift_end") or "OFF")
-            .replace("{{ora_primo_app}}", item.get("primo_app_time") or "N/D")
-            .replace("{{primo_app}}", item.get("primo_app_label") or "N/D")
-            .replace("{{ora_pausa}}", item.get("pausa_time") or "")
-            .replace("{{pausa}}", item.get("pausa_label") or "")
-            .replace("{{sezione_pausa}}", pausa_section)
-            .replace("{{appuntamenti}}", appuntamenti_list)
+            .replace("{{data}}", data_txt)
+            .replace("{{ora_inizio}}", ora_inizio or "OFF")
+            .replace("{{ora_fine}}", ora_fine or "OFF")
+            .replace("{{sezione_pausa}}", sezione_pausa)
+            .replace("{{ora_primo_app}}", primo_app_time)
+            .replace("{{primo_app}}", primo_app_label)
         )
-    except Exception as e:
-        # Log or handle error
+    except Exception:
         return template or ""
     
 def process_operator_tick(app, tenant_id: str):
@@ -1903,7 +1914,7 @@ def operator_notifications_trigger(tenant_id):
             return jsonify({"success": False, "error": "BusinessInfo assente"}), 400
 
         tpl = getattr(biz, 'operator_whatsapp_message_template', None) or \
-              "Ciao {{operatore}}, domani {{data}} il tuo turno: {{ora_inizio}}-{{ora_fine}}. Appuntamenti: {{appuntamenti}}"
+            "Ciao {{operatore}},\n\nDomani {{data}} il tuo turno sarà: {{ora_inizio}} - {{ora_fine}}\n\n{{sezione_pausa}}\n\nIl primo impegno della giornata sarà alle {{ora_primo_app}} e sarà {{primo_app}}\n\nBuon lavoro :)"
         queue = _build_operator_targets_for_tomorrow(session, require_phone=True)
         creds = _get_wbiztool_creds(tenant_id)
 
