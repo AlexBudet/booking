@@ -1720,20 +1720,52 @@ def _build_operator_targets_for_tomorrow(session, require_phone=True) -> list:
         _op_dbg("?", f"error build targets: {repr(e)}")
         return []
 
+def _fmt_data_italiana(dt):
+    giorni = ["Lunedì","Martedì","Mercoledì","Giovedì","Venerdì","Sabato","Domenica"]
+    mesi = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
+    return f"{giorni[dt.weekday()]} {dt.day} {mesi[dt.month - 1]}"
+
 def _render_operator_msg(template: str, item: dict) -> str:
     """
-    Sostituisce {{operatore}}, {{data}}, {{ora_inizio}}, {{ora_fine}}, {{appuntamenti}} nel template.
+    Sostituisce {{operatore}}, {{data}}, {{ora_inizio}}, {{ora_fine}}, {{appuntamenti}}, {{sezione_pausa}}, etc. nel template.
     """
     try:
-        txt = template or "Ciao {{operatore}}, domani {{data}} il tuo turno: {{ora_inizio}}-{{ora_fine}}. Appuntamenti: {{appuntamenti}}"
-        return (txt.replace('{{operatore}}', item.get('operatore_nome', ''))
-                   .replace('{{data}}', item.get('data', ''))
-                   .replace('{{ora_inizio}}', item.get('ora_inizio', ''))
-                   .replace('{{ora_fine}}', item.get('ora_fine', ''))
-                   .replace('{{appuntamenti}}', item.get('appuntamenti', ''))
-                   .replace('{{servizi}}', item.get('servizi', item.get('appuntamenti', ''))))
-    except Exception:
-        return template or ''
+        tpl = (template or "")
+        
+        lines = []
+        for x in item.get('schedule', []):
+            if not x:
+                continue
+            if x.get('is_off'):
+                dur = x.get('durata')
+                dur_txt = f" ({dur} minuti)" if (isinstance(dur, int) and dur > 0) else ""
+                lines.append(f"- {x.get('ora')} {x.get('label')}{dur_txt}")
+            else:
+                lines.append(f"- {x.get('ora')} {x.get('label')}")
+        
+        appuntamenti_list = "\n".join(lines)
+        
+        data_it = _fmt_data_italiana(datetime.strptime(item["date"], "%Y-%m-%d"))
+
+        pausa_section = ""
+        if item.get("pausa_time"):
+            pausa_section = f"Pausa alle {item.get('pausa_time')}"
+        
+        return (tpl
+            .replace("{{operatore}}", item.get("operatore_nome", ""))
+            .replace("{{data}}", data_it)
+            .replace("{{ora_inizio}}", item.get("shift_start") or "OFF")
+            .replace("{{ora_fine}}", item.get("shift_end") or "OFF")
+            .replace("{{ora_primo_app}}", item.get("primo_app_time") or "N/D")
+            .replace("{{primo_app}}", item.get("primo_app_label") or "N/D")
+            .replace("{{ora_pausa}}", item.get("pausa_time") or "")
+            .replace("{{pausa}}", item.get("pausa_label") or "")
+            .replace("{{sezione_pausa}}", pausa_section)
+            .replace("{{appuntamenti}}", appuntamenti_list)
+        )
+    except Exception as e:
+        # Log or handle error
+        return template or ""
     
 def process_operator_tick(app, tenant_id: str):
     """
