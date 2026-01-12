@@ -119,31 +119,41 @@ def invia_email_azure(to_email, subject, html_content, from_email=None, plain_te
         return False
 
 def invia_email_async(to_email, subject, html_content, from_email=None, plain_text=None):
-    def send_email():
-        try:
-            connection_string = os.environ.get('AZURE_EMAIL_CONNECTION_STRING')
-            if not connection_string:
-                print("ERROR: AZURE_EMAIL_CONNECTION_STRING not set")
-                return
-            sender = (os.environ.get('AZURE_EMAIL_SENDER') or "").strip()
-            if not sender:
-                print("ERROR: AZURE_EMAIL_SENDER not set")
-                return
-            client = EmailClient.from_connection_string(connection_string)
-            content = {"subject": subject, "html": html_content}
-            content["plainText"] = plain_text or _html_to_text(html_content)
-            message = {
-                "senderAddress": sender,
-                "recipients": {"to": [{"address": to_email}]},
-                "content": content
-            }
-            poller = client.begin_send(message)
-            result = poller.result()
-            print(f"[EMAIL-ASYNC] sent id={getattr(result,'message_id',None)} sender={sender}")
-        except Exception as e:
-            print(f"ERROR sending email: {repr(e)}")
-    thread = threading.Thread(target=send_email, daemon=True)
-    thread.start()
+    """
+    Invia email in modo sincrono (bloccante) per evitare perdita di email
+    con worker che si riciclano (gunicorn/Azure App Service).
+    Il nome 'async' è legacy - ora esegue in modo sincrono per affidabilità.
+    """
+    import sys
+    try:
+        connection_string = os.environ.get('AZURE_EMAIL_CONNECTION_STRING')
+        if not connection_string:
+            print("ERROR: AZURE_EMAIL_CONNECTION_STRING not set", flush=True)
+            return False
+        sender = (os.environ.get('AZURE_EMAIL_SENDER') or "").strip()
+        if not sender:
+            print("ERROR: AZURE_EMAIL_SENDER not set", flush=True)
+            return False
+        client = EmailClient.from_connection_string(connection_string)
+        content = {"subject": subject, "html": html_content}
+        content["plainText"] = plain_text or _html_to_text(html_content)
+        message = {
+            "senderAddress": sender,
+            "recipients": {"to": [{"address": to_email}]},
+            "content": content
+        }
+        print(f"[EMAIL] Sending to {to_email} subject='{subject[:50]}...'", flush=True)
+        poller = client.begin_send(message)
+        result = poller.result()
+        msg_id = getattr(result, 'message_id', None)
+        status = getattr(result, 'status', 'Unknown')
+        print(f"[EMAIL] SENT OK id={msg_id} status={status} to={to_email}", flush=True)
+        return status == "Succeeded"
+    except Exception as e:
+        print(f"[EMAIL] ERROR sending to {to_email}: {repr(e)}", flush=True)
+        sys.stdout.flush()
+        sys.stderr.flush()
+        return False
 
 def to_rome(dt):
     if dt is None:
@@ -1062,8 +1072,11 @@ def cancel_booking(tenant_id, token):
             return render_template_string("<p>Link non valido o già usato.</p>"), 404
 
         # Filtra solo appuntamenti FUTURI (non già passati)
+        # Filtra solo appuntamenti FUTURI (non già passati)
         now_rome = _now_rome()
-        appts_future = [a for a in appts if a.start_time and to_rome(a.start_time) > now_rome]
+        # Se start_time è naive, è già in ora locale italiana - confronta con now naive
+        now_naive = now_rome.replace(tzinfo=None)
+        appts_future = [a for a in appts if a.start_time and a.start_time > now_naive]
         if not appts_future:
             return render_template_string("""
                 <!doctype html>
@@ -1084,7 +1097,8 @@ def cancel_booking(tenant_id, token):
         if request.method == 'GET':
             # SOLO pagina di conferma, nessuna cancellazione ancora
             first_appt = appts_future[0]
-            dt = to_rome(first_appt.start_time) if first_appt.start_time else None
+            # start_time è già in ora locale italiana (naive) - non serve conversione
+            dt = first_appt.start_time
             data_str = dt.strftime('%d/%m/%Y') if dt else ''
             ora_str = dt.strftime('%H:%M') if dt else ''
 
