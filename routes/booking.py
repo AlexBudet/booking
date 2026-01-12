@@ -131,10 +131,11 @@ def _get_azure_email_client():
             _azure_email_client = EmailClient.from_connection_string(connection_string)
     return _azure_email_client
 
-def invia_email_async(to_email, subject, html_content, from_email=None, plain_text=None):
+def _send_email_sync(to_email, subject, html_content, from_email=None, plain_text=None):
     """
-    Invia email usando Azure Communication Services.
+    Invia email usando Azure Communication Services (SINCRONO).
     Include retry con backoff esponenziale + jitter per evitare rate limiting.
+    Questa funzione blocca - usare invia_email_async per chiamate non bloccanti.
     """
     # Parametri di retry ottimizzati per Azure
     max_retries = 5
@@ -197,6 +198,19 @@ def invia_email_async(to_email, subject, html_content, from_email=None, plain_te
                 return False
     
     return False
+
+
+def invia_email_async(to_email, subject, html_content, from_email=None, plain_text=None):
+    """
+    Invia email in background usando un thread separato.
+    Ritorna immediatamente senza bloccare la risposta HTTP.
+    """
+    def _worker():
+        _send_email_sync(to_email, subject, html_content, from_email, plain_text)
+    
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+    return True
 
 def to_rome(dt):
     if dt is None:
