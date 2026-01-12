@@ -1061,14 +1061,29 @@ def cancel_booking(tenant_id, token):
         if not appts:
             return render_template_string("<p>Link non valido o già usato.</p>"), 404
 
+        # Filtra solo appuntamenti FUTURI (non già passati)
+        now_rome = _now_rome()
+        appts_future = [a for a in appts if a.start_time and to_rome(a.start_time) > now_rome]
+        if not appts_future:
+            return render_template_string("""
+                <!doctype html>
+                <meta charset="utf-8">
+                <title>Annullamento non possibile</title>
+                <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:720px;margin:40px auto;padding:20px;">
+                  <h2>Annullamento non possibile</h2>
+                  <p>La prenotazione non può essere annullata perché l'appuntamento è già passato.</p>
+                </div>
+            """), 400
+
         biz = g.db_session.query(BusinessInfo).first()
         company_name = (getattr(biz, 'business_name', None) or "SunBooking")
 
-        count = len(appts)
+        # Usa solo appuntamenti futuri per conteggio e cancellazione
+        count = len(appts_future)
 
         if request.method == 'GET':
             # SOLO pagina di conferma, nessuna cancellazione ancora
-            first_appt = appts[0]
+            first_appt = appts_future[0]
             dt = to_rome(first_appt.start_time) if first_appt.start_time else None
             data_str = dt.strftime('%d/%m/%Y') if dt else ''
             ora_str = dt.strftime('%H:%M') if dt else ''
@@ -1091,19 +1106,19 @@ def cancel_booking(tenant_id, token):
                   </form>
                   <p style="margin-top:16px;color:#666;">{{ company_name }}</p>
                 </div>
-            """, count=len(appts), company_name=company_name,
+            """, count=count, company_name=company_name,
                  data_str=data_str, ora_str=ora_str, csrf_token=csrf_token)
 
-        # POST: soft-delete invece di hard-delete
-        for a in appts:
+        # POST: soft-delete solo appuntamenti futuri
+        for a in appts_future:
             a.is_cancelled_by_client = True  # Imposta soft-delete
         g.db_session.commit()  # Commit delle modifiche
 
         # --- INVIO EMAIL NOTIFICA ALL'ADMIN ---
         admin_email = getattr(biz, 'email', None)
         if admin_email:
-            # Estrai dati dal primo appuntamento (assumendo sessione multi-servizio)
-            first_appt = appts[0]
+            # Estrai dati dal primo appuntamento futuro (assumendo sessione multi-servizio)
+            first_appt = appts_future[0]
             note = first_appt.note or ""
             # Parsing semplice delle note per estrarre dati cliente (fallback se non presente)
             nome = "N/A"
@@ -1123,11 +1138,11 @@ def cancel_booking(tenant_id, token):
                 except:
                     pass  # Fallback a N/A
 
-            # Costruisci lista appuntamenti annullati
+            # Costruisci lista appuntamenti annullati (solo futuri)
             appuntamenti_annullati = []
             totale_durata = 0
             totale_prezzo = 0
-            for a in appts:
+            for a in appts_future:
                 servizio = g.db_session.get(Service, a.service_id)
                 operatore = g.db_session.get(Operator, a.operator_id)
                 durata = int(getattr(a, '_duration', 0) or 30)
