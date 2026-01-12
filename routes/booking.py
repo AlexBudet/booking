@@ -188,13 +188,28 @@ def _send_email_sync(to_email, subject, html_content, from_email=None, plain_tex
                     break
             
             result = poller.result() if poller.done() else None
-            status = getattr(result, 'status', 'Unknown') if result else 'Timeout'
             
-            if status == "Succeeded":
-                print(f"[EMAIL-AZURE] SENT OK to={to_email}", flush=True)
-                return True
+            # Debug: logga cosa restituisce Azure
+            if result:
+                status = getattr(result, 'status', None)
+                # Azure può restituire status come stringa o come enum
+                status_str = str(status) if status else 'None'
+                msg_id = getattr(result, 'message_id', None)
+                print(f"[EMAIL-AZURE] Result: status={status_str}, message_id={msg_id}, type={type(result)}", flush=True)
+                
+                # Controlla vari modi in cui Azure può indicare successo
+                if status_str in ("Succeeded", "succeeded", "Queued", "queued") or status_str.lower() == "succeeded":
+                    print(f"[EMAIL-AZURE] SENT OK to={to_email}", flush=True)
+                    return True
+                elif msg_id:
+                    # Se c'è un message_id, probabilmente è andato a buon fine
+                    print(f"[EMAIL-AZURE] SENT (has message_id) to={to_email}", flush=True)
+                    return True
+                else:
+                    print(f"[EMAIL-AZURE] Unexpected status: {status_str}", flush=True)
+                    return False
             else:
-                print(f"[EMAIL-AZURE] Unexpected status: {status}", flush=True)
+                print(f"[EMAIL-AZURE] No result (timeout or error)", flush=True)
                 return False
             
         except Exception as e:
