@@ -17,6 +17,7 @@ import threading
 from azure.communication.email import EmailClient
 from wbiztool_client import WbizToolClient
 import html as html_lib
+import time as time_module
 
 # --- UTIL: formato data per email (solo output email, non DB) ---
 MONTH_ABBR_IT = {
@@ -118,32 +119,84 @@ def invia_email_azure(to_email, subject, html_content, from_email=None, plain_te
         print(f"[EMAIL] ERROR result: {repr(e)}")
         return False
 
+# Cache globale per il client Azure Email (evita di ricreare connessioni)
+_azure_email_client = None
+
+def _get_azure_email_client():
+    """Ritorna un client Azure Email cached (singleton)."""
+    global _azure_email_client
+    if _azure_email_client is None:
+        connection_string = os.environ.get('AZURE_EMAIL_CONNECTION_STRING')
+        if connection_string:
+            _azure_email_client = EmailClient.from_connection_string(connection_string)
+    return _azure_email_client
+
 def invia_email_async(to_email, subject, html_content, from_email=None, plain_text=None):
-    def send_email():
+    """
+    Invia email usando Azure Communication Services.
+    Include retry con backoff esponenziale + jitter per evitare rate limiting.
+    """
+    # Parametri di retry ottimizzati per Azure
+    max_retries = 5
+    base_delay = 5  # secondi
+    max_delay = 120  # massimo 2 minuti tra retry
+    
+    client = _get_azure_email_client()
+    if not client:
+        print("ERROR: AZURE_EMAIL_CONNECTION_STRING not configured", flush=True)
+        return False
+    
+    sender = (os.environ.get('AZURE_EMAIL_SENDER') or "").strip()
+    if not sender:
+        print("ERROR: AZURE_EMAIL_SENDER not set", flush=True)
+        return False
+    
+    content = {"subject": subject, "html": html_content}
+    content["plainText"] = plain_text or _html_to_text(html_content)
+    message = {
+        "senderAddress": sender,
+        "recipients": {"to": [{"address": to_email}]},
+        "content": content
+    }
+    
+    for attempt in range(max_retries):
         try:
-            connection_string = os.environ.get('AZURE_EMAIL_CONNECTION_STRING')
-            if not connection_string:
-                print("ERROR: AZURE_EMAIL_CONNECTION_STRING not set")
-                return
-            sender = (os.environ.get('AZURE_EMAIL_SENDER') or "").strip()
-            if not sender:
-                print("ERROR: AZURE_EMAIL_SENDER not set")
-                return
-            client = EmailClient.from_connection_string(connection_string)
-            content = {"subject": subject, "html": html_content}
-            content["plainText"] = plain_text or _html_to_text(html_content)
-            message = {
-                "senderAddress": sender,
-                "recipients": {"to": [{"address": to_email}]},
-                "content": content
-            }
+            if attempt > 0:
+                print(f"[EMAIL-AZURE] Retry {attempt + 1}/{max_retries} to {to_email}", flush=True)
+            else:
+                print(f"[EMAIL-AZURE] Sending to {to_email}", flush=True)
+            
             poller = client.begin_send(message)
             result = poller.result()
-            print(f"[EMAIL-ASYNC] sent id={getattr(result,'message_id',None)} sender={sender}")
+            status = getattr(result, 'status', 'Unknown')
+            
+            if status == "Succeeded":
+                print(f"[EMAIL-AZURE] SENT OK to={to_email}", flush=True)
+                return True
+            else:
+                print(f"[EMAIL-AZURE] Unexpected status: {status}", flush=True)
+                return False
+            
         except Exception as e:
-            print(f"ERROR sending email: {repr(e)}")
-    thread = threading.Thread(target=send_email, daemon=True)
-    thread.start()
+            error_str = str(e).lower() + repr(e).lower()
+            
+            # Errori temporanei che meritano retry
+            is_retryable = any(err in error_str for err in [
+                'toomanyrequests', '429', 'throttl', 'rate limit',
+                'temporarily unavailable', '503', '502', '504',
+                'timeout', 'connection', 'socket'
+            ])
+            
+            if is_retryable and attempt < max_retries - 1:
+                # Backoff esponenziale con jitter (randomizza per evitare burst)
+                delay = min(base_delay * (2 ** attempt) + random.uniform(0, 3), max_delay)
+                print(f"[EMAIL-AZURE] Temporary error, waiting {delay:.1f}s: {repr(e)[:80]}", flush=True)
+                time_module.sleep(delay)
+            else:
+                print(f"[EMAIL-AZURE] FAILED: {repr(e)}", flush=True)
+                return False
+    
+    return False
 
 def to_rome(dt):
     if dt is None:
@@ -1063,7 +1116,9 @@ def cancel_booking(tenant_id, token):
 
         # Filtra solo appuntamenti FUTURI (non già passati)
         now_rome = _now_rome()
-        appts_future = [a for a in appts if a.start_time and to_rome(a.start_time) > now_rome]
+        # Se start_time è naive, è già in ora locale italiana - confronta con now naive
+        now_naive = now_rome.replace(tzinfo=None)
+        appts_future = [a for a in appts if a.start_time and a.start_time > now_naive]
         if not appts_future:
             return render_template_string("""
                 <!doctype html>
@@ -1084,7 +1139,8 @@ def cancel_booking(tenant_id, token):
         if request.method == 'GET':
             # SOLO pagina di conferma, nessuna cancellazione ancora
             first_appt = appts_future[0]
-            dt = to_rome(first_appt.start_time) if first_appt.start_time else None
+            # start_time è già in ora locale italiana (naive) - non serve conversione
+            dt = first_appt.start_time
             data_str = dt.strftime('%d/%m/%Y') if dt else ''
             ora_str = dt.strftime('%H:%M') if dt else ''
 
