@@ -1,4 +1,4 @@
-# filepath: /Users/alessio.budettagmail.com/Documents/SunBooking/appl/routes/booking.py
+# booking.py
 import string
 import json
 from flask import Blueprint, g, request, jsonify, render_template, render_template_string, session, url_for, current_app
@@ -1622,7 +1622,7 @@ def process_morning_tick(app, tenant_id: str):
                     pass
 
 
-#===== SETTAGGI PER INVIO WHATSAPP OPERATORI ================================
+#===== INVIO WHATSAPP OPERATORI ================================
 def _normalize_for_wbiz(numero: str):
     raw = (str(numero or '')).strip().replace(' ', '')
     if not raw:
@@ -1727,9 +1727,9 @@ def _build_operator_targets_for_tomorrow(session, require_phone: bool = True):  
                     pausa_label = label
                     pausa_time = appt.start_time.strftime('%H:%M')
             else:
-                # Prefer tag over name for service label
+                # Prefer name over tag for service label
                 if service:
-                    label = (getattr(service, 'servizio_tag', '') or '').strip() or (getattr(service, 'servizio_nome', '') or '').strip()
+                    label = (getattr(service, 'servizio_nome', '') or '').strip() or (getattr(service, 'servizio_tag', '') or '').strip()
                 else:
                     label = ''
                 duration = None
