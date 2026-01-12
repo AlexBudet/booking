@@ -223,9 +223,6 @@ def _send_email_sync(to_email, subject, html_content, from_email=None, plain_tex
             else:
                 print(f"[EMAIL-AZURE] FAILED: {repr(e)}", flush=True)
                 return False
-    
-    return False
-
 
 def invia_email_async(to_email, subject, html_content, from_email=None, plain_text=None):
     """
@@ -1157,9 +1154,18 @@ def cancel_booking(tenant_id, token):
 
         # Filtra solo appuntamenti FUTURI (non già passati)
         now_rome = _now_rome()
-        # Se start_time è naive, è già in ora locale italiana - confronta con now naive
-        now_naive = now_rome.replace(tzinfo=None)
-        appts_future = [a for a in appts if a.start_time and a.start_time > now_naive]
+        
+        def to_comparable(dt):
+            """Converte qualsiasi datetime in naive per confronto sicuro."""
+            if dt is None:
+                return None
+            if getattr(dt, 'tzinfo', None) is not None:
+                # Se è aware, convertilo a Rome e poi rendi naive
+                return dt.astimezone(pytz_timezone('Europe/Rome')).replace(tzinfo=None)
+            return dt
+        
+        now_naive = to_comparable(now_rome)
+        appts_future = [a for a in appts if a.start_time and to_comparable(a.start_time) > now_naive]
         if not appts_future:
             return render_template_string("""
                 <!doctype html>
