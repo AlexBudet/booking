@@ -201,11 +201,19 @@ def _send_email_sync(to_email, subject, html_content, from_email=None, plain_tex
             error_str = str(e).lower() + repr(e).lower()
             
             # Errori temporanei che meritano retry
-            is_retryable = any(err in error_str for err in [
-                'toomanyrequests', '429', 'throttl', 'rate limit',
+            is_rate_limited = any(err in error_str for err in [
+                'toomanyrequests', '429', 'throttl', 'rate limit'
+            ])
+            is_retryable = is_rate_limited or any(err in error_str for err in [
                 'temporarily unavailable', '503', '502', '504',
                 'timeout', 'connection', 'socket'
             ])
+            
+            # Se rate-limited, resetta il client cached (potrebbe essere "bloccato")
+            if is_rate_limited:
+                global _azure_email_client
+                _azure_email_client = None
+                print(f"[EMAIL-AZURE] Rate-limited, client reset", flush=True)
             
             if is_retryable and attempt < max_retries - 1:
                 # Backoff esponenziale con jitter (randomizza per evitare burst)
