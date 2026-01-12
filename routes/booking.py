@@ -119,66 +119,31 @@ def invia_email_azure(to_email, subject, html_content, from_email=None, plain_te
         return False
 
 def invia_email_async(to_email, subject, html_content, from_email=None, plain_text=None):
-    """
-    Invia email in modo sincrono (bloccante) per evitare perdita di email
-    con worker che si riciclano (gunicorn/Azure App Service).
-    Il nome 'async' è legacy - ora esegue in modo sincrono per affidabilità.
-    Include retry con backoff esponenziale per gestire TooManyRequests.
-    """
-    import sys
-    import time as time_module
-    
-    max_retries = 3
-    base_delay = 2  # secondi
-    
-    connection_string = os.environ.get('AZURE_EMAIL_CONNECTION_STRING')
-    if not connection_string:
-        print("ERROR: AZURE_EMAIL_CONNECTION_STRING not set", flush=True)
-        return False
-    sender = (os.environ.get('AZURE_EMAIL_SENDER') or "").strip()
-    if not sender:
-        print("ERROR: AZURE_EMAIL_SENDER not set", flush=True)
-        return False
-    
-    client = EmailClient.from_connection_string(connection_string)
-    content = {"subject": subject, "html": html_content}
-    content["plainText"] = plain_text or _html_to_text(html_content)
-    message = {
-        "senderAddress": sender,
-        "recipients": {"to": [{"address": to_email}]},
-        "content": content
-    }
-    
-    for attempt in range(max_retries):
+    def send_email():
         try:
-            if attempt > 0:
-                print(f"[EMAIL] Retry {attempt + 1}/{max_retries} to {to_email}", flush=True)
-            else:
-                print(f"[EMAIL] Sending to {to_email} subject='{subject[:50]}...'", flush=True)
-            
+            connection_string = os.environ.get('AZURE_EMAIL_CONNECTION_STRING')
+            if not connection_string:
+                print("ERROR: AZURE_EMAIL_CONNECTION_STRING not set")
+                return
+            sender = (os.environ.get('AZURE_EMAIL_SENDER') or "").strip()
+            if not sender:
+                print("ERROR: AZURE_EMAIL_SENDER not set")
+                return
+            client = EmailClient.from_connection_string(connection_string)
+            content = {"subject": subject, "html": html_content}
+            content["plainText"] = plain_text or _html_to_text(html_content)
+            message = {
+                "senderAddress": sender,
+                "recipients": {"to": [{"address": to_email}]},
+                "content": content
+            }
             poller = client.begin_send(message)
             result = poller.result()
-            msg_id = getattr(result, 'message_id', None)
-            status = getattr(result, 'status', 'Unknown')
-            print(f"[EMAIL] SENT OK id={msg_id} status={status} to={to_email}", flush=True)
-            return status == "Succeeded"
-            
+            print(f"[EMAIL-ASYNC] sent id={getattr(result,'message_id',None)} sender={sender}")
         except Exception as e:
-            error_str = repr(e)
-            is_rate_limit = 'TooManyRequests' in error_str or '429' in error_str
-            
-            if is_rate_limit and attempt < max_retries - 1:
-                delay = base_delay * (2 ** attempt)  # 2s, 4s, 8s
-                print(f"[EMAIL] Rate limited, waiting {delay}s before retry...", flush=True)
-                time_module.sleep(delay)
-                continue
-            else:
-                print(f"[EMAIL] ERROR sending to {to_email}: {error_str}", flush=True)
-                sys.stdout.flush()
-                sys.stderr.flush()
-                return False
-    
-    return False
+            print(f"ERROR sending email: {repr(e)}")
+    thread = threading.Thread(target=send_email, daemon=True)
+    thread.start()
 
 def to_rome(dt):
     if dt is None:
@@ -1097,11 +1062,8 @@ def cancel_booking(tenant_id, token):
             return render_template_string("<p>Link non valido o già usato.</p>"), 404
 
         # Filtra solo appuntamenti FUTURI (non già passati)
-        # Filtra solo appuntamenti FUTURI (non già passati)
         now_rome = _now_rome()
-        # Se start_time è naive, è già in ora locale italiana - confronta con now naive
-        now_naive = now_rome.replace(tzinfo=None)
-        appts_future = [a for a in appts if a.start_time and a.start_time > now_naive]
+        appts_future = [a for a in appts if a.start_time and to_rome(a.start_time) > now_rome]
         if not appts_future:
             return render_template_string("""
                 <!doctype html>
@@ -1122,8 +1084,7 @@ def cancel_booking(tenant_id, token):
         if request.method == 'GET':
             # SOLO pagina di conferma, nessuna cancellazione ancora
             first_appt = appts_future[0]
-            # start_time è già in ora locale italiana (naive) - non serve conversione
-            dt = first_appt.start_time
+            dt = to_rome(first_appt.start_time) if first_appt.start_time else None
             data_str = dt.strftime('%d/%m/%Y') if dt else ''
             ora_str = dt.strftime('%H:%M') if dt else ''
 
