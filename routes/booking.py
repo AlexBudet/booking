@@ -123,37 +123,62 @@ def invia_email_async(to_email, subject, html_content, from_email=None, plain_te
     Invia email in modo sincrono (bloccante) per evitare perdita di email
     con worker che si riciclano (gunicorn/Azure App Service).
     Il nome 'async' è legacy - ora esegue in modo sincrono per affidabilità.
+    Include retry con backoff esponenziale per gestire TooManyRequests.
     """
     import sys
-    try:
-        connection_string = os.environ.get('AZURE_EMAIL_CONNECTION_STRING')
-        if not connection_string:
-            print("ERROR: AZURE_EMAIL_CONNECTION_STRING not set", flush=True)
-            return False
-        sender = (os.environ.get('AZURE_EMAIL_SENDER') or "").strip()
-        if not sender:
-            print("ERROR: AZURE_EMAIL_SENDER not set", flush=True)
-            return False
-        client = EmailClient.from_connection_string(connection_string)
-        content = {"subject": subject, "html": html_content}
-        content["plainText"] = plain_text or _html_to_text(html_content)
-        message = {
-            "senderAddress": sender,
-            "recipients": {"to": [{"address": to_email}]},
-            "content": content
-        }
-        print(f"[EMAIL] Sending to {to_email} subject='{subject[:50]}...'", flush=True)
-        poller = client.begin_send(message)
-        result = poller.result()
-        msg_id = getattr(result, 'message_id', None)
-        status = getattr(result, 'status', 'Unknown')
-        print(f"[EMAIL] SENT OK id={msg_id} status={status} to={to_email}", flush=True)
-        return status == "Succeeded"
-    except Exception as e:
-        print(f"[EMAIL] ERROR sending to {to_email}: {repr(e)}", flush=True)
-        sys.stdout.flush()
-        sys.stderr.flush()
+    import time as time_module
+    
+    max_retries = 3
+    base_delay = 2  # secondi
+    
+    connection_string = os.environ.get('AZURE_EMAIL_CONNECTION_STRING')
+    if not connection_string:
+        print("ERROR: AZURE_EMAIL_CONNECTION_STRING not set", flush=True)
         return False
+    sender = (os.environ.get('AZURE_EMAIL_SENDER') or "").strip()
+    if not sender:
+        print("ERROR: AZURE_EMAIL_SENDER not set", flush=True)
+        return False
+    
+    client = EmailClient.from_connection_string(connection_string)
+    content = {"subject": subject, "html": html_content}
+    content["plainText"] = plain_text or _html_to_text(html_content)
+    message = {
+        "senderAddress": sender,
+        "recipients": {"to": [{"address": to_email}]},
+        "content": content
+    }
+    
+    for attempt in range(max_retries):
+        try:
+            if attempt > 0:
+                print(f"[EMAIL] Retry {attempt + 1}/{max_retries} to {to_email}", flush=True)
+            else:
+                print(f"[EMAIL] Sending to {to_email} subject='{subject[:50]}...'", flush=True)
+            
+            poller = client.begin_send(message)
+            result = poller.result()
+            msg_id = getattr(result, 'message_id', None)
+            status = getattr(result, 'status', 'Unknown')
+            print(f"[EMAIL] SENT OK id={msg_id} status={status} to={to_email}", flush=True)
+            return status == "Succeeded"
+            
+        except Exception as e:
+            error_str = repr(e)
+            is_rate_limit = 'TooManyRequests' in error_str or '429' in error_str
+            
+            if is_rate_limit and attempt < max_retries - 1:
+                delay = base_delay * (2 ** attempt)  # 2s, 4s, 8s
+                print(f"[EMAIL] Rate limited, waiting {delay}s before retry...", flush=True)
+                time_module.sleep(delay)
+                continue
+            else:
+                print(f"[EMAIL] ERROR sending to {to_email}: {error_str}", flush=True)
+                sys.stdout.flush()
+                sys.stderr.flush()
+                return False
+    
+    return False
 
 def to_rome(dt):
     if dt is None:
