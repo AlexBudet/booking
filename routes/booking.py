@@ -123,12 +123,18 @@ def invia_email_azure(to_email, subject, html_content, from_email=None, plain_te
 _azure_email_client = None
 
 def _get_azure_email_client():
-    """Ritorna un client Azure Email cached (singleton)."""
+    """Ritorna un client Azure Email cached (singleton) con retry SDK disabilitati."""
     global _azure_email_client
     if _azure_email_client is None:
         connection_string = os.environ.get('AZURE_EMAIL_CONNECTION_STRING')
         if connection_string:
-            _azure_email_client = EmailClient.from_connection_string(connection_string)
+            # IMPORTANTE: Disabilita i retry automatici del SDK che causano loop 429
+            # Gestiamo i retry manualmente con delay più lunghi
+            from azure.core.pipeline.policies import RetryPolicy
+            _azure_email_client = EmailClient.from_connection_string(
+                connection_string,
+                retry_policy=RetryPolicy(retry_total=0)  # Nessun retry automatico
+            )
     return _azure_email_client
 
 def _send_email_sync(to_email, subject, html_content, from_email=None, plain_text=None):
@@ -137,11 +143,12 @@ def _send_email_sync(to_email, subject, html_content, from_email=None, plain_tex
     Include retry con backoff esponenziale + jitter per evitare rate limiting.
     Questa funzione blocca - usare invia_email_async per chiamate non bloccanti.
     """
-    # Parametri di retry ottimizzati per Azure
-    max_retries = 5
-    base_delay = 5  # secondi
-    max_delay = 120  # massimo 2 minuti tra retry
-    poller_wait_time = 10  # secondi tra ogni polling (evita 429!)
+    # Parametri di retry - MOLTO conservativi per Azure sandbox/tier basso
+    # Il messaggio "retry after 0 seconds" è un bug Azure - in realtà serve aspettare di più
+    max_retries = 3
+    base_delay = 65  # 65 secondi - supera il limite di 1 minuto di Azure
+    max_delay = 300  # massimo 5 minuti tra retry
+    poller_wait_time = 15  # secondi tra ogni polling
     poller_max_time = 180  # timeout massimo per il polling (3 minuti)
     
     client = _get_azure_email_client()
