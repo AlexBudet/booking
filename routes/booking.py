@@ -141,6 +141,8 @@ def _send_email_sync(to_email, subject, html_content, from_email=None, plain_tex
     max_retries = 5
     base_delay = 5  # secondi
     max_delay = 120  # massimo 2 minuti tra retry
+    poller_wait_time = 10  # secondi tra ogni polling (evita 429!)
+    poller_max_time = 180  # timeout massimo per il polling (3 minuti)
     
     client = _get_azure_email_client()
     if not client:
@@ -168,8 +170,18 @@ def _send_email_sync(to_email, subject, html_content, from_email=None, plain_tex
                 print(f"[EMAIL-AZURE] Sending to {to_email}", flush=True)
             
             poller = client.begin_send(message)
-            result = poller.result()
-            status = getattr(result, 'status', 'Unknown')
+            
+            # Polling gentile: aspetta 10 secondi tra ogni check per evitare 429
+            time_elapsed = 0
+            while not poller.done():
+                poller.wait(poller_wait_time)
+                time_elapsed += poller_wait_time
+                if time_elapsed > poller_max_time:
+                    print(f"[EMAIL-AZURE] Polling timeout after {poller_max_time}s", flush=True)
+                    break
+            
+            result = poller.result() if poller.done() else None
+            status = getattr(result, 'status', 'Unknown') if result else 'Timeout'
             
             if status == "Succeeded":
                 print(f"[EMAIL-AZURE] SENT OK to={to_email}", flush=True)
