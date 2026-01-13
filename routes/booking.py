@@ -137,7 +137,7 @@ _azure_email_client = None
 _EMAIL_QUEUE = queue.Queue()
 _EMAIL_WORKER_STARTED = False
 _EMAIL_WORKER_LOCK = threading.Lock()
-EMAIL_RATE_LIMIT_SECONDS = 10  # Delay tra email consecutive
+EMAIL_RATE_LIMIT_SECONDS = 65  # Delay tra email consecutive
 
 def _get_azure_email_client():
     """Ritorna un client Azure Email cached (singleton) con retry SDK disabilitati."""
