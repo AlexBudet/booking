@@ -14,11 +14,9 @@ import random
 import uuid
 from markupsafe import escape
 import threading
-import queue
 from azure.communication.email import EmailClient
 from wbiztool_client import WbizToolClient
 import html as html_lib
-import time as time_module
 
 # --- UTIL: formato data per email (solo output email, non DB) ---
 MONTH_ABBR_IT = {
@@ -130,218 +128,49 @@ def invia_email_azure(to_email, subject, html_content, from_email=None, plain_te
         print(f"[EMAIL] ERROR result: {repr(e)}")
         return False
 
-# Cache globale per il client Azure Email (evita di ricreare connessioni)
-_azure_email_client = None
-
-# Coda globale per rate limiting email (FIFO thread-safe)
-_EMAIL_QUEUE = queue.Queue()
-_EMAIL_WORKER_STARTED = False
-_EMAIL_WORKER_LOCK = threading.Lock()
-EMAIL_RATE_LIMIT_SECONDS = 65  # Delay tra email consecutive
-
-def _get_azure_email_client():
-    """Ritorna un client Azure Email cached (singleton) con retry SDK disabilitati."""
-    global _azure_email_client
-    if _azure_email_client is None:
-        connection_string = os.environ.get('AZURE_EMAIL_CONNECTION_STRING')
-        if connection_string:
-            # IMPORTANTE: Disabilita i retry automatici del SDK che causano loop 429
-            # Gestiamo i retry manualmente con delay più lunghi
-            from azure.core.pipeline.policies import RetryPolicy
-            _azure_email_client = EmailClient.from_connection_string(
-                connection_string,
-                retry_policy=RetryPolicy(retry_total=0)  # Nessun retry automatico
-            )
-    return _azure_email_client
-
-def _send_email_sync(to_email, subject, html_content, from_email=None, plain_text=None):
-    """
-    Invia email usando Azure Communication Services (SINCRONO).
-    Include retry con backoff esponenziale + jitter per evitare rate limiting.
-    Questa funzione blocca - usare invia_email_async per chiamate non bloccanti.
-    """
-    # Parametri di retry - MOLTO conservativi per Azure sandbox/tier basso
-    # Il messaggio "retry after 0 seconds" è un bug Azure - in realtà serve aspettare di più
-    max_retries = 3
-    base_delay = 65  # 65 secondi - supera il limite di 1 minuto di Azure
-    max_delay = 300  # massimo 5 minuti tra retry
-    poller_wait_time = 15  # secondi tra ogni polling
-    poller_max_time = 180  # timeout massimo per il polling (3 minuti)
-    
-    client = _get_azure_email_client()
-    if not client:
-        print("ERROR: AZURE_EMAIL_CONNECTION_STRING not configured", flush=True)
-        return False
-    
-    sender = (os.environ.get('AZURE_EMAIL_SENDER') or "").strip()
-    if not sender:
-        print("ERROR: AZURE_EMAIL_SENDER not set", flush=True)
-        return False
-    
-    content = {"subject": subject, "html": html_content}
-    content["plainText"] = plain_text or _html_to_text(html_content)
-    
-    # Aggiungi List-Unsubscribe header per ridurre spam complaints
-    sender_domain = sender.split('@')[1] if '@' in sender else 'example.com'
-    unsubscribe_url = f"https://{sender_domain}/unsubscribe"
-    unsubscribe_mailto = f"mailto:{sender}?subject=Unsubscribe"
-    
-    message = {
-        "senderAddress": sender,
-        "recipients": {"to": [{"address": to_email}]},
-        "content": content,
-        "headers": {
-            "List-Unsubscribe": f"<{unsubscribe_url}>, <{unsubscribe_mailto}>",
-            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
-        }
-    }
-    
-    for attempt in range(max_retries):
-        try:
-            if attempt > 0:
-                print(f"[EMAIL-AZURE] Retry {attempt + 1}/{max_retries} to {to_email}", flush=True)
-            else:
-                print(f"[EMAIL-AZURE] Sending to {to_email}", flush=True)
-            
-            poller = client.begin_send(message)
-            
-            # Polling gentile: aspetta 10 secondi tra ogni check per evitare 429
-            time_elapsed = 0
-            while not poller.done():
-                poller.wait(poller_wait_time)
-                time_elapsed += poller_wait_time
-                if time_elapsed > poller_max_time:
-                    print(f"[EMAIL-AZURE] Polling timeout after {poller_max_time}s", flush=True)
-                    break
-            
-            result = poller.result() if poller.done() else None
-            
-            # Debug: logga cosa restituisce Azure
-            if result:
-                # Azure può restituire dict o object - gestisci entrambi
-                if isinstance(result, dict):
-                    status = result.get('status')
-                    msg_id = result.get('message_id') or result.get('id')
-                else:
-                    status = getattr(result, 'status', None)
-                    msg_id = getattr(result, 'message_id', None) or getattr(result, 'id', None)
-                
-                # Azure può restituire status come stringa o come enum
-                status_str = str(status) if status else 'None'
-                print(f"[EMAIL-AZURE] Result: status={status_str}, message_id={msg_id}, type={type(result)}", flush=True)
-                
-                # Controlla vari modi in cui Azure può indicare successo
-                if status_str in ("Succeeded", "succeeded", "Queued", "queued") or status_str.lower() == "succeeded":
-                    print(f"[EMAIL-AZURE] SENT OK to={to_email}", flush=True)
-                    return True
-                elif msg_id:
-                    # Se c'è un message_id, probabilmente è andato a buon fine
-                    print(f"[EMAIL-AZURE] SENT (has message_id) to={to_email}", flush=True)
-                    return True
-                else:
-                    print(f"[EMAIL-AZURE] Unexpected status: {status_str}", flush=True)
-                    return False
-            else:
-                print(f"[EMAIL-AZURE] No result (timeout or error)", flush=True)
-                return False
-            
-        except Exception as e:
-            error_str = str(e).lower() + repr(e).lower()
-            
-            # Errori temporanei che meritano retry
-            is_rate_limited = any(err in error_str for err in [
-                'toomanyrequests', '429', 'throttl', 'rate limit'
-            ])
-            is_retryable = is_rate_limited or any(err in error_str for err in [
-                'temporarily unavailable', '503', '502', '504',
-                'timeout', 'connection', 'socket'
-            ])
-            
-            # Se rate-limited, resetta il client cached (potrebbe essere "bloccato")
-            if is_rate_limited:
-                global _azure_email_client
-                _azure_email_client = None
-                print(f"[EMAIL-AZURE] Rate-limited, client reset", flush=True)
-            
-            if is_retryable and attempt < max_retries - 1:
-                # Backoff esponenziale con jitter (randomizza per evitare burst)
-                delay = min(base_delay * (2 ** attempt) + random.uniform(0, 3), max_delay)
-                print(f"[EMAIL-AZURE] Temporary error, waiting {delay:.1f}s: {repr(e)[:80]}", flush=True)
-                time_module.sleep(delay)
-            else:
-                print(f"[EMAIL-AZURE] FAILED: {repr(e)}", flush=True)
-                return False
-
-def _email_worker():
-    """
-    Worker che processa la coda email con rate limiting:
-    - Prima email: invio immediato
-    - Email successive: wait 10s tra un invio e l'altro
-    Questo evita burst massivi che causano 429 TooManyRequests.
-    """
-    last_send_time = None
-    
-    while True:
-        try:
-            # Attendi il prossimo task dalla coda (bloccante)
-            task = _EMAIL_QUEUE.get()
-            
-            if task is None:  # Segnale di shutdown
-                _EMAIL_QUEUE.task_done()
-                break
-            
-            to_email, subject, html_content, from_email, plain_text = task
-            
-            # Rate limiting: se ho appena inviato, aspetta
-            if last_send_time is not None:
-                elapsed = time_module.time() - last_send_time
-                if elapsed < EMAIL_RATE_LIMIT_SECONDS:
-                    wait_time = EMAIL_RATE_LIMIT_SECONDS - elapsed
-                    print(f"[EMAIL-QUEUE] Rate limit: waiting {wait_time:.1f}s", flush=True)
-                    time_module.sleep(wait_time)
-            
-            # Invia email (bloccante)
-            print(f"[EMAIL-QUEUE] Processing: {to_email} (queue size: {_EMAIL_QUEUE.qsize()})", flush=True)
-            _send_email_sync(to_email, subject, html_content, from_email, plain_text)
-            last_send_time = time_module.time()
-            
-            _EMAIL_QUEUE.task_done()
-            
-        except Exception as e:
-            print(f"[EMAIL-QUEUE] Worker error: {repr(e)}", flush=True)
-            _EMAIL_QUEUE.task_done()
-
 def invia_email_async(to_email, subject, html_content, from_email=None, plain_text=None):
     """
-    Accoda email per invio sequenziale con rate limiting automatico.
-    - Se coda vuota: invio parte immediatamente
-    - Se coda piena: viene accodata e processata con delay di 10s
-    Previene burst massivi che causano 429 TooManyRequests su Azure.
+    Invio email in background thread separato (parallelo).
+    Versione originale che funzionava perfettamente.
     """
-    global _EMAIL_WORKER_STARTED
+    def send_email():
+        try:
+            connection_string = os.environ.get('AZURE_EMAIL_CONNECTION_STRING')
+            if not connection_string:
+                print("ERROR: AZURE_EMAIL_CONNECTION_STRING not set")
+                return
+            sender = (os.environ.get('AZURE_EMAIL_SENDER') or "").strip()
+            if not sender:
+                print("ERROR: AZURE_EMAIL_SENDER not set")
+                return
+            
+            client = EmailClient.from_connection_string(connection_string)
+            content = {"subject": subject, "html": html_content}
+            content["plainText"] = plain_text or _html_to_text(html_content)
+            
+            # List-Unsubscribe headers (mantieni questa parte nuova)
+            sender_domain = sender.split('@')[1] if '@' in sender else 'example.com'
+            unsubscribe_url = f"https://{sender_domain}/unsubscribe"
+            unsubscribe_mailto = f"mailto:{sender}?subject=Unsubscribe"
+            
+            message = {
+                "senderAddress": sender,
+                "recipients": {"to": [{"address": to_email}]},
+                "content": content,
+                "headers": {
+                    "List-Unsubscribe": f"<{unsubscribe_url}>, <{unsubscribe_mailto}>",
+                    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
+                }
+            }
+            
+            poller = client.begin_send(message)
+            result = poller.result()
+            print(f"[EMAIL-ASYNC] sent id={getattr(result,'message_id',None)} to={to_email}")
+        except Exception as e:
+            print(f"[EMAIL-ASYNC] ERROR sending to {to_email}: {repr(e)}")
     
-    # Avvia worker una sola volta (lazy init)
-    with _EMAIL_WORKER_LOCK:
-        if not _EMAIL_WORKER_STARTED:
-            worker_thread = threading.Thread(
-                target=_email_worker,
-                daemon=True,
-                name="EmailQueueWorker"
-            )
-            worker_thread.start()
-            _EMAIL_WORKER_STARTED = True
-            print(f"[EMAIL-QUEUE] Worker started (rate limit: {EMAIL_RATE_LIMIT_SECONDS}s)", flush=True)
-    
-    # Accoda per invio sequenziale
-    _EMAIL_QUEUE.put((to_email, subject, html_content, from_email, plain_text))
-    queue_size = _EMAIL_QUEUE.qsize()
-    
-    if queue_size == 1:
-        print(f"[EMAIL-QUEUE] Queued for immediate send: {to_email}", flush=True)
-    else:
-        eta_seconds = (queue_size - 1) * EMAIL_RATE_LIMIT_SECONDS
-        print(f"[EMAIL-QUEUE] Queued #{queue_size}: {to_email} (ETA: ~{eta_seconds}s)", flush=True)
-    
+    thread = threading.Thread(target=send_email, daemon=True)
+    thread.start()
     return True
 
 def to_rome(dt):
