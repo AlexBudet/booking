@@ -1,6 +1,7 @@
 # booking.py
 import string
 import json
+import traceback
 from flask import Blueprint, g, request, jsonify, render_template, render_template_string, session, url_for, current_app
 from flask_wtf import CSRFProtect
 from flask_wtf.csrf import generate_csrf
@@ -103,9 +104,9 @@ def invia_email_azure(to_email, subject, html_content, from_email=None, plain_te
     if not connection_string:
         print("ERROR: AZURE_EMAIL_CONNECTION_STRING not set")
         return False
-    sender = (os.environ.get('AZURE_EMAIL_SENDER') or "").strip()
+    sender = (from_email or os.environ.get('AZURE_EMAIL_SENDER') or "").strip()
     if not sender:
-        print("ERROR: AZURE_EMAIL_SENDER not set")
+        print("ERROR: AZURE_EMAIL_SENDER not set and from_email not provided")
         return False
     client = EmailClient.from_connection_string(connection_string)
     content = {"subject": subject, "html": html_content}
@@ -154,9 +155,9 @@ def invia_email_async(to_email, subject, html_content, from_email=None, plain_te
             if not connection_string:
                 print("ERROR: AZURE_EMAIL_CONNECTION_STRING not set")
                 return
-            sender = (os.environ.get('AZURE_EMAIL_SENDER') or "").strip()
+            sender = (from_email or os.environ.get('AZURE_EMAIL_SENDER') or "").strip()
             if not sender:
-                print("ERROR: AZURE_EMAIL_SENDER not set")
+                print("ERROR: AZURE_EMAIL_SENDER not set and from_email not provided")
                 return
             
             print(f"[EMAIL-ASYNC] Starting send to={to_email} subject='{subject[:50]}...'")
