@@ -1122,29 +1122,7 @@ def prenota(tenant_id):
             cancel_url=cancel_url
         )
 
-        try:
-            invia_email_async(
-                to_email=email,
-                subject=f'{company_name} - Nuova prenotazione - {escape(nome)}',
-                html_content=riepilogo,
-                from_email=None
-            )
-        except Exception as e:
-            print(f"ERROR queueing confirmation email: {repr(e)}")
-        
-        # Invio email all'admin (stesso approccio sicuro)
-        admin_email = business_info.email if business_info and business_info.email else None
-        if admin_email:
-            try:
-                invia_email_async(
-                    to_email=admin_email,
-                    subject=f'{company_name} - Nuova prenotazione - {escape(nome)}',
-                    html_content=admin_riepilogo,
-                    from_email=None,
-                    delay_seconds=65  # DELAY per rispettare rate limit Azure FREE (1 email/min)
-                )
-            except Exception as e:
-                print(f"ERROR queueing admin email: {repr(e)}")
+        # Prepara email admin PRIMA di qualsiasi invio
         admin_riepilogo = render_template_string(
             """
     <div style="font-size:1.5em;">Nuova prenotazione:</div><div style="font-size:2.8em; color:red;"> {{ nome }} {{ cognome }}</div>
@@ -1167,14 +1145,28 @@ def prenota(tenant_id):
             totale_durata=totale_durata,
             totale_prezzo=f"{totale_prezzo:.2f}"
         )
+
+        # Invio email al cliente (immediato)
+        try:
+            invia_email_async(
+                to_email=email,
+                subject=f'{company_name} - Nuova prenotazione - {escape(nome)}',
+                html_content=riepilogo,
+                from_email=None
+            )
+        except Exception as e:
+            print(f"ERROR queueing confirmation email: {repr(e)}")
+        
+        # Invio email all'admin (con delay di 65s per rate limit Azure)
         admin_email = business_info.email if business_info and business_info.email else None
         if admin_email:
             try:
                 invia_email_async(
                     to_email=admin_email,
-                    subject= f'{company_name} - Nuova prenotazione - {escape(nome)}',
+                    subject=f'{company_name} - Nuova prenotazione - {escape(nome)}',
                     html_content=admin_riepilogo,
-                    from_email=None
+                    from_email=None,
+                    delay_seconds=65
                 )
             except Exception as e:
                 print(f"ERROR queueing admin email: {repr(e)}")
