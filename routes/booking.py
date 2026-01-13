@@ -144,6 +144,8 @@ def invia_email_async(to_email, subject, html_content, from_email=None, plain_te
                 print("ERROR: AZURE_EMAIL_SENDER not set")
                 return
             
+            print(f"[EMAIL-ASYNC] Starting send to={to_email} subject='{subject[:50]}...'")
+            
             client = EmailClient.from_connection_string(connection_string)
             content = {"subject": subject, "html": html_content}
             content["plainText"] = plain_text or _html_to_text(html_content)
@@ -165,9 +167,28 @@ def invia_email_async(to_email, subject, html_content, from_email=None, plain_te
             
             poller = client.begin_send(message)
             result = poller.result()
-            print(f"[EMAIL-ASYNC] sent id={getattr(result,'message_id',None)} to={to_email}")
+            
+            status = getattr(result, 'status', 'Unknown')
+            message_id = getattr(result, 'message_id', None)
+            print(f"[EMAIL-ASYNC] SUCCESS to={to_email} status={status} id={message_id}")
+            
         except Exception as e:
-            print(f"[EMAIL-ASYNC] ERROR sending to {to_email}: {repr(e)}")
+            # Log dettagliato degli errori Azure (429, 409, ecc.)
+            error_type = type(e).__name__
+            error_msg = str(e)
+            
+            # Estrai codice di stato HTTP se presente
+            status_code = getattr(e, 'status_code', None)
+            error_code = getattr(e, 'error_code', None)
+            
+            if status_code:
+                print(f"[EMAIL-ASYNC] FAILED to={to_email} HTTP_{status_code} error_code={error_code} type={error_type} msg={error_msg}")
+            else:
+                print(f"[EMAIL-ASYNC] FAILED to={to_email} type={error_type} msg={error_msg}")
+            
+            # Log completo per debug (se necessario)
+            import traceback
+            print(f"[EMAIL-ASYNC] Traceback: {traceback.format_exc()}")
     
     thread = threading.Thread(target=send_email, daemon=True)
     thread.start()
