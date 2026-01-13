@@ -191,10 +191,16 @@ def _send_email_sync(to_email, subject, html_content, from_email=None, plain_tex
             
             # Debug: logga cosa restituisce Azure
             if result:
-                status = getattr(result, 'status', None)
+                # Azure può restituire dict o object - gestisci entrambi
+                if isinstance(result, dict):
+                    status = result.get('status')
+                    msg_id = result.get('message_id') or result.get('id')
+                else:
+                    status = getattr(result, 'status', None)
+                    msg_id = getattr(result, 'message_id', None) or getattr(result, 'id', None)
+                
                 # Azure può restituire status come stringa o come enum
                 status_str = str(status) if status else 'None'
-                msg_id = getattr(result, 'message_id', None)
                 print(f"[EMAIL-AZURE] Result: status={status_str}, message_id={msg_id}, type={type(result)}", flush=True)
                 
                 # Controlla vari modi in cui Azure può indicare successo
