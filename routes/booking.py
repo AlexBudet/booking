@@ -14,6 +14,7 @@ import random
 import uuid
 from markupsafe import escape
 import threading
+import queue
 from azure.communication.email import EmailClient
 from wbiztool_client import WbizToolClient
 import html as html_lib
@@ -131,6 +132,12 @@ def invia_email_azure(to_email, subject, html_content, from_email=None, plain_te
 
 # Cache globale per il client Azure Email (evita di ricreare connessioni)
 _azure_email_client = None
+
+# Coda globale per rate limiting email (FIFO thread-safe)
+_EMAIL_QUEUE = queue.Queue()
+_EMAIL_WORKER_STARTED = False
+_EMAIL_WORKER_LOCK = threading.Lock()
+EMAIL_RATE_LIMIT_SECONDS = 10  # Delay tra email consecutive
 
 def _get_azure_email_client():
     """Ritorna un client Azure Email cached (singleton) con retry SDK disabilitati."""
@@ -265,16 +272,76 @@ def _send_email_sync(to_email, subject, html_content, from_email=None, plain_tex
                 print(f"[EMAIL-AZURE] FAILED: {repr(e)}", flush=True)
                 return False
 
+def _email_worker():
+    """
+    Worker che processa la coda email con rate limiting:
+    - Prima email: invio immediato
+    - Email successive: wait 10s tra un invio e l'altro
+    Questo evita burst massivi che causano 429 TooManyRequests.
+    """
+    last_send_time = None
+    
+    while True:
+        try:
+            # Attendi il prossimo task dalla coda (bloccante)
+            task = _EMAIL_QUEUE.get()
+            
+            if task is None:  # Segnale di shutdown
+                _EMAIL_QUEUE.task_done()
+                break
+            
+            to_email, subject, html_content, from_email, plain_text = task
+            
+            # Rate limiting: se ho appena inviato, aspetta
+            if last_send_time is not None:
+                elapsed = time_module.time() - last_send_time
+                if elapsed < EMAIL_RATE_LIMIT_SECONDS:
+                    wait_time = EMAIL_RATE_LIMIT_SECONDS - elapsed
+                    print(f"[EMAIL-QUEUE] Rate limit: waiting {wait_time:.1f}s", flush=True)
+                    time_module.sleep(wait_time)
+            
+            # Invia email (bloccante)
+            print(f"[EMAIL-QUEUE] Processing: {to_email} (queue size: {_EMAIL_QUEUE.qsize()})", flush=True)
+            _send_email_sync(to_email, subject, html_content, from_email, plain_text)
+            last_send_time = time_module.time()
+            
+            _EMAIL_QUEUE.task_done()
+            
+        except Exception as e:
+            print(f"[EMAIL-QUEUE] Worker error: {repr(e)}", flush=True)
+            _EMAIL_QUEUE.task_done()
+
 def invia_email_async(to_email, subject, html_content, from_email=None, plain_text=None):
     """
-    Invia email in background usando un thread separato.
-    Ritorna immediatamente senza bloccare la risposta HTTP.
+    Accoda email per invio sequenziale con rate limiting automatico.
+    - Se coda vuota: invio parte immediatamente
+    - Se coda piena: viene accodata e processata con delay di 10s
+    Previene burst massivi che causano 429 TooManyRequests su Azure.
     """
-    def _worker():
-        _send_email_sync(to_email, subject, html_content, from_email, plain_text)
+    global _EMAIL_WORKER_STARTED
     
-    t = threading.Thread(target=_worker, daemon=True)
-    t.start()
+    # Avvia worker una sola volta (lazy init)
+    with _EMAIL_WORKER_LOCK:
+        if not _EMAIL_WORKER_STARTED:
+            worker_thread = threading.Thread(
+                target=_email_worker,
+                daemon=True,
+                name="EmailQueueWorker"
+            )
+            worker_thread.start()
+            _EMAIL_WORKER_STARTED = True
+            print(f"[EMAIL-QUEUE] Worker started (rate limit: {EMAIL_RATE_LIMIT_SECONDS}s)", flush=True)
+    
+    # Accoda per invio sequenziale
+    _EMAIL_QUEUE.put((to_email, subject, html_content, from_email, plain_text))
+    queue_size = _EMAIL_QUEUE.qsize()
+    
+    if queue_size == 1:
+        print(f"[EMAIL-QUEUE] Queued for immediate send: {to_email}", flush=True)
+    else:
+        eta_seconds = (queue_size - 1) * EMAIL_RATE_LIMIT_SECONDS
+        print(f"[EMAIL-QUEUE] Queued #{queue_size}: {to_email} (ETA: ~{eta_seconds}s)", flush=True)
+    
     return True
 
 def to_rome(dt):
