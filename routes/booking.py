@@ -72,6 +72,12 @@ WA_OPERATOR_DEBUG = True  # metti a False quando hai finito i test per operatori
 _OP_STATE_MAP = {}        # tenant_id -> {"date": date, "queue": [dict], "idx": int, "last_sent_minute": datetime}
 _OP_LOCKS = {}            # tenant_id -> threading.Lock()
 
+# --- RATE LIMITING PRENOTAZIONI ---
+_BOOKING_TIMESTAMPS = []  # Lista di timestamp delle ultime prenotazioni completate
+_BOOKING_LOCK = threading.Lock()
+BOOKING_RATE_LIMIT_MAX = 3      # Massimo 3 prenotazioni
+BOOKING_RATE_LIMIT_WINDOW = 240  # in 4 minuti (240 secondi)
+
 def _op_dbg(tenant_id, msg):
     if WA_OPERATOR_DEBUG:
         print(f"[WA-OP][{tenant_id}] {msg}")
@@ -128,13 +134,22 @@ def invia_email_azure(to_email, subject, html_content, from_email=None, plain_te
         print(f"[EMAIL] ERROR result: {repr(e)}")
         return False
 
-def invia_email_async(to_email, subject, html_content, from_email=None, plain_text=None):
+def invia_email_async(to_email, subject, html_content, from_email=None, plain_text=None, delay_seconds=0):
     """
     Invio email in background thread separato (parallelo).
     Versione originale che funzionava perfettamente.
+    
+    Args:
+        delay_seconds: ritardo in secondi prima dell'invio (default: 0, invio immediato)
     """
     def send_email():
         try:
+            # Applica delay se richiesto (per rate limiting Azure)
+            if delay_seconds > 0:
+                print(f"[EMAIL-ASYNC] Waiting {delay_seconds}s before sending to={to_email}")
+                import time
+                time.sleep(delay_seconds)
+            
             connection_string = os.environ.get('AZURE_EMAIL_CONNECTION_STRING')
             if not connection_string:
                 print("ERROR: AZURE_EMAIL_CONNECTION_STRING not set")
@@ -748,17 +763,34 @@ def prenota(tenant_id):
     booking_session_id = str(uuid.uuid4())
     operatori_assegnati = data.get('operatori_assegnati')
 
-    # Verifica codice conferma basato sulla sessione (collegato al CSRF/token di invia-codice)
+    # Verifica codice conferma basato sulla sessione
     codice_sessione = session.get('codice_conferma')
     email_sessione = session.get('email_conferma')
 
-    # Se non c'è un codice in sessione, la prenotazione non deve poter procedere
     if not codice_sessione or not email_sessione:
-        return jsonify({"error": "Codice di conferma non richiesto"}), 400
+        return jsonify({"success": False, "errori": ["Codice di conferma non valido"]}), 400
 
-    # Se manca il codice nel payload o non coincide con quello in sessione o l'email non corrisponde
     if not codice_conferma or codice_conferma != codice_sessione or email != email_sessione:
-        return jsonify({"error": "Codice di conferma errato! Riprova"}), 400
+        return jsonify({"success": False, "errori": ["Codice di conferma errato o email non corrispondente"]}), 400
+
+    # --- RATE LIMITING: max 3 prenotazioni ogni 4 minuti ---
+    with _BOOKING_LOCK:
+        now = datetime.now().timestamp()
+        # Rimuovi timestamp più vecchi di 4 minuti
+        _BOOKING_TIMESTAMPS[:] = [ts for ts in _BOOKING_TIMESTAMPS if now - ts < BOOKING_RATE_LIMIT_WINDOW]
+        
+        if len(_BOOKING_TIMESTAMPS) >= BOOKING_RATE_LIMIT_MAX:
+            # Calcola quando sarà possibile prenotare di nuovo
+            oldest_in_window = min(_BOOKING_TIMESTAMPS)
+            wait_seconds = int(BOOKING_RATE_LIMIT_WINDOW - (now - oldest_in_window))
+            wait_minutes = max(1, (wait_seconds + 59) // 60)  # Arrotonda per eccesso
+            
+            print(f"[BOOKING-RATE-LIMIT] BLOCKED {email} - {len(_BOOKING_TIMESTAMPS)} prenotazioni negli ultimi 4 minuti")
+            
+            return jsonify({
+                "success": False,
+                "errori": [f"Ci sono già altre prenotazioni in corso, il sistema è al momento saturo. Riprova per piacere tra {wait_minutes} minuti."]
+            }), 429
 
     # Validazione campi base
     if not all([nome, telefono, data_str, ora]) or not servizi or not isinstance(servizi, list):
@@ -972,6 +1004,12 @@ def prenota(tenant_id):
         })
         slot_corrente = fine
 
+    # A questo punto gli appuntamenti sono stati creati con successo
+    # Registra timestamp per rate limiting
+    with _BOOKING_LOCK:
+        _BOOKING_TIMESTAMPS.append(datetime.now().timestamp())
+        print(f"[BOOKING-RATE-LIMIT] Prenotazione completata. Count ultimi 4 min: {len(_BOOKING_TIMESTAMPS)}")
+
 # Invio email di conferma SOLO se ci sono risultati
     if risultati:
         # Costruisci URL assoluto per annullare (riusa booking_session_id come token)
@@ -1096,6 +1134,17 @@ def prenota(tenant_id):
         
         # Invio email all'admin (stesso approccio sicuro)
         admin_email = business_info.email if business_info and business_info.email else None
+        if admin_email:
+            try:
+                invia_email_async(
+                    to_email=admin_email,
+                    subject=f'{company_name} - Nuova prenotazione - {escape(nome)}',
+                    html_content=admin_riepilogo,
+                    from_email=None,
+                    delay_seconds=65  # DELAY per rispettare rate limit Azure FREE (1 email/min)
+                )
+            except Exception as e:
+                print(f"ERROR queueing admin email: {repr(e)}")
         admin_riepilogo = render_template_string(
             """
     <div style="font-size:1.5em;">Nuova prenotazione:</div><div style="font-size:2.8em; color:red;"> {{ nome }} {{ cognome }}</div>
