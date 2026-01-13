@@ -1082,34 +1082,79 @@ def prenota(tenant_id):
         company_name = business_info.business_name if business_info and business_info.business_name else "SunBooking"
 
         # Template sicuro: Jinja escaperà le variabili automaticamente
-        template = """
-        <div style="font-family: Arial, sans-serif; font-size: 16px; line-height: 1.6; color: #333;">
-        <p style="font-size: 1.3em; margin-bottom: 10px;">Ciao <b>{{ nome }}</b>,</p>
-        <p style="font-size: 1.1em;">La tua richiesta di prenotazione è stata ricevuta! Riceverai la conferma via Whatsapp in orario lavorativo, o comunque al più presto possibile.</p>
-        
-        <div style="margin: 20px 0;">
-        {% for a in appuntamenti %}
-          <div style="padding: 15px; background: #f9f9f9; margin: 10px 0; border-left: 4px solid #4CAF50; border-radius: 4px; font-size: 1.1em;">
-            <div style="margin-bottom: 8px;"><b>📅 Data:</b> {{ a.data }}</div>
-            <div style="margin-bottom: 8px;"><b>🕐 Ora:</b> {{ a.ora }}</div>
-            {% if a.operatore_nome %}<div style="margin-bottom: 8px;"><b>👤 Operatore:</b> {{ a.operatore_nome }}</div>{% endif %}
-            <div style="margin-bottom: 8px;"><b>✂️ Servizio:</b> {{ a.servizio_nome }}</div>
-            <div style="font-size: 0.95em; color: #666;">
-              ⏱️ Durata: {{ a.durata }} min &nbsp;|&nbsp; 💰 Prezzo: {{ a.prezzo }} €
-            </div>
-          </div>
-        {% endfor %}
-        </div>
-        
-        <div style="padding: 15px; background: #e8f5e9; margin: 20px 0; border-radius: 8px; font-size: 1.2em; text-align: center; border: 2px solid #4CAF50;">
-          <b>⏱️ Totale durata:</b> {{ totale_durata }} min &nbsp; | &nbsp; <b>💰 Totale costo:</b> €{{ totale_prezzo }}
-        </div>
-        
-        <p style="margin-top: 20px; font-size: 1.1em;">
-          Non puoi venire? Puoi annullare qui:<a href="{{ cancel_url }}" style="color: #f44336; text-decoration: none; font-weight: bold;">❌ Annulla prenotazione</a>
-        </p>
-        <p style="font-size: 1.1em; margin-top: 20px;">Grazie per aver scelto <b>{{ company_name }}</b>! 🌟</p>
-        </div>
+        # Stile formale professionale (come email codice)
+        template = """<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conferma Prenotazione</title>
+</head>
+<body style="margin:0; padding:0; font-family: Arial, Helvetica, sans-serif; background-color: #f4f4f4;">
+    <!--[if mso]>
+    <table role="presentation" width="600" align="center" cellpadding="0" cellspacing="0" border="0">
+    <tr><td>
+    <![endif]-->
+    
+    <table role="presentation" style="max-width:600px; margin:20px auto; background:#ffffff; border-radius:8px; border:1px solid #e0e0e0;" cellpadding="0" cellspacing="0" width="100%">
+        <tr>
+            <td style="padding:30px 40px;">
+                <h2 style="color:#333333; margin:0 0 20px 0; font-size:22px;">Richiesta di prenotazione ricevuta</h2>
+                
+                <p style="color:#555555; font-size:15px; line-height:1.6; margin:0 0 20px 0;">
+                    <strong>{{ nome }}</strong>, la tua richiesta di prenotazione è stata ricevuta correttamente.
+                </p>
+                
+                <p style="color:#555555; font-size:14px; line-height:1.6; margin:0 0 25px 0;">
+                    Riceverai la conferma via WhatsApp in orario lavorativo, o comunque al più presto possibile.
+                </p>
+                
+                <div style="background:#f8f9fa; border-radius:8px; padding:20px; margin:20px 0;">
+                    <h3 style="color:#333333; margin:0 0 15px 0; font-size:16px;">Dettagli prenotazione:</h3>
+                    {% for a in appuntamenti %}
+                    <div style="padding:15px; background:#ffffff; margin:10px 0; border-left:3px solid #007bff; border-radius:4px;">
+                        <div style="margin-bottom:8px; font-size:15px;"><strong>Data:</strong> {{ a.data }}</div>
+                        <div style="margin-bottom:8px; font-size:15px;"><strong>Ora:</strong> {{ a.ora }}</div>
+                        {% if a.operatore_nome %}<div style="margin-bottom:8px; font-size:15px;"><strong>Operatore:</strong> {{ a.operatore_nome }}</div>{% endif %}
+                        <div style="margin-bottom:8px; font-size:15px;"><strong>Servizio:</strong> {{ a.servizio_nome }}</div>
+                        <div style="font-size:13px; color:#666666; margin-top:10px;">
+                            Durata: {{ a.durata }} min &nbsp;|&nbsp; Prezzo: {{ a.prezzo }} €
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                
+                <div style="background:#e8f5e9; border:2px solid #28a745; border-radius:8px; padding:20px; text-align:center; margin:25px 0;">
+                    <div style="font-size:16px; color:#333333; margin-bottom:5px;">
+                        <strong>Totale durata:</strong> {{ totale_durata }} min
+                    </div>
+                    <div style="font-size:18px; color:#28a745; font-weight:bold;">
+                        <strong>Totale costo:</strong> €{{ totale_prezzo }}
+                    </div>
+                </div>
+                
+                <p style="color:#555555; font-size:14px; line-height:1.6; margin:25px 0 0 0;">
+                    Non puoi più venire? Clicca qui: <a href="{{ cancel_url }}" style="color:#dc3545; text-decoration:none; font-weight:bold;">Annulla la prenotazione</a>
+                </p>
+            </td>
+        </tr>
+        <tr>
+            <td style="padding:20px 40px; background:#f8f9fa; border-top:1px solid #e0e0e0;">
+                <p style="color:#888888; font-size:12px; margin:0; line-height:1.5;">
+                    <strong>{{ company_name }}</strong><br>
+                    Grazie per aver scelto i nostri servizi.<br>
+                    Non rispondere a questa e-mail. Per assistenza contattaci telefonicamente.
+                </p>
+            </td>
+        </tr>
+    </table>
+    
+    <!--[if mso]>
+    </td></tr>
+    </table>
+    <![endif]-->
+</body>
+</html>
         """
 
         riepilogo = render_template_string(
