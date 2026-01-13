@@ -105,10 +105,20 @@ def invia_email_azure(to_email, subject, html_content, from_email=None, plain_te
     client = EmailClient.from_connection_string(connection_string)
     content = {"subject": subject, "html": html_content}
     content["plainText"] = plain_text or _html_to_text(html_content)
+    
+    # Aggiungi List-Unsubscribe header per ridurre spam complaints
+    sender_domain = sender.split('@')[1] if '@' in sender else 'example.com'
+    unsubscribe_url = f"https://{sender_domain}/unsubscribe"
+    unsubscribe_mailto = f"mailto:{sender}?subject=Unsubscribe"
+    
     message = {
         "senderAddress": sender,
         "recipients": {"to": [{"address": to_email}]},
-        "content": content
+        "content": content,
+        "headers": {
+            "List-Unsubscribe": f"<{unsubscribe_url}>, <{unsubscribe_mailto}>",
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
+        }
     }
     poller = client.begin_send(message)
     try:
@@ -163,10 +173,20 @@ def _send_email_sync(to_email, subject, html_content, from_email=None, plain_tex
     
     content = {"subject": subject, "html": html_content}
     content["plainText"] = plain_text or _html_to_text(html_content)
+    
+    # Aggiungi List-Unsubscribe header per ridurre spam complaints
+    sender_domain = sender.split('@')[1] if '@' in sender else 'example.com'
+    unsubscribe_url = f"https://{sender_domain}/unsubscribe"
+    unsubscribe_mailto = f"mailto:{sender}?subject=Unsubscribe"
+    
     message = {
         "senderAddress": sender,
         "recipients": {"to": [{"address": to_email}]},
-        "content": content
+        "content": content,
+        "headers": {
+            "List-Unsubscribe": f"<{unsubscribe_url}>, <{unsubscribe_mailto}>",
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
+        }
     }
     
     for attempt in range(max_retries):
@@ -1063,29 +1083,33 @@ def prenota(tenant_id):
 
         # Template sicuro: Jinja escaperà le variabili automaticamente
         template = """
-        <p>Ciao {{ nome }},</p>
-        <p>La tua richiesta di prenotazione è stata ricevuta! Riceverai la conferma via Whatsapp in orario lavorativo, o comunque al più presto possibile.</p>
-        <ul>
+        <div style="font-family: Arial, sans-serif; font-size: 16px; line-height: 1.6; color: #333;">
+        <p style="font-size: 1.3em; margin-bottom: 10px;">Ciao <b>{{ nome }}</b>,</p>
+        <p style="font-size: 1.1em;">La tua richiesta di prenotazione è stata ricevuta! Riceverai la conferma via Whatsapp in orario lavorativo, o comunque al più presto possibile.</p>
+        
+        <div style="margin: 20px 0;">
         {% for a in appuntamenti %}
-          <li>
-            <b>Data:</b> {{ a.data }}<br>
-            <b>Ora:</b> {{ a.ora }}<br>
-            {% if a.operatore_nome %}<b>Operatore:</b> {{ a.operatore_nome }}<br>{% endif %}
-            <b>Servizio:</b> {{ a.servizio_nome }}<br>
-            <small>
-              Durata: {{ a.durata }} min<br>
-              Prezzo: {{ a.prezzo }} €
-            </small>
-          </li>
+          <div style="padding: 15px; background: #f9f9f9; margin: 10px 0; border-left: 4px solid #4CAF50; border-radius: 4px; font-size: 1.1em;">
+            <div style="margin-bottom: 8px;"><b>📅 Data:</b> {{ a.data }}</div>
+            <div style="margin-bottom: 8px;"><b>🕐 Ora:</b> {{ a.ora }}</div>
+            {% if a.operatore_nome %}<div style="margin-bottom: 8px;"><b>👤 Operatore:</b> {{ a.operatore_nome }}</div>{% endif %}
+            <div style="margin-bottom: 8px;"><b>✂️ Servizio:</b> {{ a.servizio_nome }}</div>
+            <div style="font-size: 0.95em; color: #666;">
+              ⏱️ Durata: {{ a.durata }} min &nbsp;|&nbsp; 💰 Prezzo: {{ a.prezzo }} €
+            </div>
+          </div>
         {% endfor %}
-        </ul>
-        <div style="padding:12px; background:#f2f2f2; margin:20px 0; border-radius:8px;">
-        <b>Totale durata:</b> {{ totale_durata }} min &nbsp; | &nbsp; <b>Totale costo:</b> €{{ totale_prezzo }}
         </div>
-        <p style="margin-top:16px;">
-          Non puoi venire? Puoi annullare qui: <a href="{{ cancel_url }}">Annulla prenotazione</a>
+        
+        <div style="padding: 15px; background: #e8f5e9; margin: 20px 0; border-radius: 8px; font-size: 1.2em; text-align: center; border: 2px solid #4CAF50;">
+          <b>⏱️ Totale durata:</b> {{ totale_durata }} min &nbsp; | &nbsp; <b>💰 Totale costo:</b> €{{ totale_prezzo }}
+        </div>
+        
+        <p style="margin-top: 20px; font-size: 1.1em;">
+          Non puoi venire? Puoi annullare qui:<a href="{{ cancel_url }}" style="color: #f44336; text-decoration: none; font-weight: bold;">❌ Annulla prenotazione</a>
         </p>
-        <p>Grazie per aver scelto {{ company_name }}!</p>
+        <p style="font-size: 1.1em; margin-top: 20px;">Grazie per aver scelto <b>{{ company_name }}</b>! 🌟</p>
+        </div>
         """
 
         riepilogo = render_template_string(
