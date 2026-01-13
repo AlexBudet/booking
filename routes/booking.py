@@ -1376,13 +1376,18 @@ def cancel_booking(tenant_id, token):
     
 @booking_bp.route('/invia-codice', methods=['POST'])
 def invia_codice(tenant_id):
+    print(f"[INVIA-CODICE] Route called for tenant {tenant_id}")
+    
     business_info = g.db_session.query(BusinessInfo).first()
     company_name = business_info.business_name if business_info and business_info.business_name else "SunBooking"
+    print(f"[INVIA-CODICE] Company name: {company_name}")
 
     cooldown = 300  # 5 minuti
     now_ts = datetime.now().timestamp()
     last_sent = session.get('last_code_sent_at', 0)
     attempts = session.get('code_send_attempts', 0)
+    
+    print(f"[INVIA-CODICE] Cooldown check: attempts={attempts}, last_sent={last_sent}, now={now_ts}")
 
     # se l'ultimo invio è passato oltre il cooldown, azzera il contatore
     if last_sent and now_ts - last_sent >= cooldown:
@@ -1390,32 +1395,43 @@ def invia_codice(tenant_id):
         session['code_send_attempts'] = 0
 
     data = request.get_json()
+    print(f"[INVIA-CODICE] Request data received: {bool(data)}")
     if not data:
+        print("[INVIA-CODICE] ERROR: No JSON data")
         return jsonify({"success": False, "error": "Dati mancanti."}), 400
 
     email = data.get('email', '').strip()
     nome = data.get('nome', '').strip()
     cognome = data.get('cognome', '').strip()
     telefono = data.get('telefono', '').strip()
+    
+    print(f"[INVIA-CODICE] Parsed: email={email}, nome={nome}, cognome={cognome}, telefono={telefono}")
 
     if not all([email, nome, cognome, telefono]):
+        print("[INVIA-CODICE] ERROR: Missing required fields")
         return jsonify({"success": False, "error": "Tutti i campi sono obbligatori."}), 400
 
     if '@' not in email or '.' not in email.split('@')[-1]:
+        print(f"[INVIA-CODICE] ERROR: Invalid email format: {email}")
         return jsonify({"success": False, "error": "Indirizzo email non valido."}), 400
 
     # Blocca SOLO dal 3° tentativo se entro cooldown
     if attempts >= 2 and last_sent and now_ts - last_sent < cooldown:
         remaining = int(cooldown - (now_ts - last_sent))
+        print(f"[INVIA-CODICE] ERROR: Rate limited, remaining={remaining}s")
         return jsonify({"success": False, "error": f"Puoi inviare un nuovo codice tra {remaining} secondi."}), 429
 
     # Procedi con l'invio: genera codice, registra timestamp, e aggiorna tentativi
     codice = ''.join(random.choices(string.digits, k=6))
+    print(f"[INVIA-CODICE] Generated code: {codice}")
+    
     now_ts = datetime.now().timestamp()
     session['codice_conferma'] = codice
     session['email_conferma'] = email
     session['last_code_sent_at'] = now_ts
     session['code_send_attempts'] = attempts + 1
+    
+    print(f"[INVIA-CODICE] Session updated: code stored, attempts={attempts + 1}")
 
     # Costruisci email anti-spam con struttura professionale
     html_content = f"""<!DOCTYPE html>
@@ -1487,16 +1503,19 @@ Se non hai richiesto questo codice, ignora questa email.
 
     # Invia email con ENTRAMBE le versioni (HTML + plain text)
     try:
-        invia_email_async(
+        print(f"[INVIA-CODICE] Calling invia_email_async to={email}")
+        result = invia_email_async(
             to_email=email,
-            subject=f'Codice {codice} - {company_name}',  # Codice nel subject aiuta!
+            subject=f'Codice {codice} - {company_name}',
             html_content=html_content,
-            plain_text=plain_text,  # AGGIUNGI QUESTO!
+            plain_text=plain_text,
             from_email=None
         )
+        print(f"[INVIA-CODICE] invia_email_async returned: {result}")
         return jsonify({"success": True})
     except Exception as e:
-        print("ERROR queueing email:", repr(e))
+        print(f"[INVIA-CODICE] ERROR queueing email: {repr(e)}")
+        print(f"[INVIA-CODICE] Traceback: {traceback.format_exc()}")
         return jsonify({"success": False, "error": "Errore durante l'invio dell'email."}), 500
 
 def _get_wbiztool_creds(tenant_id: str):
