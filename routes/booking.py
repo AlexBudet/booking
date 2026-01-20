@@ -15,8 +15,8 @@ import random
 import uuid
 from markupsafe import escape
 import threading
+import requests
 from azure.communication.email import EmailClient
-from wbiztool_client import WbizToolClient
 import html as html_lib
 
 # --- UTIL: formato data per email (solo output email, non DB) ---
@@ -1519,47 +1519,44 @@ Se non hai richiesto questo codice, ignora questa email.
         print(f"[INVIA-CODICE] Traceback: {traceback.format_exc()}")
         return jsonify({"success": False, "error": "Errore durante l'invio dell'email."}), 500
 
-def _get_wbiztool_creds(tenant_id: str):
+def _get_unipile_creds(tenant_id: str):
     suffix = _tenant_env_prefix(tenant_id)  # es: T1
-    k_api = f'WBIZTOOL_API_KEY_{suffix}'
-    k_cli = f'WBIZTOOL_CLIENT_ID_{suffix}'
-    k_wa  = f'WBIZTOOL_WHATSAPP_CLIENT_ID_{suffix}'
+    k_account = f'UNIPILE_ACCOUNT_ID_{suffix}'
+    
+    dsn = os.environ.get('UNIPILE_DSN')
+    access_token = os.environ.get('UNIPILE_ACCESS_TOKEN')
+    account_id = os.environ.get(k_account)
 
-    api_key = os.environ.get(k_api)
-    client_id = os.environ.get(k_cli)
-    wa_client_id = os.environ.get(k_wa)
-
-    if not (api_key and client_id and wa_client_id):
-        _wa_dbg(tenant_id, f"Credenziali WBIZTOOL assenti per {suffix}. Nessun fallback.")
+    if not (dsn and access_token and account_id):
+        _wa_dbg(tenant_id, f"Credenziali UNIPILE assenti per {suffix}. DSN={bool(dsn)}, TOKEN={bool(access_token)}, ACCOUNT={bool(account_id)}")
         return None
 
     try:
         creds = {
-            "api_key": str(api_key).strip(),
-            "client_id": int(str(client_id).strip()),
-            "wa_client_id": int(str(wa_client_id).strip())
+            "dsn": str(dsn).strip(),
+            "access_token": str(access_token).strip(),
+            "account_id": str(account_id).strip()
         }
-        _wa_dbg(tenant_id, f"Credenziali WBIZTOOL caricate (suffix={suffix})")
+        _wa_dbg(tenant_id, f"Credenziali UNIPILE caricate (suffix={suffix}, account_id={account_id[:8]}...)")
         return creds
     except Exception as e:
-        _wa_dbg(tenant_id, f"Env WBIZTOOL {suffix} non parseabili: {repr(e)}")
+        _wa_dbg(tenant_id, f"Env UNIPILE {suffix} non parseabili: {repr(e)}")
         return None
 
-def _prepare_wbiz_phone(phone: str):
-    """Ritorna (numero_pulito, country_code) stile calendar.py"""
+def _prepare_unipile_phone(phone: str):
+    """Normalizza numero per unipile nel formato numero@s.whatsapp.net"""
     numero_pulito = re.sub(r'\D', '', str(phone or ''))
     if numero_pulito.startswith('00'):
-        numero_pulito = numero_pulito.lstrip('0')
+        numero_pulito = numero_pulito[2:]
     if not numero_pulito:
-        return '', ''
+        return ''
     
-    # MODIFICA: Aggiungi 39 solo se non c'è già E se la lunghezza suggerisce un numero italiano senza prefisso (<= 10 cifre)
-    # I numeri internazionali (es. 41...) o italiani con prefisso (39...) sono solitamente > 10 cifre.
+    # Aggiungi prefisso +39 se manca
     if not numero_pulito.startswith('39') and len(numero_pulito) <= 10:
         numero_pulito = '39' + numero_pulito
-        
-    country_code = '39' if numero_pulito.startswith('39') else numero_pulito[:2]
-    return numero_pulito, country_code
+    
+    # Formato Unipile: numero@s.whatsapp.net
+    return f"{numero_pulito}@s.whatsapp.net"
 
 def _services_bullet_for_contiguous_block(session, appt) -> str:
     """
@@ -1649,39 +1646,48 @@ def _render_morning_text(session, template: str, item: dict) -> str:
     except Exception:
         return template or ''
 
-def _send_wbiztool_message(creds: dict, to_phone: str, text: str) -> bool:
-    """Invia con WbizToolClient come in calendar.py"""
+def _send_unipile_message(creds: dict, to_phone: str, text: str) -> bool:
+    """Invia messaggio WhatsApp con API REST Unipile"""
     try:
-        numero_pulito, country_code = _prepare_wbiz_phone(to_phone)
-        if not numero_pulito:
-            print("[WBIZTOOL] Numero vuoto dopo normalizzazione")
+        numero_whatsapp = _prepare_unipile_phone(to_phone)
+        if not numero_whatsapp:
+            print("[UNIPILE] Numero vuoto dopo normalizzazione")
             return False
 
-        client = WbizToolClient(api_key=creds["api_key"], client_id=creds["client_id"])
-        resp = client.send_message(
-            phone=numero_pulito,
-            msg=text or "",
-            msg_type=0,
-            whatsapp_client=creds["wa_client_id"],
-            country_code=country_code
-        )
-        # Esiti possibili: dict {"status":1} oppure oggetto/Response 2xx
-        if isinstance(resp, dict):
-            ok = resp.get("status") == 1
-            if not ok:
-                print(f"[WBIZTOOL] send failed dict: {resp}")
-            return ok
-        status = getattr(resp, 'status_code', None)
-        if status is None:
-            # fallback best-effort
+        # API Unipile - endpoint /api/v1/chats
+        url = f"https://{creds['dsn']}/api/v1/chats"
+        
+        headers = {
+            "X-API-KEY": creds["access_token"],
+            "accept": "application/json"
+        }
+        
+        data = {
+            "account_id": creds["account_id"],
+            "text": text or "",
+            "attendees_ids": numero_whatsapp  # formato: numero@s.whatsapp.net
+        }
+        
+        response = requests.post(url, headers=headers, data=data, timeout=30)
+        
+        if response.status_code in [200, 201]:
+            result = response.json()
+            print(f"[UNIPILE] Messaggio inviato con successo a {numero_whatsapp}: {result}")
             return True
-        ok = 200 <= status < 300
-        if not ok:
-            body = getattr(resp, 'text', None) or getattr(resp, 'content', None)
-            print(f"[WBIZTOOL] http failed {status} body={body}")
-        return ok
+        else:
+            print(f"[UNIPILE] Errore HTTP {response.status_code}: {response.text}")
+            return False
+            
+    except requests.exceptions.Timeout:
+        print(f"[UNIPILE] Timeout invio a {to_phone}")
+        return False
+    except requests.exceptions.RequestException as e:
+        print(f"[UNIPILE] Errore connessione: {repr(e)}")
+        return False
     except Exception as e:
-        print(f"[WBIZTOOL] ERROR: {repr(e)}")
+        print(f"[UNIPILE] ERROR invio a {to_phone}: {repr(e)}")
+        import traceback
+        print(f"[UNIPILE] Traceback: {traceback.format_exc()}")
         return False
     
 def _build_today_targets(session, start_from=None) -> list:
@@ -1832,11 +1838,11 @@ def process_morning_tick(app, tenant_id: str):
                     _wa_dbg(tenant_id, f"render error appt_id={item.get('appointment_id')}: {repr(e)}")
                     text_to_send = msg_text or ""
 
-                creds = _get_wbiztool_creds(tenant_id)
+                creds = _get_unipile_creds(tenant_id)
                 ok = False
                 if creds:
                     try:
-                        ok = _send_wbiztool_message(creds, item["phone"], text_to_send)
+                        ok = _send_unipile_message(creds, item["phone"], text_to_send)
                     except Exception as e:
                         _wa_dbg(tenant_id, f"send raised exception appt_id={item.get('appointment_id')}: {repr(e)}")
                         ok = False
@@ -1869,27 +1875,18 @@ def process_morning_tick(app, tenant_id: str):
 
 
 #===== INVIO WHATSAPP OPERATORI ================================
-def _normalize_for_wbiz(numero: str):
-    raw = (str(numero or '')).strip().replace(' ', '')
-    if not raw:
-        return None, None  # numero, country
-    if raw.startswith('+'):
-        numero_norm = raw
-    elif raw and raw[0].isdigit():
-        if raw.startswith('3'):
-            numero_norm = ('+' + raw) if len(raw) > 10 else ('+39' + raw)
-        else:
-            numero_norm = '+' + raw
-    else:
-        numero_norm = raw
-
-    numero_pulito = re.sub(r'\D', '', numero_norm or '')
+def _normalize_for_unipile(numero: str):
+    """Normalizza numero per unipile nel formato numero@s.whatsapp.net"""
+    numero_pulito = re.sub(r'\D', '', str(numero or ''))
     if numero_pulito.startswith('00'):
-        numero_pulito = numero_pulito.lstrip('0')
+        numero_pulito = numero_pulito[2:]
     if not numero_pulito:
-        return None, None
-    country_code = '39' if numero_pulito.startswith('39') else numero_pulito[:2]
-    return numero_pulito, country_code
+        return None
+    
+    if not numero_pulito.startswith('39') and len(numero_pulito) <= 10:
+        numero_pulito = '39' + numero_pulito
+    
+    return f"{numero_pulito}@s.whatsapp.net"
 
 def _fmt_data_italiana(dt):
     giorni = ["Lunedì","Martedì","Mercoledì","Giovedì","Venerdì","Sabato","Domenica"]
@@ -1909,7 +1906,7 @@ def _build_operator_targets_for_tomorrow(session, require_phone: bool = True):  
     
     targets = []
     for op in operators:
-        phone, country = _normalize_for_wbiz(op.user_cellulare)
+        phone = _normalize_for_unipile(op.user_cellulare)
         if require_phone and (not phone or len(phone) < 4):
             continue
         
@@ -1996,7 +1993,6 @@ def _build_operator_targets_for_tomorrow(session, require_phone: bool = True):  
             "operator_id": op.id,
             "operatore_nome": (op.user_nome or "").strip(),  # First name only
             "phone": phone,
-            "country_code": country,
             "date": str(tomorrow),
             "shift_start": shift.shift_start_time.strftime('%H:%M') if shift else None,
             "shift_end": shift.shift_end_time.strftime('%H:%M') if shift else None,
@@ -2156,11 +2152,11 @@ def process_operator_tick(app, tenant_id: str):
                     _op_dbg(tenant_id, f"render error operator_id={item.get('operator_id')}: {repr(e)}")
                     text_to_send = msg_text or ""
 
-                creds = _get_wbiztool_creds(tenant_id)
+                creds = _get_unipile_creds(tenant_id)
                 ok = False
                 if creds:
                     try:
-                        ok = _send_wbiztool_message(creds, item["phone"], text_to_send)
+                        ok = _send_unipile_message(creds, item["phone"], text_to_send)
                     except Exception as e:
                         _op_dbg(tenant_id, f"send error: {repr(e)}")
                         ok = False
@@ -2218,7 +2214,7 @@ def operator_notifications_trigger(tenant_id):
         tpl = getattr(biz, 'operator_whatsapp_message_template', None) or \
             "Ciao {{operatore}},\n\nDomani {{data}} il tuo turno sarà: {{ora_inizio}} - {{ora_fine}}\n\n{{sezione_pausa}}\n\nIl primo impegno della giornata sarà alle {{ora_primo_app}} e sarà {{primo_app}}\n\nBuon lavoro :)"
         queue = _build_operator_targets_for_tomorrow(session, require_phone=True)
-        creds = _get_wbiztool_creds(tenant_id)
+        creds = _get_unipile_creds(tenant_id)
 
         sent = 0
         results = []
@@ -2230,7 +2226,7 @@ def operator_notifications_trigger(tenant_id):
             ok = False
             if creds:
                 try:
-                    ok = _send_wbiztool_message(creds, item["phone"], text)
+                    ok = _send_unipile_message(creds, item["phone"], text)
                 except Exception as e:
                     ok = False
                     results.append({"operator_id": item["operator_id"], "ok": False, "error": str(e)})
