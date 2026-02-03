@@ -1035,7 +1035,7 @@ def prenota(tenant_id):
             })
 
         business_info = g.db_session.query(BusinessInfo).first()
-        company_name = business_info.business_name if business_info and business_info.business_name else "SunBooking"
+        company_name = business_info.business_name if business_info and business_info.business_name else "Tosca Gestionale"
 
         # Template sicuro: Jinja escaperà le variabili automaticamente
         # Stile formale professionale (come email codice)
@@ -1227,7 +1227,7 @@ def cancel_booking(tenant_id, token):
             """), 400
 
         biz = g.db_session.query(BusinessInfo).first()
-        company_name = (getattr(biz, 'business_name', None) or "SunBooking")
+        company_name = (getattr(biz, 'business_name', None) or "Tosca Gestionale")
 
         # Usa solo appuntamenti futuri per conteggio e cancellazione
         count = len(appts_future)
@@ -1380,7 +1380,7 @@ def invia_codice(tenant_id):
     print(f"[INVIA-CODICE] Route called for tenant {tenant_id}")
     
     business_info = g.db_session.query(BusinessInfo).first()
-    company_name = business_info.business_name if business_info and business_info.business_name else "SunBooking"
+    company_name = business_info.business_name if business_info and business_info.business_name else "Tosca Gestionale"
     print(f"[INVIA-CODICE] Company name: {company_name}")
 
     cooldown = 300  # 5 minuti
@@ -1520,15 +1520,36 @@ Se non hai richiesto questo codice, ignora questa email.
         return jsonify({"success": False, "error": "Errore durante l'invio dell'email."}), 500
 
 def _get_unipile_creds(tenant_id: str):
-    suffix = _tenant_env_prefix(tenant_id)  # es: T1
-    k_account = f'UNIPILE_ACCOUNT_ID_{suffix}'
-    
+    """
+    Recupera le credenziali Unipile per l'invio WhatsApp.
+    - DSN e ACCESS_TOKEN: dalle variabili d'ambiente (condivisi)
+    - ACCOUNT_ID: dal database (BusinessInfo.unipile_account_id) per tenant
+    """
     dsn = os.environ.get('UNIPILE_DSN')
     access_token = os.environ.get('UNIPILE_ACCESS_TOKEN')
-    account_id = os.environ.get(k_account)
+    
+    # Recupera account_id dal database (BusinessInfo)
+    account_id = None
+    try:
+        business_info = g.db_session.query(BusinessInfo).first()
+        if business_info:
+            account_id = getattr(business_info, 'unipile_account_id', None)
+            if account_id:
+                account_id = str(account_id).strip()
+    except Exception as e:
+        _wa_dbg(tenant_id, f"Errore lettura unipile_account_id da DB: {repr(e)}")
+        account_id = None
+    
+    # Fallback: se non presente nel DB, prova variabile d'ambiente (legacy)
+    if not account_id:
+        suffix = _tenant_env_prefix(tenant_id)  # es: T1
+        k_account = f'UNIPILE_ACCOUNT_ID_{suffix}'
+        account_id = os.environ.get(k_account)
+        if account_id:
+            _wa_dbg(tenant_id, f"account_id da env var {k_account} (fallback)")
 
     if not (dsn and access_token and account_id):
-        _wa_dbg(tenant_id, f"Credenziali UNIPILE assenti per {suffix}. DSN={bool(dsn)}, TOKEN={bool(access_token)}, ACCOUNT={bool(account_id)}")
+        _wa_dbg(tenant_id, f"Credenziali UNIPILE assenti. DSN={bool(dsn)}, TOKEN={bool(access_token)}, ACCOUNT={bool(account_id)}")
         return None
 
     try:
@@ -1537,10 +1558,10 @@ def _get_unipile_creds(tenant_id: str):
             "access_token": str(access_token).strip(),
             "account_id": str(account_id).strip()
         }
-        _wa_dbg(tenant_id, f"Credenziali UNIPILE caricate (suffix={suffix}, account_id={account_id[:8]}...)")
+        _wa_dbg(tenant_id, f"Credenziali UNIPILE caricate (account_id={account_id[:8]}...)")
         return creds
     except Exception as e:
-        _wa_dbg(tenant_id, f"Env UNIPILE {suffix} non parseabili: {repr(e)}")
+        _wa_dbg(tenant_id, f"Env UNIPILE non parseabili: {repr(e)}")
         return None
 
 def _prepare_unipile_phone(phone: str):

@@ -273,6 +273,17 @@ class BusinessInfo(db.Model):
     whatsapp_template_pacchetti = db.Column(db.Text, nullable=True)
     whatsapp_template_pacchetti_disclaimer = db.Column(db.Text, nullable=True)
     pacchetti_giorni_abbandono = db.Column(db.Integer, nullable=True, default=90)
+    # Campi Marketing
+    marketing_message_template = db.Column(db.Text, nullable=True)
+    new_client_welcome_enabled = db.Column(db.Boolean, default=False)
+    new_client_welcome_message = db.Column(db.Text, nullable=True)
+    google_review_link = db.Column(db.String(500), nullable=True)
+    new_client_delay_send = db.Column(db.Boolean, default=False)
+    new_client_delay_hours = db.Column(db.Integer, default=2)
+    marketing_max_daily_sends = db.Column(db.Integer, default=30)
+
+    # Unipile WhatsApp Account ID (salvato dopo connessione)
+    unipile_account_id = db.Column(db.String(100), nullable=True)
 
     @property
     def closing_days_list(self):
@@ -291,7 +302,20 @@ class BusinessInfo(db.Model):
 
     def __repr__(self):
         return f"<BusinessInfo {self.business_name}>"
+
+class MarketingTemplate(db.Model):
+    __tablename__ = 'marketing_templates'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    nome = db.Column(db.String(100), nullable=False)
+    testo = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, server_default=func.now())
     
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'nome': self.nome,
+            'testo': self.testo
+        }
 
 class Receipt(db.Model):
     __tablename__ = 'scontrini'
@@ -385,6 +409,11 @@ class Pacchetto(db.Model):
     history = db.Column(db.Text, nullable=True)  # Storico semplice come testo
     costo_totale_lordo = db.Column(db.Numeric(10, 2), nullable=False)  # Lordo
     costo_totale_scontato = db.Column(db.Numeric(10, 2), nullable=True)  # Scontato
+
+    # Consenso informato firmato (PDF caricato)
+    consenso_pdf = db.deferred(db.Column(db.LargeBinary, nullable=True))
+    consenso_pdf_nome = db.Column(db.String(255), nullable=True)
+    consenso_pdf_data = db.Column(db.DateTime, nullable=True)
     
     # Relazioni
     client = db.relationship('Client', backref='pacchetti')
