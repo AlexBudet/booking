@@ -14,7 +14,14 @@
       border-radius: 12px;
       padding: 2rem;
       border: 1px solid #87647c !important; /* esempio: viola chiaro */
+      /* Disabilita il touch delay su iOS */
+      touch-action: manipulation;
     }
+
+    button, input, select, a {
+      touch-action: manipulation;
+    }
+
     .booking-sidebar {
       border-radius: 12px;
       padding: 1.5rem;
@@ -691,27 +698,35 @@ function isSafariMobile() {
     const cognome = document.getElementById('cognome').value.trim();
     const telefono = document.getElementById('telefono').value.trim();
     const email = document.getElementById('email').value.trim();
-    // Mostra il bottone solo se tutti i campi sono pieni
-if (nome && cognome && telefono && email) {
-  // Solo se il bottone era nascosto, mostra subito il bottone
-  if (inviaCodiceBtn.style.display === 'none') {
-    inviaCodiceBtn.style.display = '';
-    // scrollToBottom(); // se vuoi, puoi rimetterlo qui
-  } else {
-    inviaCodiceBtn.style.display = '';
-  }
-} else {
-  inviaCodiceBtn.style.display = 'none';
-}
+    
+    if (nome && cognome && telefono && email) {
+      if (inviaCodiceBtn.style.display === 'none') {
+        inviaCodiceBtn.style.display = '';
+        // NON chiamare scrollToBottom() qui - interferisce col tap
+      }
+    } else {
+      inviaCodiceBtn.style.display = 'none';
+    }
   });
 });
 
 document.getElementById('inviaCodiceBtn').addEventListener('click', function() {
+  e.preventDefault();
+  e.stopPropagation();
+  
+  // Evita doppi click
+  if (this.disabled) return;
+  this.disabled = true;
+  
+  const btn = this;
   // Prendi i dati dal form
   const nome = document.getElementById('nome').value.trim();
   const cognome = document.getElementById('cognome').value.trim();
   const telefono = document.getElementById('telefono').value.trim();
   const email = document.getElementById('email').value.trim();
+
+    // Chiudi la tastiera su mobile
+  document.activeElement.blur();
 
   // Leggi il token CSRF dall'input nascosto nel form
   const csrfToken = document.getElementById('csrf_token').value;
@@ -736,8 +751,17 @@ document.getElementById('inviaCodiceBtn').addEventListener('click', function() {
     }
   })
   .catch(() => {
+    btn.disabled = false;
     alert('Errore di rete durante l\'invio del codice');
   });
+});
+
+// Aggiungi anche touchend come fallback per iOS
+document.getElementById('inviaCodiceBtn').addEventListener('touchend', function(e) {
+  // Trigger del click solo se non è già stato gestito
+  if (!this.disabled) {
+    this.click();
+  }
 });
 
 let prenotaLocked = false;
