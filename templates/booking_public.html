@@ -162,12 +162,21 @@ body {
 }
 
 #inviaCodiceBtn {
-  background-color: #87647c !important; /* esempio: viola chiaro */
+  background-color: #87647c !important;
   color: #fff !important;
   border: none !important;
+  transition: opacity 0.3s, background-color 0.3s;
 }
 #inviaCodiceBtn:hover {
   background-color: #a98ca7 !important;
+}
+
+/* Stato disabilitato/spento del bottone */
+#inviaCodiceBtn.btn-disabled {
+  background-color: #555 !important;
+  color: #999 !important;
+  pointer-events: none;
+  opacity: 0.6;
 }
 
 .alert,
@@ -293,13 +302,25 @@ body {
   background: none;
 }
 
-#confermaDatiBtn {
-  background-color: #555 !important;
-  color: #fff !important;
-  border: none !important;
-}
-#confermaDatiBtn:hover {
-  background-color: #777 !important;
+/* Bottone sticky per mobile */
+@media (max-width: 767px) {
+  #inviaCodiceBtn {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    z-index: 9999 !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    padding: 18px !important;
+    font-size: 1.2em !important;
+  }
+  
+  /* Spazio in fondo per evitare che il bottone copra contenuto */
+  #dati-cliente {
+    padding-bottom: 80px !important;
+  }
 }
 </style>
 </head>
@@ -529,9 +550,7 @@ Per quanto non espressamente previsto nelle presenti CGV, si applica la legge it
       <td><input type="email" id="email" required class="form-control" autocomplete="email" enterkeyhint="done"></td>
     </tr>
   </table>
-  <!-- STEP 1: Conferma dati (chiude tastiera) -->
-  <button type="button" id="confermaDatiBtn" class="btn btn-secondary w-100" style="display:none; margin-top:20px;">Conferma dati</button>
-  <!-- STEP 2: Invia codice (appare dopo conferma) -->
+  <!-- Invia codice (appare dopo conferma) -->
   <button type="button" id="inviaCodiceBtn" class="btn btn-success w-100" style="display:none; margin-top:10px;">Invia codice di conferma</button>
 </div>
 <div id="codice-conferma-wrapper" style="display:none; margin-top:20px;">
@@ -704,44 +723,68 @@ function isSafariMobile() {
   return /^((?!chrome|android).)*safari/i.test(navigator.userAgent) && /iPhone|iPad|iPod/i.test(navigator.userAgent);
 }
 
-const confermaDatiBtn = document.getElementById('confermaDatiBtn');
+// Variabili per gestione bottone sticky
+let datiCompleti = false;
+let emailBlurTimeout = null;
+
+function checkDatiCompleti() {
+  const nome = document.getElementById('nome').value.trim();
+  const cognome = document.getElementById('cognome').value.trim();
+  const telefono = document.getElementById('telefono').value.trim();
+  const email = document.getElementById('email').value.trim();
+  return nome && cognome && telefono && email;
+}
+
+function mostraBottoneSpento() {
+  const btn = document.getElementById('inviaCodiceBtn');
+  btn.classList.add('btn-disabled');
+  btn.style.display = '';
+}
+
+function attivaBottone() {
+  const btn = document.getElementById('inviaCodiceBtn');
+  btn.classList.remove('btn-disabled');
+  btn.style.display = '';
+}
 
 ['nome', 'cognome', 'telefono', 'email'].forEach(id => {
   const input = document.getElementById(id);
   
   input.addEventListener('input', function() {
-    const nome = document.getElementById('nome').value.trim();
-    const cognome = document.getElementById('cognome').value.trim();
-    const telefono = document.getElementById('telefono').value.trim();
-    const email = document.getElementById('email').value.trim();
-    
-    if (nome && cognome && telefono && email) {
-      // Mostra "Conferma dati", nascondi "Invia codice"
-      confermaDatiBtn.style.display = '';
-      inviaCodiceBtn.style.display = 'none';
+    datiCompleti = checkDatiCompleti();
+    if (datiCompleti) {
+      mostraBottoneSpento();
     } else {
-      confermaDatiBtn.style.display = 'none';
-      inviaCodiceBtn.style.display = 'none';
+      document.getElementById('inviaCodiceBtn').style.display = 'none';
+    }
+  });
+  
+  input.addEventListener('focus', function() {
+    if (emailBlurTimeout) {
+      clearTimeout(emailBlurTimeout);
+    }
+    const btn = document.getElementById('inviaCodiceBtn');
+    if (datiCompleti && btn.style.display !== 'none') {
+      btn.classList.add('btn-disabled');
     }
   });
 });
 
-// STEP 1: Click su "Conferma dati" → chiude tastiera e mostra "Invia codice"
-confermaDatiBtn.addEventListener('click', function() {
-  // Chiudi la tastiera
-  document.activeElement.blur();
-  
-  // Nascondi "Conferma dati", mostra "Invia codice"
-  confermaDatiBtn.style.display = 'none';
-  inviaCodiceBtn.style.display = '';
-  
-  // Scroll dopo che la tastiera si è chiusa
-  setTimeout(function() {
-    scrollToBottom();
-  }, 200);
+document.getElementById('email').addEventListener('blur', function() {
+  if (emailBlurTimeout) {
+    clearTimeout(emailBlurTimeout);
+  }
+  if (checkDatiCompleti()) {
+    emailBlurTimeout = setTimeout(function() {
+      if (checkDatiCompleti()) {
+        attivaBottone();
+        setTimeout(scrollToBottom, 300);
+      }
+    }, 1000);
+  }
 });
 
-// STEP 2: Click su "Invia codice" → invia la richiesta
+// Click su "Invia codice" → invia la richiesta
 document.getElementById('inviaCodiceBtn').addEventListener('click', function(e) {
   e.preventDefault();
   e.stopPropagation();
