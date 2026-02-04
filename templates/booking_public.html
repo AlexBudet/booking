@@ -175,7 +175,6 @@ body {
 #inviaCodiceBtn.btn-disabled {
   background-color: #555 !important;
   color: #999 !important;
-  pointer-events: none;
   opacity: 0.6;
 }
 
@@ -789,8 +788,12 @@ document.getElementById('inviaCodiceBtn').addEventListener('click', function(e) 
   e.preventDefault();
   e.stopPropagation();
   
-  if (this.disabled) return;
-  this.disabled = true;
+  // Se il bottone è ancora in stato "spento", ignora il click
+  if (this.classList.contains('btn-disabled')) return;
+  
+  // Evita doppi click
+  if (this.dataset.sending === 'true') return;
+  this.dataset.sending = 'true';
   
   const btn = this;
   const nome = document.getElementById('nome').value.trim();
@@ -809,7 +812,7 @@ document.getElementById('inviaCodiceBtn').addEventListener('click', function(e) 
   })
   .then(r => r.json())
   .then(res => {
-    btn.disabled = false;
+    btn.dataset.sending = 'false';
     if (res.success) {
       document.getElementById('codice-conferma-wrapper').style.display = '';
       document.getElementById('inviaCodiceBtn').style.display = 'none';
@@ -820,7 +823,7 @@ document.getElementById('inviaCodiceBtn').addEventListener('click', function(e) 
     }
   })
   .catch(() => {
-    btn.disabled = false;
+    btn.dataset.sending = 'false';
     alert('Errore di rete durante l\'invio del codice');
   });
 });
