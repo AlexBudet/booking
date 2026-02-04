@@ -520,7 +520,10 @@ Per quanto non espressamente previsto nelle presenti CGV, si applica la legge it
       <td><input type="email" id="email" required class="form-control" autocomplete="email" enterkeyhint="done"></td>
     </tr>
   </table>
-  <button type="button" id="inviaCodiceBtn" class="btn btn-success w-100" style="display:none; margin-top:20px;">Invia codice di conferma</button>
+  <!-- STEP 1: Conferma dati (chiude tastiera) -->
+  <button type="button" id="confermaDatiBtn" class="btn btn-secondary w-100" style="display:none; margin-top:20px;">Conferma dati</button>
+  <!-- STEP 2: Invia codice (appare dopo conferma) -->
+  <button type="button" id="inviaCodiceBtn" class="btn btn-success w-100" style="display:none; margin-top:10px;">Invia codice di conferma</button>
 </div>
 <div id="codice-conferma-wrapper" style="display:none; margin-top:20px;">
   <label>Codice di conferma ricevuto via email:
