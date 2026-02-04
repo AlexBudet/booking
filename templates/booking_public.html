@@ -171,13 +171,6 @@ body {
   background-color: #a98ca7 !important;
 }
 
-/* Stato disabilitato/spento del bottone */
-#inviaCodiceBtn.btn-disabled {
-  background-color: #555 !important;
-  color: #999 !important;
-  opacity: 0.6;
-}
-
 .alert,
 #pseudoblocchi-servizi .alert {
   max-width: 96%;
@@ -722,74 +715,35 @@ function isSafariMobile() {
   return /^((?!chrome|android).)*safari/i.test(navigator.userAgent) && /iPhone|iPad|iPod/i.test(navigator.userAgent);
 }
 
-// Variabili per gestione bottone sticky
-let datiCompleti = false;
-let emailBlurTimeout = null;
-
-function checkDatiCompleti() {
+function checkFormCompleto() {
   const nome = document.getElementById('nome').value.trim();
   const cognome = document.getElementById('cognome').value.trim();
   const telefono = document.getElementById('telefono').value.trim();
   const email = document.getElementById('email').value.trim();
-  return nome && cognome && telefono && email;
+  
+  // Email valida se contiene @ e .
+  const emailValida = email.includes('@') && email.includes('.');
+  
+  return nome && cognome && telefono && emailValida;
 }
 
-function mostraBottoneSpento() {
+function aggiornaStatoBottone() {
   const btn = document.getElementById('inviaCodiceBtn');
-  btn.classList.add('btn-disabled');
-  btn.style.display = '';
-}
-
-function attivaBottone() {
-  const btn = document.getElementById('inviaCodiceBtn');
-  btn.classList.remove('btn-disabled');
-  btn.style.display = '';
+  if (checkFormCompleto()) {
+    btn.style.display = '';
+  } else {
+    btn.style.display = 'none';
+  }
 }
 
 ['nome', 'cognome', 'telefono', 'email'].forEach(id => {
-  const input = document.getElementById(id);
-  
-  input.addEventListener('input', function() {
-    datiCompleti = checkDatiCompleti();
-    if (datiCompleti) {
-      mostraBottoneSpento();
-    } else {
-      document.getElementById('inviaCodiceBtn').style.display = 'none';
-    }
-  });
-  
-  input.addEventListener('focus', function() {
-    if (emailBlurTimeout) {
-      clearTimeout(emailBlurTimeout);
-    }
-    const btn = document.getElementById('inviaCodiceBtn');
-    if (datiCompleti && btn.style.display !== 'none') {
-      btn.classList.add('btn-disabled');
-    }
-  });
-});
-
-document.getElementById('email').addEventListener('blur', function() {
-  if (emailBlurTimeout) {
-    clearTimeout(emailBlurTimeout);
-  }
-  if (checkDatiCompleti()) {
-    emailBlurTimeout = setTimeout(function() {
-      if (checkDatiCompleti()) {
-        attivaBottone();
-        setTimeout(scrollToBottom, 300);
-      }
-    }, 1000);
-  }
+  document.getElementById(id).addEventListener('input', aggiornaStatoBottone);
 });
 
 // Click su "Invia codice" → invia la richiesta
 document.getElementById('inviaCodiceBtn').addEventListener('click', function(e) {
   e.preventDefault();
   e.stopPropagation();
-  
-  // Se il bottone è ancora in stato "spento", ignora il click
-  if (this.classList.contains('btn-disabled')) return;
   
   // Evita doppi click
   if (this.dataset.sending === 'true') return;
