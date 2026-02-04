@@ -292,6 +292,15 @@ body {
   text-decoration: none !important;
   background: none;
 }
+
+#confermaDatiBtn {
+  background-color: #555 !important;
+  color: #fff !important;
+  border: none !important;
+}
+#confermaDatiBtn:hover {
+  background-color: #777 !important;
+}
 </style>
 </head>
 <body>
@@ -695,6 +704,8 @@ function isSafariMobile() {
   return /^((?!chrome|android).)*safari/i.test(navigator.userAgent) && /iPhone|iPad|iPod/i.test(navigator.userAgent);
 }
 
+const confermaDatiBtn = document.getElementById('confermaDatiBtn');
+
 ['nome', 'cognome', 'telefono', 'email'].forEach(id => {
   const input = document.getElementById(id);
   
@@ -705,29 +716,36 @@ function isSafariMobile() {
     const email = document.getElementById('email').value.trim();
     
     if (nome && cognome && telefono && email) {
-      inviaCodiceBtn.style.display = '';
+      // Mostra "Conferma dati", nascondi "Invia codice"
+      confermaDatiBtn.style.display = '';
+      inviaCodiceBtn.style.display = 'none';
     } else {
+      confermaDatiBtn.style.display = 'none';
       inviaCodiceBtn.style.display = 'none';
     }
   });
-  
-  // Quando l'utente esce dal campo email, chiudi la tastiera e stabilizza il layout
-  if (id === 'email') {
-    input.addEventListener('blur', function() {
-      // Piccolo delay per permettere al layout di stabilizzarsi
-      setTimeout(function() {
-        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-      }, 150);
-    });
-  }
 });
 
-// Semplifica l'handler del click - rimuovi il setTimeout interno
+// STEP 1: Click su "Conferma dati" → chiude tastiera e mostra "Invia codice"
+confermaDatiBtn.addEventListener('click', function() {
+  // Chiudi la tastiera
+  document.activeElement.blur();
+  
+  // Nascondi "Conferma dati", mostra "Invia codice"
+  confermaDatiBtn.style.display = 'none';
+  inviaCodiceBtn.style.display = '';
+  
+  // Scroll dopo che la tastiera si è chiusa
+  setTimeout(function() {
+    scrollToBottom();
+  }, 200);
+});
+
+// STEP 2: Click su "Invia codice" → invia la richiesta
 document.getElementById('inviaCodiceBtn').addEventListener('click', function(e) {
   e.preventDefault();
   e.stopPropagation();
   
-  // Evita doppi click
   if (this.disabled) return;
   this.disabled = true;
   
