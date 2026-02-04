@@ -1519,7 +1519,7 @@ Se non hai richiesto questo codice, ignora questa email.
         print(f"[INVIA-CODICE] Traceback: {traceback.format_exc()}")
         return jsonify({"success": False, "error": "Errore durante l'invio dell'email."}), 500
 
-def _get_unipile_creds(tenant_id: str):
+def _get_unipile_creds(tenant_id: str, session=None):
     """
     Recupera le credenziali Unipile per l'invio WhatsApp.
     - DSN e ACCESS_TOKEN: dalle variabili d'ambiente (condivisi)
@@ -1531,22 +1531,23 @@ def _get_unipile_creds(tenant_id: str):
     # Recupera account_id dal database (BusinessInfo)
     account_id = None
     try:
-        business_info = g.db_session.query(BusinessInfo).first()
-        if business_info:
-            account_id = getattr(business_info, 'unipile_account_id', None)
-            if account_id:
-                account_id = str(account_id).strip()
+        # Usa la session passata, altrimenti prova g.db_session
+        db_session = session if session is not None else getattr(g, 'db_session', None)
+        if db_session is None:
+            _wa_dbg(tenant_id, "ERRORE: nessuna sessione DB disponibile (g.db_session e session sono None)")
+        else:
+            business_info = db_session.query(BusinessInfo).first()
+            if business_info:
+                account_id = getattr(business_info, 'unipile_account_id', None)
+                if account_id:
+                    account_id = str(account_id).strip()
+                else:
+                    _wa_dbg(tenant_id, "ERRORE: unipile_account_id non configurato in BusinessInfo")
+            else:
+                _wa_dbg(tenant_id, "ERRORE: BusinessInfo non trovato nel database")
     except Exception as e:
         _wa_dbg(tenant_id, f"Errore lettura unipile_account_id da DB: {repr(e)}")
         account_id = None
-    
-    # Fallback: se non presente nel DB, prova variabile d'ambiente (legacy)
-    if not account_id:
-        suffix = _tenant_env_prefix(tenant_id)  # es: T1
-        k_account = f'UNIPILE_ACCOUNT_ID_{suffix}'
-        account_id = os.environ.get(k_account)
-        if account_id:
-            _wa_dbg(tenant_id, f"account_id da env var {k_account} (fallback)")
 
     if not (dsn and access_token and account_id):
         _wa_dbg(tenant_id, f"Credenziali UNIPILE assenti. DSN={bool(dsn)}, TOKEN={bool(access_token)}, ACCOUNT={bool(account_id)}")
@@ -1859,7 +1860,7 @@ def process_morning_tick(app, tenant_id: str):
                     _wa_dbg(tenant_id, f"render error appt_id={item.get('appointment_id')}: {repr(e)}")
                     text_to_send = msg_text or ""
 
-                creds = _get_unipile_creds(tenant_id)
+                creds = _get_unipile_creds(tenant_id, session=session)
                 ok = False
                 if creds:
                     try:
@@ -2173,7 +2174,7 @@ def process_operator_tick(app, tenant_id: str):
                     _op_dbg(tenant_id, f"render error operator_id={item.get('operator_id')}: {repr(e)}")
                     text_to_send = msg_text or ""
 
-                creds = _get_unipile_creds(tenant_id)
+                creds = _get_unipile_creds(tenant_id, session=session)
                 ok = False
                 if creds:
                     try:
@@ -2235,7 +2236,7 @@ def operator_notifications_trigger(tenant_id):
         tpl = getattr(biz, 'operator_whatsapp_message_template', None) or \
             "Ciao {{operatore}},\n\nDomani {{data}} il tuo turno sarà: {{ora_inizio}} - {{ora_fine}}\n\n{{sezione_pausa}}\n\nIl primo impegno della giornata sarà alle {{ora_primo_app}} e sarà {{primo_app}}\n\nBuon lavoro :)"
         queue = _build_operator_targets_for_tomorrow(session, require_phone=True)
-        creds = _get_unipile_creds(tenant_id)
+        creds = _get_unipile_creds(tenant_id, session=session)
 
         sent = 0
         results = []
