@@ -737,7 +737,22 @@ function aggiornaStatoBottone() {
 }
 
 ['nome', 'cognome', 'telefono', 'email'].forEach(id => {
-  document.getElementById(id).addEventListener('input', aggiornaStatoBottone);
+  const el = document.getElementById(id);
+  el.addEventListener('input', aggiornaStatoBottone);
+  el.addEventListener('change', aggiornaStatoBottone);  // Per autocomplete
+  el.addEventListener('blur', aggiornaStatoBottone);    // Quando esce dal campo
+});
+
+// Controllo extra per autocomplete iOS
+const emailField = document.getElementById('email');
+emailField.addEventListener('focus', function() {
+  // Controlla periodicamente mentre il campo ha focus
+  const checkInterval = setInterval(function() {
+    aggiornaStatoBottone();
+    if (document.activeElement !== emailField) {
+      clearInterval(checkInterval);
+    }
+  }, 300);
 });
 
 // Click su "Invia codice" → invia la richiesta
