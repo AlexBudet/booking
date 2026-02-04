@@ -314,6 +314,13 @@ body {
     padding-bottom: 80px !important;
   }
 }
+
+#inviaCodiceBtn.hidden-force {
+  display: none !important;
+  visibility: hidden !important;
+  position: absolute !important;
+  bottom: -9999px !important;
+}
 </style>
 </head>
 <body>
@@ -784,7 +791,8 @@ document.getElementById('inviaCodiceBtn').addEventListener('click', function(e) 
     btn.dataset.sending = 'false';
     if (res.success) {
       document.getElementById('codice-conferma-wrapper').style.display = '';
-      document.getElementById('inviaCodiceBtn').style.display = 'none';
+      // Nascondi completamente il bottone anche su mobile
+      document.getElementById('inviaCodiceBtn').classList.add('hidden-force');
       document.getElementById('inviaConfermaPrenotazioneBtn').style.display = '';
       scrollToBottom();
     } else {
