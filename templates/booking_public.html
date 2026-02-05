@@ -43,6 +43,9 @@
     box-shadow: none;
     padding: 1rem;
   }
+    .booking-logo {
+    max-height: 60px !important;
+  }
   .booking-sidebar {
     width: 90vw;                 /* Larga il 90% della viewport */
     max-width: 98vw;
@@ -327,6 +330,14 @@ body {
   <div id="container-booking" class="container-booking">
     <!-- Sidebar info salone, visibile solo su desktop -->
     <div class="booking-sidebar mb-4">
+      {% if business_info.logo_image and business_info.logo_visible_in_booking_page %}
+      <div class="mb-3">
+        <img src="{{ url_for('booking.serve_logo', tenant_id=tenant_id) }}" 
+             alt="Logo {{ business_info.business_name }}" 
+             class="booking-logo"
+             style="max-height: 100px; max-width: 100%; height: auto; object-fit: contain; filter: invert(1);">
+      </div>
+      {% endif %}
       <h3 class="mb-2">PORTALE PRENOTAZIONI</h3>
 <h3 class="mb-2" style="color: #ffffff;">{{ business_info.business_name }}</h3>
 <div class="mb-2">

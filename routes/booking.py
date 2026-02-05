@@ -2,7 +2,7 @@
 import string
 import json
 import traceback
-from flask import Blueprint, g, request, jsonify, render_template, render_template_string, session, url_for, current_app
+from flask import Blueprint, g, request, jsonify, render_template, render_template_string, session, url_for, current_app, Response
 from flask_wtf import CSRFProtect
 from flask_wtf.csrf import generate_csrf
 from appl.models import Appointment, AppointmentSource, Service, Operator, OperatorShift, Client, BusinessInfo
@@ -336,6 +336,21 @@ def scegli_operatori_automatici(servizi_ids, data_str, ora_str, operatori_possib
     return operatori_assegnati # Ritorna la lista completa di operatori assegnati
 
 booking_bp = Blueprint('booking', __name__)
+
+@booking_bp.route('/logo')
+def serve_logo(tenant_id):
+    """Restituisce l'immagine del logo del negozio se presente e visibile."""
+    business_info = g.db_session.query(BusinessInfo).first()
+    if not business_info or not business_info.logo_image or not business_info.logo_visible_in_booking_page:
+        # Ritorna un'immagine trasparente 1x1 pixel se il logo non è disponibile
+        return Response(status=204)
+    
+    mime_type = business_info.logo_mime_type or 'image/png'
+    return Response(
+        business_info.logo_image,
+        mimetype=mime_type,
+        headers={'Cache-Control': 'public, max-age=86400'}  # Cache per 24 ore
+    )
 
 @booking_bp.route('/')
 @booking_bp.route('/booking')

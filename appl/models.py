@@ -285,6 +285,12 @@ class BusinessInfo(db.Model):
     # Unipile WhatsApp Account ID (salvato dopo connessione)
     unipile_account_id = db.Column(db.String(100), nullable=True)
 
+    # Logo negozio (immagine ottimizzata, max 200px altezza)
+    logo_image = db.deferred(db.Column(db.LargeBinary, nullable=True))
+    logo_mime_type = db.Column(db.String(50), nullable=True)  # es. image/png, image/webp
+    logo_filename = db.Column(db.String(255), nullable=True)   # nome file originale
+    logo_visible_in_booking_page = db.Column(db.Boolean, default=True)  # Se True, mostra il logo nella pagina booking_public
+    
     @property
     def closing_days_list(self):
         """Ritorna una lista di stringhe (es. ["Domenica","Sabato"]) se presente, altrimenti vuota."""
