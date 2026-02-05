@@ -2045,7 +2045,12 @@ def _render_operator_msg(tpl: str, target: dict):
 
     pausa_section = ""
     if target.get("pausa_time"):
-        pausa_section = f"Pausa alle {target.get('pausa_time')}"
+        pausa_section = f"Pausa: {target.get('pausa_time')}\n\n"
+    
+    # Sezione primo appuntamento (condizionale)
+    primo_app_section = ""
+    if target.get("primo_app_time") and target.get("primo_app_label"):
+        primo_app_section = f"Il primo impegno della giornata sarà alle {target.get('primo_app_time')} e sarà {target.get('primo_app_label')}\n\n"
     
     return (tpl
         .replace("{{operatore}}", target.get("operatore_nome", ""))
@@ -2057,6 +2062,7 @@ def _render_operator_msg(tpl: str, target: dict):
         .replace("{{ora_pausa}}", target.get("pausa_time") or "")
         .replace("{{pausa}}", target.get("pausa_label") or "")
         .replace("{{sezione_pausa}}", pausa_section)
+        .replace("{{sezione_primo_app}}", primo_app_section)
     )
 
 def preview_operator_notifications(session):  # NOTA: Questa funzione ora prende session come parametro? No, è una funzione helper, ma nel contesto del route, usa g.db_session
