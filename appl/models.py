@@ -414,7 +414,12 @@ class Pacchetto(db.Model):
 
     # Tipo pacchetto
     tipo = db.Column(
-        ENUM(PacchettoTipo, name="pacchetto_tipo_enum", create_type=True),
+        ENUM(
+            PacchettoTipo, 
+            name="pacchetto_tipo_enum", 
+            create_type=False,  # L'enum esiste già nel DB
+            values_callable=lambda x: [e.value for e in x]  # Usa i valori, non i nomi
+        ),
         nullable=False,
         default=PacchettoTipo.Servizi
     )
