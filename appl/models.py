@@ -430,6 +430,13 @@ class Pacchetto(db.Model):
     credito_residuo = db.Column(db.Numeric(10, 2), nullable=True)   # Saldo disponibile
     data_scadenza = db.Column(db.Date, nullable=True)               # Scadenza carta
     beneficiario_nome = db.Column(db.String(100), nullable=True)    # Nome beneficiario (se diverso da client)
+    
+    # Vincoli utilizzo prepagata (JSON)
+    # Formato: {"tipo": "tutti" | "categoria" | "sottocategoria" | "servizi", 
+    #           "categoria": "Solarium" | "Estetica",
+    #           "sottocategoria_id": 5,
+    #           "servizi_ids": [1, 2, 3]}
+    vincoli_utilizzo = db.Column(db.JSON, nullable=True)
 
     status = db.Column(
         ENUM(PacchettoStatus, name="pacchetto_status_enum", create_type=True),
