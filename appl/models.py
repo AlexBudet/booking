@@ -276,6 +276,7 @@ class BusinessInfo(db.Model):
     operator_whatsapp_message_template = db.Column(db.Text, nullable=True)
     whatsapp_template_pacchetti = db.Column(db.Text, nullable=True)
     whatsapp_template_pacchetti_disclaimer = db.Column(db.Text, nullable=True)
+    whatsapp_template_prepagate = db.Column(db.Text, nullable=True)
     pacchetti_giorni_abbandono = db.Column(db.Integer, nullable=True, default=90)
     # Campi Marketing
     marketing_message_template = db.Column(db.Text, nullable=True)
