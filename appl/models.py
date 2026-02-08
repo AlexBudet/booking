@@ -43,6 +43,10 @@ class AppointmentSource(PyEnum):
     gestionale = "gestionale"
     web = "web"
 
+class PacchettoTipo(PyEnum):
+    Servizi = "servizi"        # Pacchetto classico con sedute
+    Prepagata = "prepagata"    # Carta prepagata/Gift Card
+
 class User(db.Model):
     __tablename__ = 'utenti'
     id = db.Column(db.Integer, primary_key=True)
@@ -407,6 +411,20 @@ class Pacchetto(db.Model):
     nome = db.Column(db.String(100), nullable=False)
     data_sottoscrizione = db.Column(db.Date, nullable=False)
     note = db.Column(db.Text, nullable=True)
+
+    # Tipo pacchetto
+    tipo = db.Column(
+        ENUM(PacchettoTipo, name="pacchetto_tipo_enum", create_type=True),
+        nullable=False,
+        default=PacchettoTipo.Servizi
+    )
+    
+    # Campi per Carta Prepagata
+    credito_iniziale = db.Column(db.Numeric(10, 2), nullable=True)  # Importo caricato
+    credito_residuo = db.Column(db.Numeric(10, 2), nullable=True)   # Saldo disponibile
+    data_scadenza = db.Column(db.Date, nullable=True)               # Scadenza carta
+    beneficiario_nome = db.Column(db.String(100), nullable=True)    # Nome beneficiario (se diverso da client)
+
     status = db.Column(
         ENUM(PacchettoStatus, name="pacchetto_status_enum", create_type=True),
         nullable=False,
@@ -495,3 +513,19 @@ class PacchettoPagamentoRegola(db.Model):
     formula_pagamenti = db.Column(db.Boolean, nullable=False)  # True: rate; False: saldo immediato
     numero_rate = db.Column(db.Integer, nullable=False)  # Numero di rate
     descrizione = db.Column(db.String(255), nullable=True)
+
+class MovimentoPrepagata(db.Model):
+    """Traccia ogni utilizzo/ricarica della carta prepagata"""
+    __tablename__ = 'movimenti_prepagata'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    pacchetto_id = db.Column(db.Integer, db.ForeignKey('pacchetti.id'), nullable=False)
+    data_movimento = db.Column(db.DateTime, server_default=func.now(), nullable=False)
+    tipo_movimento = db.Column(db.String(20), nullable=False)  # 'ricarica' o 'utilizzo'
+    importo = db.Column(db.Numeric(10, 2), nullable=False)
+    saldo_dopo = db.Column(db.Numeric(10, 2), nullable=False)
+    descrizione = db.Column(db.String(255), nullable=True)  # es. "Servizio: Massaggio"
+    receipt_id = db.Column(db.Integer, db.ForeignKey('scontrini.id'), nullable=True)
+    
+    # Relazioni
+    pacchetto = db.relationship('Pacchetto', backref='movimenti_prepagata')
+    receipt = db.relationship('Receipt', backref='movimenti_prepagata')
