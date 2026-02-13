@@ -295,7 +295,11 @@ class BusinessInfo(db.Model):
     logo_mime_type = db.Column(db.String(50), nullable=True)  # es. image/png, image/webp
     logo_filename = db.Column(db.String(255), nullable=True)   # nome file originale
     logo_visible_in_booking_page = db.Column(db.Boolean, default=True)  # Se True, mostra il logo nella pagina booking_public
-    
+
+    # Preset turni giornalieri salvati come array JSON
+    # Formato: [{"name":"Turno lungo","start":"09:00","end":"18:00","breakStart":"13:00","breakDuration":"60"}, ...]
+    shift_presets = db.Column(db.Text, nullable=True, default='[]')
+
     @property
     def closing_days_list(self):
         """Ritorna una lista di stringhe (es. ["Domenica","Sabato"]) se presente, altrimenti vuota."""
