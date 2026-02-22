@@ -546,3 +546,16 @@ class MovimentoPrepagata(db.Model):
     # Relazioni
     pacchetto = db.relationship('Pacchetto', backref='movimenti_prepagata')
     receipt = db.relationship('Receipt', backref='movimenti_prepagata')
+
+class MarketingInvio(db.Model):
+    """Traccia ogni invio WhatsApp marketing per rispettare limite giornaliero"""
+    __tablename__ = 'marketing_invii'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    client_id = db.Column(db.Integer, db.ForeignKey('clienti.id'), nullable=False)
+    data_invio = db.Column(db.DateTime, server_default=func.now(), nullable=False)
+    messaggio = db.Column(db.Text, nullable=True)
+    stato = db.Column(db.String(20), nullable=False, default='inviato')  # inviato, errore, pending
+    errore = db.Column(db.String(500), nullable=True)
+    
+    # Relazioni
+    client = db.relationship('Client', backref='marketing_invii')
