@@ -161,6 +161,14 @@ class Service(db.Model):
     is_deleted = db.Column(db.Boolean, default=False)
     is_visible_in_calendar = db.Column(db.Boolean, default=True)
     is_visible_online = db.Column(db.Boolean, default=True)
+    # Numero massimo di appuntamenti contemporanei per questo servizio
+    # NULL o 0 = nessun limite (comportamento attuale)
+    # 1 = solo un appuntamento alla volta (es. unico macchinario)
+    # 2+ = fino a N appuntamenti contemporanei
+    max_concurrent = db.Column(db.Integer, nullable=True, default=None)
+    # Nome della risorsa per messaggi più chiari
+    # es. "Macchinario Radiofrequenza", "Lettino Pressoterapia"
+    resource_name = db.Column(db.String(100), nullable=True, default=None)
 
     operators = db.relationship(
     'Operator',
