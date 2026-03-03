@@ -550,6 +550,7 @@ class MovimentoPrepagata(db.Model):
     saldo_dopo = db.Column(db.Numeric(10, 2), nullable=False)
     descrizione = db.Column(db.String(255), nullable=True)  # es. "Servizio: Massaggio"
     receipt_id = db.Column(db.Integer, db.ForeignKey('scontrini.id'), nullable=True)
+    operatore_id = db.Column(db.Integer, db.ForeignKey('operatori.id'), nullable=True)
     
     # Relazioni
     pacchetto = db.relationship('Pacchetto', backref='movimenti_prepagata')
