@@ -554,6 +554,7 @@ class MovimentoPrepagata(db.Model):
     # Relazioni
     pacchetto = db.relationship('Pacchetto', backref='movimenti_prepagata')
     receipt = db.relationship('Receipt', backref='movimenti_prepagata')
+    operatore = db.relationship('Operator', backref='movimenti_prepagata')
 
 class MarketingInvio(db.Model):
     """Traccia ogni invio WhatsApp marketing per rispettare limite giornaliero"""
