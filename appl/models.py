@@ -569,3 +569,58 @@ class MarketingInvio(db.Model):
     
     # Relazioni
     client = db.relationship('Client', backref='marketing_invii')
+
+class AIAssistantSession(db.Model):
+    """
+    Storico minimo delle sessioni AI Booking Assistant.
+    Ogni riga = una query utente con la risposta ricevuta.
+    NON contiene dati sensibili dei clienti in chiaro: solo intenti, trace_id, metadati.
+    """
+    __tablename__ = 'ai_assistant_sessions'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    # Tracciabilità temporale
+    created_at = db.Column(db.DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    # Identificatore univoco della chiamata (per correlazione log/debug)
+    trace_id = db.Column(db.String(64), nullable=False, index=True)
+
+    # Utente Flask che ha fatto la richiesta (da session['username'] o analogo)
+    username = db.Column(db.String(80), nullable=True)
+
+    # Intent classificato dal LLM (es. "disponibilita", "storico_cliente", "conflitti")
+    intent = db.Column(db.String(100), nullable=True)
+
+    # Testo della domanda utente (sanitizzato, senza PII)
+    query_text = db.Column(db.Text, nullable=True)
+
+    # Esito: 'ok', 'error', 'timeout', 'rate_limited'
+    outcome = db.Column(db.String(20), nullable=False, default='ok')
+
+    # Token usati (utile per monitorare consumo free tier Groq)
+    tokens_used = db.Column(db.Integer, nullable=True)
+
+    # Latenza risposta in ms
+    latency_ms = db.Column(db.Integer, nullable=True)
+
+    # Data agenda analizzata (YYYY-MM-DD), se presente nella query
+    ref_date = db.Column(db.String(10), nullable=True)
+
+    # Eventuali warning restituiti dall'assistente (JSON array come stringa)
+    warnings_json = db.Column(db.Text, nullable=True)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'trace_id': self.trace_id,
+            'username': self.username,
+            'intent': self.intent,
+            'query_text': self.query_text,
+            'outcome': self.outcome,
+            'tokens_used': self.tokens_used,
+            'latency_ms': self.latency_ms,
+            'ref_date': self.ref_date,
+            'warnings_json': self.warnings_json,  # JSON array serializzato come stringa
+        }
