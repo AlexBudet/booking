@@ -254,6 +254,8 @@ class BusinessInfo(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     business_name = db.Column(String(100), nullable=False)
     website = db.Column(String(200), nullable=True)
+    web_app = db.Column(String(200), nullable=True)
+    web_booking_page = db.Column(String(200), nullable=True)
     address = db.Column(String(200), nullable=True)
     cap = db.Column(String(10), nullable=True)
     province = db.Column(String(50), nullable=True)
