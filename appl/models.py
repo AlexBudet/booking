@@ -641,7 +641,8 @@ class OWNER(db.Model):
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
 
-    user_id = db.Column(db.Integer, db.ForeignKey('utenti.id'), nullable=True, unique=True)
+    # opzionale: nome owner globale che gestisce il tenant
+    owner_username = db.Column(db.String(80), nullable=True, default='Alessio')
 
     # Moduli contratto (gestione owner per tenant/database)
     module_base_enabled = db.Column(db.Boolean, nullable=False, default=True)
@@ -655,5 +656,3 @@ class OWNER(db.Model):
 
     created_at = db.Column(db.DateTime, server_default=func.now(), nullable=False)
     updated_at = db.Column(db.DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
-
-    user = db.relationship('User', backref=db.backref('owner_profile', uselist=False))
