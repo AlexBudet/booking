@@ -635,3 +635,25 @@ class AIAssistantSession(db.Model):
             'ref_date': self.ref_date,
             'warnings_json': self.warnings_json,  # JSON array serializzato come stringa
         }
+
+class OWNER(db.Model):
+    __tablename__ = 'owners'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    user_id = db.Column(db.Integer, db.ForeignKey('utenti.id'), nullable=True, unique=True)
+
+    # Moduli contratto (gestione owner per tenant/database)
+    module_base_enabled = db.Column(db.Boolean, nullable=False, default=True)
+    module_web_enabled = db.Column(db.Boolean, nullable=False, default=True)
+    module_pacchetti_enabled = db.Column(db.Boolean, nullable=False, default=True)
+
+    # Date attivazione moduli
+    module_base_activated_on = db.Column(db.Date, nullable=True)
+    module_web_activated_on = db.Column(db.Date, nullable=True)
+    module_pacchetti_activated_on = db.Column(db.Date, nullable=True)
+
+    created_at = db.Column(db.DateTime, server_default=func.now(), nullable=False)
+    updated_at = db.Column(db.DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    user = db.relationship('User', backref=db.backref('owner_profile', uselist=False))
