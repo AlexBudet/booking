@@ -1612,7 +1612,7 @@ def _services_bullet_for_contiguous_block(session, appt) -> str:
                 Appointment.client_id == appt.client_id,
                 Appointment.start_time >= datetime.combine(day, time.min),
                 Appointment.start_time < datetime.combine(day + timedelta(days=1), time.min),
-                ~Appointment.note.ilike('%OFF%'),
+                or_(Appointment.note.is_(None), ~Appointment.note.ilike('%OFF%')),
                 Appointment.service_id != 9999,
                 Appointment.is_cancelled_by_client == False
             )
@@ -1673,12 +1673,15 @@ def _render_morning_text(session, template: str, item: dict) -> str:
         nome_fmt = " ".join([w.capitalize() for w in nome.split()])
         servizi_str = _services_bullet_for_contiguous_block(session, appt)
 
+        sito = (getattr(biz, 'website', '') or '').strip()
         txt = (template or "")
         return (txt.replace('{{nome}}', nome_fmt)
                    .replace('{{cognome}}', cognome)
                    .replace('{{data}}', data_str)
                    .replace('{{ora}}', ora_str)
                    .replace('{{azienda}}', azienda)
+                   .replace('{{nome_istituto}}', azienda)
+                   .replace('{{sito}}', sito)
                    .replace('{{servizi}}', ("\n" + servizi_str + "\n") if servizi_str else ""))
     except Exception:
         return template or ''
@@ -1751,7 +1754,7 @@ def _build_today_targets(session, start_from=None) -> list:
     q = session.query(Appointment).filter(
         Appointment.start_time >= start,
         Appointment.start_time < end,
-        ~Appointment.note.ilike('%OFF%'),
+        or_(Appointment.note.is_(None), ~Appointment.note.ilike('%OFF%')),
         Appointment.service_id != 9999,
         Appointment.is_cancelled_by_client == False
     )
@@ -1909,7 +1912,6 @@ def process_morning_tick(app, tenant_id: str):
                     SessionFactory.remove()
                 except Exception:
                     pass
-
 
 #===== INVIO WHATSAPP OPERATORI ================================
 def _normalize_for_unipile(numero: str):
