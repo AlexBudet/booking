@@ -2044,9 +2044,9 @@ def _build_operator_targets_for_tomorrow(session, require_phone: bool = True):  
     
     return targets
 
-def _render_operator_msg(tpl: str, target: dict):
+def _render_operator_msg(tpl: str, target: dict, business_info=None):
     tpl = (tpl or "")
-    
+
     lines = []
     for x in target.get('schedule', []):
         if not x:
@@ -2057,18 +2057,18 @@ def _render_operator_msg(tpl: str, target: dict):
             lines.append(f"- {x.get('ora')} {x.get('label')}{dur_txt}")
         else:
             lines.append(f"- {x.get('ora')} {x.get('label')}")
-    
+
     data_it = _fmt_data_italiana(datetime.strptime(target["date"], "%Y-%m-%d"))
 
     pausa_section = ""
     if target.get("pausa_time"):
         pausa_section = f"Pausa: {target.get('pausa_time')}\n\n"
-    
+
     # Sezione primo appuntamento (condizionale)
     primo_app_section = ""
     if target.get("primo_app_time") and target.get("primo_app_label"):
         primo_app_section = f"Il primo impegno della giornata sarà alle {target.get('primo_app_time')} e sarà {target.get('primo_app_label')}\n\n"
-    
+
     return (tpl
         .replace("{{operatore}}", target.get("operatore_nome", ""))
         .replace("{{data}}", data_it)
@@ -2080,6 +2080,8 @@ def _render_operator_msg(tpl: str, target: dict):
         .replace("{{pausa}}", target.get("pausa_label") or "")
         .replace("{{sezione_pausa}}", pausa_section)
         .replace("{{sezione_primo_app}}", primo_app_section)
+        .replace("{{sito}}", (business_info.website or "") if business_info else "")
+        .replace("{{nome_istituto}}", (business_info.business_name or "") if business_info else "")
     )
 
 def preview_operator_notifications(session):  # NOTA: Questa funzione ora prende session come parametro? No, è una funzione helper, ma nel contesto del route, usa g.db_session
@@ -2098,7 +2100,7 @@ def preview_operator_notifications(session):  # NOTA: Questa funzione ora prende
     full = str(request.args.get('full', '') or '').lower() in ('1', 'true', 'yes', 'on')
     preview = []
     for t in targets:
-        msg = _render_operator_msg(tpl, t)
+        msg = _render_operator_msg(tpl, t, business_info=bi)
         item = {
             "operator_id": t["operator_id"],
             "operatore": t["operatore_nome"],
@@ -2192,7 +2194,7 @@ def process_operator_tick(app, tenant_id: str):
                 st["idx"] += 1
 
                 try:
-                    text_to_send = _render_operator_msg(msg_text, item)
+                    text_to_send = _render_operator_msg(msg_text, item, business_info=biz)
                 except Exception as e:
                     _op_dbg(tenant_id, f"render error operator_id={item.get('operator_id')}: {repr(e)}")
                     text_to_send = msg_text or ""
@@ -2265,7 +2267,7 @@ def operator_notifications_trigger(tenant_id):
         results = []
         for item in queue:
             try:
-                text = _render_operator_msg(tpl, item)
+                text = _render_operator_msg(tpl, item, business_info=biz)
             except Exception:
                 text = tpl or ""
             ok = False
