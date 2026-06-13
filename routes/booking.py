@@ -63,14 +63,17 @@ def _now_rome():
 
 # Stato semplice per il job mattutino (per-tenant, in memoria)
 _MORNING_STATE = {}        # tenant_id -> {"date": date, "queue": [dict], "idx": int, "last_sent_minute": datetime}
+_MORNING_DONE = {}         # tenant_id -> date: giorno in cui il batch è già stato AVVIATO (ottimizzazione in memoria; la correttezza è sul DB)
 _MORNING_LOCKS = {}        # tenant_id -> threading.Lock()
 MORNING_POLL_SECONDS = 60   # ogni quanto il tick gira
+MORNING_CATCHUP_MINUTES = 180  # entro quanti minuti DOPO l'ora del reminder è ancora lecito costruire/recuperare la coda
 MORNING_RATE_SECONDS = 60  # ogni quanto inviare un messaggio
 WA_MORNING_DEBUG = True  # metti a False quando hai finito i test
 PROCESS_START_AT = _now_rome() # Registra l'orario di avvio del processo (serve per capire se il riavvio è avvenuto dopo il cutoff)
 
 WA_OPERATOR_DEBUG = True  # metti a False quando hai finito i test per operatori
 _OP_STATE_MAP = {}        # tenant_id -> {"date": date, "queue": [dict], "idx": int, "last_sent_minute": datetime}
+_OP_DONE = {}             # tenant_id -> date: giorno in cui il batch operatori è già stato AVVIATO (solo in memoria)
 _OP_LOCKS = {}            # tenant_id -> threading.Lock()
 
 # --- RATE LIMITING PRENOTAZIONI ---
@@ -1756,7 +1759,11 @@ def _build_today_targets(session, start_from=None) -> list:
         Appointment.start_time < end,
         or_(Appointment.note.is_(None), ~Appointment.note.ilike('%OFF%')),
         Appointment.service_id != 9999,
-        Appointment.is_cancelled_by_client == False
+        Appointment.is_cancelled_by_client == False,
+        # Idempotenza: escludi gli appuntamenti il cui memo è GIÀ stato inviato oggi.
+        # Così, dopo un riavvio del processo, la coda ricostruita contiene solo i memo
+        # ancora da spedire (nessun doppione, ripresa da dove era rimasta).
+        or_(Appointment.morning_memo_sent_date.is_(None), Appointment.morning_memo_sent_date != today)
     )
     if dummy_id:
         q = q.filter(Appointment.client_id != dummy_id)
@@ -1831,28 +1838,47 @@ def process_morning_tick(app, tenant_id: str):
             if getattr(now_time, 'tzinfo', None) is not None:
                 now_time = now_time.replace(tzinfo=None)
 
+            today = now.date()
             st = _MORNING_STATE.get(tenant_id)
-            has_active_queue = bool(st and st.get("date") == now.date() and st.get("idx", 0) < len(st.get("queue", [])))
-            is_reminder_minute = (now_time.hour == reminder_time.hour and now_time.minute == reminder_time.minute)
+            has_active_queue = bool(st and st.get("date") == today and st.get("idx", 0) < len(st.get("queue", [])))
 
-            # Costruisci la coda solo al minuto del reminder
-            if is_reminder_minute and (not st or st.get("date") != now.date()):
+            # --- Catch-up window: NON dipende dal minuto esatto ----------------------
+            # Costruisce la coda se è ORA o è GIÀ PASSATA l'ora del reminder (entro una
+            # finestra di sicurezza) e oggi non è ancora stata avviata.
+            #
+            # Perché non usiamo più l'uguaglianza esatta sul minuto: lo scheduler
+            # (main.py) è UN SOLO thread che elabora i tenant in fila e fa I/O di rete
+            # bloccante (Unipile). Quando due o più tenant hanno lo STESSO orario, il
+            # primo costruisce la coda e invia: quei secondi spostano l'orologio oltre il
+            # minuto e i tenant successivi NON vedevano mai il loro minuto esatto -> batch
+            # saltato in silenzio. Con il confronto ">=" ogni tenant costruisce la coda
+            # appena lo scheduler lo raggiunge, qualunque sia il NUMERO di tenant (scala).
+            reminder_dt = now.replace(hour=reminder_time.hour, minute=reminder_time.minute, second=0, microsecond=0)
+            within_window = reminder_dt <= now <= reminder_dt + timedelta(minutes=MORNING_CATCHUP_MINUTES)
+            already_done_today = (_MORNING_DONE.get(tenant_id) == today)
+
+            if within_window and not already_done_today and not has_active_queue:
                 queue = _build_today_targets(session, start_from=None)
+                # Marca SUBITO il giorno come avviato: evita di ricostruire la coda a ogni
+                # tick (ottimizzazione in memoria; la correttezza è garantita dal marcatore
+                # su DB morning_memo_sent_date, che sopravvive ai riavvii).
+                _MORNING_DONE[tenant_id] = today
                 if not queue:
-                    _wa_dbg(tenant_id, "coda vuota per oggi")
+                    _wa_dbg(tenant_id, "coda vuota per oggi (nessun appuntamento da avvisare o già inviati)")
                     return
                 _MORNING_STATE[tenant_id] = {
-                    "date": now.date(),
+                    "date": today,
                     "queue": queue,
                     "idx": 0,
                     "last_sent_minute": None
                 }
                 st = _MORNING_STATE[tenant_id]
+                has_active_queue = True
                 _wa_dbg(tenant_id, f"coda costruita: {len(queue)} target")
 
-            # Se non è il minuto del reminder e non c'è coda attiva, esci
-            if not (is_reminder_minute or has_active_queue):
-                _wa_dbg(tenant_id, f"skip: no reminder minute and no active queue. ora={now_time.strftime('%H:%M')}")
+            # Niente coda attiva da processare -> esci
+            if not has_active_queue:
+                _wa_dbg(tenant_id, f"skip: niente da inviare. ora={now_time.strftime('%H:%M')} done_oggi={already_done_today}")
                 return
 
             # Se non c'è più nulla da inviare, reset
@@ -1890,6 +1916,17 @@ def process_morning_tick(app, tenant_id: str):
                     _wa_dbg(tenant_id, "credenziali mancanti")
 
                 _wa_dbg(tenant_id, f"inviato={ok} appt_id={item['appointment_id']} -> {item['phone']}")
+                if ok:
+                    # Idempotenza su DB: segna che il memo di oggi per questo appuntamento
+                    # è partito. _build_today_targets lo escluderà -> dopo un riavvio la
+                    # coda riprende senza rimandare i memo già spediti. Il commit avviene
+                    # in fondo a questo tick.
+                    try:
+                        appt = session.get(Appointment, item["appointment_id"])
+                        if appt is not None:
+                            appt.morning_memo_sent_date = today
+                    except Exception as e:
+                        _wa_dbg(tenant_id, f"marca memo_sent fallita appt_id={item.get('appointment_id')}: {repr(e)}")
                 st["last_sent_minute"] = current_slot  # blocca ulteriori invii in questo minuto
 
             # Fine coda -> reset
@@ -2155,27 +2192,37 @@ def process_operator_tick(app, tenant_id: str):
             if getattr(now_time, 'tzinfo', None) is not None:
                 now_time = now_time.replace(tzinfo=None)
 
+            today = now.date()
             st = _OP_STATE_MAP.get(tenant_id)
-            has_active_queue = bool(st and st.get("date") == now.date() and st.get("idx", 0) < len(st.get("queue", [])))
-            is_reminder_minute = (now_time.hour == reminder_time.hour and now_time.minute == reminder_time.minute)
+            has_active_queue = bool(st and st.get("date") == today and st.get("idx", 0) < len(st.get("queue", [])))
 
-            # Costruisci la coda SOLO al minuto del reminder e una volta al giorno
-            if is_reminder_minute and (not st or st.get("date") != now.date()):
+            # Catch-up window: stessa logica di process_morning_tick. Costruisce la coda se
+            # è ORA o è GIÀ PASSATA l'ora del reminder (entro la finestra) e oggi non è
+            # ancora stata avviata. NON dipende dal minuto esatto -> con più tenant nessuno
+            # viene saltato. Qui lo stato è SOLO in memoria (niente colonna DB): un
+            # eventuale doppio invio dopo un riavvio è raro e poco grave per gli operatori.
+            reminder_dt = now.replace(hour=reminder_time.hour, minute=reminder_time.minute, second=0, microsecond=0)
+            within_window = reminder_dt <= now <= reminder_dt + timedelta(minutes=MORNING_CATCHUP_MINUTES)
+            already_done_today = (_OP_DONE.get(tenant_id) == today)
+
+            if within_window and not already_done_today and not has_active_queue:
                 queue = _build_operator_targets_for_tomorrow(session, require_phone=True)
+                _OP_DONE[tenant_id] = today
                 if not queue:
                     _op_dbg(tenant_id, "coda vuota per domani")
                     return
                 _OP_STATE_MAP[tenant_id] = {
-                    "date": now.date(),
+                    "date": today,
                     "queue": queue,
                     "idx": 0,
                     "last_sent_minute": None
                 }
                 st = _OP_STATE_MAP[tenant_id]
+                has_active_queue = True
                 _op_dbg(tenant_id, f"coda operatori costruita: {len(queue)} target")
 
-            if not (is_reminder_minute or has_active_queue):
-                _op_dbg(tenant_id, f"skip: no reminder minute and no active queue. ora={now_time.strftime('%H:%M')}")
+            if not has_active_queue:
+                _op_dbg(tenant_id, f"skip: niente da inviare. ora={now_time.strftime('%H:%M')} done_oggi={already_done_today}")
                 return
 
             if not st or st.get("idx", 0) >= len(st.get("queue", [])):
