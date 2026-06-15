@@ -1736,7 +1736,8 @@ def _send_unipile_message(creds: dict, to_phone: str, text: str) -> bool:
 def _build_today_targets(session, start_from=None) -> list:
     """
     Seleziona gli appuntamenti odierni ordinati, esclusi OFF e servizio 9999,
-    esclude il client finto BOOKING/ONLINE. Deduplica blocchi contigui per cliente.
+    esclude i client finti BOOKING/ONLINE e dummy/dummy, e i servizi dummy (blocchi OFF/PAUSA).
+    Deduplica blocchi contigui per cliente.
     Ritorna una lista di dict: {"appointment_id", "client_id", "phone"}.
     Regola: il cellulare viene SEMPRE letto dal record Client usando client_id.
     Non si estrae nulla dalla nota.
@@ -1749,9 +1750,24 @@ def _build_today_targets(session, start_from=None) -> list:
     if isinstance(start_from, datetime) and start_from.date() == today and start_from > start:
         start = start_from
 
-    # Client finto "BOOKING ONLINE" da escludere
+    # Client finti da escludere SEMPRE dai memo automatici:
+    #  - "BOOKING / ONLINE": placeholder delle prenotazioni web
+    #  - "dummy / dummy":    cliente usato per i blocchi OFF / PAUSA del gestionale
     booking_dummy = session.query(Client).filter_by(cliente_nome="BOOKING", cliente_cognome="ONLINE").first()
-    dummy_id = booking_dummy.id if booking_dummy else None
+    real_dummy = session.query(Client).filter(
+        func.lower(Client.cliente_nome) == "dummy",
+        func.lower(Client.cliente_cognome) == "dummy"
+    ).first()
+    excluded_client_ids = [c.id for c in (booking_dummy, real_dummy) if c]
+
+    # Servizio "dummy": usato dai blocchi OFF/PAUSA. Gli appuntamenti che lo usano
+    # NON devono mai generare un memo, anche se la nota non contiene "OFF"
+    # (es. i blocchi "PAUSA" hanno nota 'PAUSA' e sfuggivano al filtro note).
+    dummy_service_ids = [
+        row[0] for row in session.query(Service.id).filter(
+            func.lower(Service.servizio_nome) == "dummy"
+        ).all()
+    ]
 
     # Query semplice sugli appuntamenti del giorno, senza join sui client né filtri su cliente_cellulare
     q = session.query(Appointment).filter(
@@ -1765,8 +1781,10 @@ def _build_today_targets(session, start_from=None) -> list:
         # ancora da spedire (nessun doppione, ripresa da dove era rimasta).
         or_(Appointment.morning_memo_sent_date.is_(None), Appointment.morning_memo_sent_date != today)
     )
-    if dummy_id:
-        q = q.filter(Appointment.client_id != dummy_id)
+    if excluded_client_ids:
+        q = q.filter(Appointment.client_id.notin_(excluded_client_ids))
+    if dummy_service_ids:
+        q = q.filter(Appointment.service_id.notin_(dummy_service_ids))
 
     q = q.order_by(Appointment.start_time.asc())
     apps = q.all()
