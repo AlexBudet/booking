@@ -76,6 +76,12 @@ _OP_STATE_MAP = {}        # tenant_id -> {"date": date, "queue": [dict], "idx": 
 _OP_DONE = {}             # tenant_id -> date: giorno in cui il batch operatori è già stato AVVIATO (solo in memoria)
 _OP_LOCKS = {}            # tenant_id -> threading.Lock()
 
+# Stato per il riepilogo orario degli errori di prenotazione (per-tenant, in memoria)
+ERROR_SUMMARY_POLL_SECONDS = 3600  # ogni ora
+ERROR_SUMMARY_EMAIL_TO = os.environ.get('ERROR_SUMMARY_EMAIL_TO', 'alessio.budetta@gmail.com')
+_ERR_SUMMARY_STATE = {}   # tenant_id -> datetime: inizio dell'ultima ora piena già elaborata
+_ERR_SUMMARY_LOCKS = {}   # tenant_id -> threading.Lock()
+
 # --- RATE LIMITING PRENOTAZIONI ---
 _BOOKING_TIMESTAMPS = []  # Lista di timestamp delle ultime prenotazioni completate
 _BOOKING_LOCK = threading.Lock()
@@ -111,6 +117,83 @@ def _log_prenota_error(tenant_id, reason, **ctx):
         except Exception:
             pass
         print(f"[PRENOTA-ERROR][{tenant_id}] ATTENZIONE: impossibile salvare il log su DB (tabella mancante? esegui la CREATE TABLE booking_error_logs): {repr(e)}")
+
+def process_error_summary_tick(app, tenant_id: str):
+    """Ogni ora: se nell'ora appena conclusa ci sono stati errori di prenotazione
+    (BookingErrorLog), invia una mail di riepilogo. Se l'ora è pulita, non manda nulla.
+    Stato in memoria (per-tenant): un riavvio a cavallo del cambio ora può far saltare
+    il riepilogo di quell'ora, come per gli altri scheduler già presenti."""
+    lock = _ERR_SUMMARY_LOCKS.get(tenant_id)
+    if lock is None:
+        lock = threading.Lock()
+        _ERR_SUMMARY_LOCKS[tenant_id] = lock
+
+    with lock:
+        now = _now_rome()
+        current_hour_start = now.replace(minute=0, second=0, microsecond=0)
+
+        last_boundary = _ERR_SUMMARY_STATE.get(tenant_id)
+        if last_boundary is None:
+            # Primo tick dopo l'avvio: non conosciamo lo storico, evitiamo di riepilogare
+            # una finestra incompleta. Da qui in poi ogni ora piena verrà controllata.
+            _ERR_SUMMARY_STATE[tenant_id] = current_hour_start
+            return
+
+        if current_hour_start <= last_boundary:
+            return  # l'ora non è ancora passata
+
+        window_start, window_end = last_boundary, current_hour_start
+
+        SessionFactory = app.config['DB_SESSIONS'][tenant_id]
+        session = SessionFactory()
+        try:
+            errori = session.query(BookingErrorLog).filter(
+                BookingErrorLog.created_at >= window_start,
+                BookingErrorLog.created_at < window_end
+            ).order_by(BookingErrorLog.created_at.asc()).all()
+
+            _ERR_SUMMARY_STATE[tenant_id] = current_hour_start
+
+            if not errori:
+                return  # ora pulita, nessuna mail
+
+            biz = session.query(BusinessInfo).first()
+            nome_negozio = getattr(biz, 'business_name', None) or tenant_id
+
+            righe_html = "".join(
+                f"<tr>"
+                f"<td style='padding:6px 10px;border-bottom:1px solid #eee;'>{e.created_at.strftime('%H:%M:%S')}</td>"
+                f"<td style='padding:6px 10px;border-bottom:1px solid #eee;'>{escape(e.reason)}</td>"
+                f"<td style='padding:6px 10px;border-bottom:1px solid #eee;'>{escape(e.nome or '')} {escape(e.cognome or '')}</td>"
+                f"<td style='padding:6px 10px;border-bottom:1px solid #eee;'>{escape(e.telefono or '')}<br>{escape(e.email or '')}</td>"
+                f"</tr>"
+                for e in errori
+            )
+            html_content = f"""
+            <h3>Riepilogo errori prenotazione online - {escape(nome_negozio)}</h3>
+            <p>Finestra: {window_start.strftime('%d/%m/%Y %H:%M')} - {window_end.strftime('%H:%M')} ({len(errori)} errori)</p>
+            <table style="border-collapse:collapse;width:100%;font-size:13px;">
+                <tr style="background:#f5f5f5;"><th>Ora</th><th>Motivo</th><th>Cliente</th><th>Contatti</th></tr>
+                {righe_html}
+            </table>
+            """
+            invia_email_async(
+                to_email=ERROR_SUMMARY_EMAIL_TO,
+                subject=f"[{nome_negozio}] {len(errori)} errori prenotazione nell'ultima ora",
+                html_content=html_content
+            )
+            print(f"[ERR-SUMMARY][{tenant_id}] riepilogo inviato: {len(errori)} errori tra {window_start} e {window_end}")
+        except Exception as e:
+            print(f"[ERR-SUMMARY][{tenant_id}] error: {repr(e)}")
+            raise
+        finally:
+            try:
+                session.close()
+            finally:
+                try:
+                    SessionFactory.remove()
+                except Exception:
+                    pass
 
 def _wa_dbg(tenant_id, msg):
     if WA_MORNING_DEBUG:
