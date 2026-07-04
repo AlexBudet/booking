@@ -901,7 +901,8 @@ if (res.success && res.prenotazioni && res.prenotazioni.length) {
       document.getElementById('codice-conferma-wrapper').style.display = 'none';
       document.getElementById('inviaConfermaPrenotazioneBtn').style.display = 'none';
     } else {
-      msg.innerHTML = `<div class="alert alert-danger">${escapeHtml(res.error || 'Errore')}</div>`;
+      const msgErrore = res.error || (Array.isArray(res.errori) && res.errori.length ? res.errori.join(' ') : null) || 'Errore';
+      msg.innerHTML = `<div class="alert alert-danger">${escapeHtml(msgErrore)}</div>`;
     }
   })
   .catch(() => {

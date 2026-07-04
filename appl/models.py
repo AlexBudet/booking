@@ -661,3 +661,19 @@ class OWNER(db.Model):
 
     created_at = db.Column(db.DateTime, server_default=func.now(), nullable=False)
     updated_at = db.Column(db.DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+class BookingErrorLog(db.Model):
+    """Traccia permanente di ogni errore incontrato durante il booking online
+    (invio codice, conferma, creazione appuntamento), cosi' resta consultabile
+    anche dopo che i log di Azure sono scaduti (retention ~90 minuti)."""
+    __tablename__ = 'booking_error_logs'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    created_at = db.Column(db.DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    reason = db.Column(db.String(255), nullable=False)
+    nome = db.Column(db.String, nullable=True)
+    cognome = db.Column(db.String, nullable=True)
+    telefono = db.Column(db.String, nullable=True)
+    email = db.Column(db.String, nullable=True)
+    context = db.Column(db.JSON, nullable=True)  # dettagli extra (data, ora, servizi, eccezione, ecc.)

@@ -5,7 +5,7 @@ import traceback
 from flask import Blueprint, g, request, jsonify, render_template, render_template_string, session, url_for, current_app, Response
 from flask_wtf import CSRFProtect
 from flask_wtf.csrf import generate_csrf
-from appl.models import Appointment, AppointmentSource, Service, Operator, OperatorShift, Client, BusinessInfo
+from appl.models import Appointment, AppointmentSource, Service, Operator, OperatorShift, Client, BusinessInfo, BookingErrorLog
 from datetime import date, datetime, timezone, timedelta, time
 from sqlalchemy import func, or_
 from pytz import timezone as pytz_timezone
@@ -85,6 +85,32 @@ BOOKING_RATE_LIMIT_WINDOW = 240  # in 4 minuti (240 secondi)
 def _op_dbg(tenant_id, msg):
     if WA_OPERATOR_DEBUG:
         print(f"[WA-OP][{tenant_id}] {msg}")
+
+def _log_prenota_error(tenant_id, reason, **ctx):
+    """Logga in modo uniforme ogni fallimento della prenotazione online, cosi' e' sempre
+    possibile risalire al motivo reale anche quando al cliente viene mostrato un messaggio generico.
+    Scrive sia su stdout (visibile subito nei log Azure) sia in tabella (persistente, consultabile
+    in qualunque momento anche dopo che i log Azure sono scaduti)."""
+    dettagli = " ".join(f"{k}={v!r}" for k, v in ctx.items())
+    print(f"[PRENOTA-ERROR][{tenant_id}] {reason} | {dettagli}")
+
+    try:
+        entry = BookingErrorLog(
+            reason=reason[:255],
+            nome=ctx.pop('nome', None),
+            cognome=ctx.pop('cognome', None),
+            telefono=ctx.pop('telefono', None),
+            email=ctx.pop('email', None),
+            context={k: str(v) for k, v in ctx.items()} if ctx else None
+        )
+        g.db_session.add(entry)
+        g.db_session.commit()
+    except Exception as e:
+        try:
+            g.db_session.rollback()
+        except Exception:
+            pass
+        print(f"[PRENOTA-ERROR][{tenant_id}] ATTENZIONE: impossibile salvare il log su DB (tabella mancante? esegui la CREATE TABLE booking_error_logs): {repr(e)}")
 
 def _wa_dbg(tenant_id, msg):
     if WA_MORNING_DEBUG:
@@ -752,6 +778,23 @@ def orari_disponibili(tenant_id):
 
 @booking_bp.route('/prenota', methods=['POST'])
 def prenota(tenant_id):
+    """Wrapper che garantisce che QUALSIASI eccezione non prevista venga sempre
+    loggata e restituita come JSON (mai una pagina di errore HTML non loggata)."""
+    try:
+        return _prenota_impl(tenant_id)
+    except Exception as e:
+        try:
+            g.db_session.rollback()
+        except Exception:
+            pass
+        _log_prenota_error(tenant_id, "Eccezione non gestita in /prenota", errore=repr(e))
+        print(f"[PRENOTA-ERROR][{tenant_id}] Traceback: {traceback.format_exc()}")
+        return jsonify({
+            "success": False,
+            "errori": ["Errore interno del server. Riprova più tardi."]
+        }), 500
+
+def _prenota_impl(tenant_id):
     data = request.get_json()
     nome = data.get('nome')
     cognome = data.get('cognome')
@@ -787,9 +830,14 @@ def prenota(tenant_id):
     email_sessione = session.get('email_conferma')
 
     if not codice_sessione or not email_sessione:
+        _log_prenota_error(tenant_id, "Nessun codice/email in sessione (sessione scaduta o invia-codice mai chiamato)",
+                            email=email, telefono=telefono)
         return jsonify({"success": False, "errori": ["Codice di conferma non valido"]}), 400
 
     if not codice_conferma or codice_conferma != codice_sessione or email != email_sessione:
+        _log_prenota_error(tenant_id, "Codice di conferma errato o email non corrispondente",
+                            email=email, email_sessione=email_sessione,
+                            codice_ricevuto=codice_conferma, telefono=telefono)
         return jsonify({"success": False, "errori": ["Codice di conferma errato o email non corrispondente"]}), 400
 
     # --- RATE LIMITING: max 3 prenotazioni ogni 4 minuti ---
@@ -813,7 +861,9 @@ def prenota(tenant_id):
 
     # Validazione campi base
     if not all([nome, telefono, data_str, ora]) or not servizi or not isinstance(servizi, list):
-        return jsonify({"error": "Tutti i campi sono obbligatori"}), 400
+        _log_prenota_error(tenant_id, "Campi obbligatori mancanti", nome=nome, telefono=telefono,
+                            data_str=data_str, ora=ora, servizi=servizi)
+        return jsonify({"success": False, "errori": ["Tutti i campi sono obbligatori"]}), 400
 
     # --- PATCH: Usa la stessa logica di orari_disponibili per validare slot e operatori ---
     servizi_ids = [int(s.get("servizio_id")) for s in servizi]
@@ -848,6 +898,8 @@ def prenota(tenant_id):
         # Blocco per durata
         if max_durata > 0 and durata_totale > max_durata:
             if rule_type_durata == "block":
+                _log_prenota_error(tenant_id, "Limite durata superato (blocco)", email=email,
+                                    durata_totale=durata_totale, max_durata=max_durata)
                 return jsonify({
                     "success": False,
                     "errori": [],
@@ -858,6 +910,8 @@ def prenota(tenant_id):
         # Blocco per prezzo
         if max_prezzo > 0 and totale_prezzo > max_prezzo:
             if rule_type_prezzo == "block":
+                _log_prenota_error(tenant_id, "Limite prezzo superato (blocco)", email=email,
+                                    totale_prezzo=totale_prezzo, max_prezzo=max_prezzo)
                 return jsonify({
                     "success": False,
                     "errori": [],
@@ -930,6 +984,8 @@ def prenota(tenant_id):
 
     # Verifica di coerenza minima su operatori_assegnati rispetto alla richiesta
     if not isinstance(operatori_assegnati, list) or len(operatori_assegnati) != len(servizi):
+        _log_prenota_error(tenant_id, "Operatori assegnati mancanti o non coerenti", email=email,
+                            operatori_assegnati=operatori_assegnati, n_servizi=len(servizi))
         return jsonify({
             "success": False,
             "errori": ["Operatori assegnati mancanti o non coerenti. Ricarica la pagina e riprova."]
@@ -942,11 +998,16 @@ def prenota(tenant_id):
         if operatore_id_richiesto:
             try:
                 if int(operatori_assegnati[idx]) != int(operatore_id_richiesto):
+                    _log_prenota_error(tenant_id, "Sequenza operatori richiesta non piu' disponibile", email=email,
+                                        idx=idx, operatore_id_richiesto=operatore_id_richiesto,
+                                        operatori_assegnati=operatori_assegnati)
                     return jsonify({
                         "success": False,
                         "errori": ["La sequenza di operatori richiesta non è più disponibile per questo slot. Ricarica la pagina e riprova."]
                     }), 400
-            except Exception:
+            except Exception as e:
+                _log_prenota_error(tenant_id, "Operatori assegnati non validi (eccezione)", email=email,
+                                    idx=idx, operatori_assegnati=operatori_assegnati, errore=repr(e))
                 return jsonify({
                     "success": False,
                     "errori": ["Operatori assegnati non validi. Ricarica la pagina e riprova."]
@@ -966,7 +1027,9 @@ def prenota(tenant_id):
         fine = slot_corrente + durata_td
         try:
             operatore_id = int(operatori_assegnati[idx])
-        except Exception:
+        except Exception as e:
+            _log_prenota_error(tenant_id, "Operatori assegnati non validi nel loop di creazione (eccezione)",
+                                email=email, idx=idx, operatori_assegnati=operatori_assegnati, errore=repr(e))
             return jsonify({
                 "success": False,
                 "errori": ["Operatori assegnati non validi. Ricarica la pagina e riprova."]
@@ -974,6 +1037,8 @@ def prenota(tenant_id):
 
         # ulteriore controllo leggero: l'operatore deve essere abilitato al servizio
         if operatore_id not in servizi_operatori.get(servizio_id, []):
+            _log_prenota_error(tenant_id, "Operatore non abilitato per il servizio (slot non piu' disponibile)",
+                                email=email, idx=idx, servizio_id=servizio_id, operatore_id=operatore_id)
             return jsonify({
                 "success": False,
                 "errori": ["La sequenza di operatori richiesta non è più disponibile per questo slot. Ricarica la pagina e riprova."]
@@ -1004,7 +1069,9 @@ def prenota(tenant_id):
             g.db_session.commit()
         except Exception as e:
             g.db_session.rollback()
-            print("DB ERROR DURING COMMIT:", repr(e))
+            _log_prenota_error(tenant_id, "Errore DB durante il commit dell'appuntamento", email=email,
+                                idx=idx, servizio_id=servizio_id, operatore_id=operatore_id, errore=repr(e))
+            print(f"[PRENOTA-ERROR][{tenant_id}] Traceback: {traceback.format_exc()}")
             return jsonify({
                 "success": False,
                 "errori": ["Errore database: " + str(e)]
@@ -2308,6 +2375,8 @@ def operator_notifications_tick(tenant_id):
         process_operator_tick(current_app, tenant_id)
         return jsonify({"success": True}), 200
     except Exception as e:
+        print(f"[WA-OP][{tenant_id}] ERROR operator_notifications_tick: {repr(e)}")
+        print(f"[WA-OP][{tenant_id}] Traceback: {traceback.format_exc()}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @booking_bp.route('/operator-notifications/trigger', methods=['POST'])
@@ -2333,7 +2402,8 @@ def operator_notifications_trigger(tenant_id):
         for item in queue:
             try:
                 text = _render_operator_msg(tpl, item, business_info=biz)
-            except Exception:
+            except Exception as e:
+                print(f"[WA-OP][{tenant_id}] render error operator_id={item.get('operator_id')}: {repr(e)}")
                 text = tpl or ""
             ok = False
             if creds:
@@ -2341,6 +2411,7 @@ def operator_notifications_trigger(tenant_id):
                     ok = _send_unipile_message(creds, item["phone"], text)
                 except Exception as e:
                     ok = False
+                    print(f"[WA-OP][{tenant_id}] send error operator_id={item.get('operator_id')}: {repr(e)}")
                     results.append({"operator_id": item["operator_id"], "ok": False, "error": str(e)})
                     continue
             else:
@@ -2360,4 +2431,6 @@ def operator_notifications_trigger(tenant_id):
 
         return jsonify({"success": True, "sent": sent, "total": len(queue), "results": results}), 200
     except Exception as e:
+        print(f"[WA-OP][{tenant_id}] ERROR operator_notifications_trigger: {repr(e)}")
+        print(f"[WA-OP][{tenant_id}] Traceback: {traceback.format_exc()}")
         return jsonify({"success": False, "error": str(e)}), 500
