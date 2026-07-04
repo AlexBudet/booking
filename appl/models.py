@@ -324,6 +324,11 @@ class BusinessInfo(db.Model):
     # Formato: [{"name":"Turno lungo","start":"09:00","end":"18:00","breakStart":"13:00","breakDuration":"60"}, ...]
     shift_presets = db.Column(db.Text, nullable=True, default='[]')
 
+    # Checkpoint del riepilogo orario errori prenotazione (routes/booking.py:
+    # process_error_summary_tick). Persistito su DB (non solo in memoria) cosi'
+    # un riavvio del processo non fa perdere il controllo dell'ora in cui e' avvenuto.
+    error_summary_last_check = db.Column(db.DateTime(timezone=True), nullable=True)
+
     @property
     def closing_days_list(self):
         """Ritorna una lista di stringhe (es. ["Domenica","Sabato"]) se presente, altrimenti vuota."""

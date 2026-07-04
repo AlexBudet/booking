@@ -126,6 +126,23 @@ def _start_error_summary_scheduler_once(app):
         booking_mod = importlib.import_module('routes.booking')
         process_error_summary_tick = getattr(booking_mod, 'process_error_summary_tick')
         now_rome = getattr(booking_mod, '_now_rome')
+
+        # Controllo immediato all'avvio/riavvio del processo (deploy, recycle,
+        # cold start): recupera subito eventuali errori delle ore precedenti
+        # rimaste in sospeso, senza aspettare il prossimo allineamento in punta
+        # d'ora. Il checkpoint persistito su DB (BusinessInfo.error_summary_last_check)
+        # fa sì che qui venga controllata solo la finestra non ancora processata.
+        try:
+            with app.app_context():
+                sessions = app.config.get('DB_SESSIONS', {})
+                for tenant_id in sessions.keys():
+                    try:
+                        process_error_summary_tick(app, tenant_id)
+                    except Exception as e:
+                        print(f"[ERR-SUMMARY][{tenant_id}] startup check error: {repr(e)}")
+        except Exception as e:
+            print(f"[ERR-SUMMARY] startup check loop error: {repr(e)}")
+
         while True:
             # Allinea il risveglio esattamente alla prossima ora piena (00:00, 01:00, ...),
             # invece di un intervallo fisso dal momento del deploy: cosi' l'orario del

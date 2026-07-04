@@ -118,10 +118,17 @@ def _log_prenota_error(tenant_id, reason, **ctx):
         print(f"[PRENOTA-ERROR][{tenant_id}] ATTENZIONE: impossibile salvare il log su DB (tabella mancante? esegui la CREATE TABLE booking_error_logs): {repr(e)}")
 
 def process_error_summary_tick(app, tenant_id: str):
-    """Ogni ora: se nell'ora appena conclusa ci sono stati errori di prenotazione
-    (BookingErrorLog), invia una mail di riepilogo. Se l'ora è pulita, non manda nulla.
-    Stato in memoria (per-tenant): un riavvio a cavallo del cambio ora può far saltare
-    il riepilogo di quell'ora, come per gli altri scheduler già presenti."""
+    """Controlla se, dall'ultimo controllo effettuato, si sono chiuse una o più ore
+    con errori di prenotazione (BookingErrorLog) e in caso invia una mail di riepilogo.
+    Se il periodo è pulito, non manda nulla.
+
+    Il checkpoint (fino a che ora è già stato controllato) è persistito su DB in
+    BusinessInfo.error_summary_last_check, non solo in memoria: così un riavvio del
+    processo (deploy, recycle di Azure, cold start) non fa perdere il controllo
+    dell'ora in cui è avvenuto il riavvio - alla ripartenza la finestra si allarga
+    dall'ultimo checkpoint salvato fino all'ora corrente, recuperando anche più ore
+    se necessario. Questa funzione viene chiamata sia dal ticker orario sia una
+    volta subito all'avvio del processo (vedi main.py)."""
     lock = _ERR_SUMMARY_LOCKS.get(tenant_id)
     if lock is None:
         lock = threading.Lock()
@@ -131,32 +138,42 @@ def process_error_summary_tick(app, tenant_id: str):
         now = _now_rome()
         current_hour_start = now.replace(minute=0, second=0, microsecond=0)
 
-        last_boundary = _ERR_SUMMARY_STATE.get(tenant_id)
-        if last_boundary is None:
-            # Primo tick dopo l'avvio: non conosciamo lo storico, evitiamo di riepilogare
-            # una finestra incompleta. Da qui in poi ogni ora piena verrà controllata.
-            _ERR_SUMMARY_STATE[tenant_id] = current_hour_start
-            return
-
-        if current_hour_start <= last_boundary:
-            return  # l'ora non è ancora passata
-
-        window_start, window_end = last_boundary, current_hour_start
-
         SessionFactory = app.config['DB_SESSIONS'][tenant_id]
         session = SessionFactory()
         try:
+            biz = session.query(BusinessInfo).first()
+            if biz is None:
+                return  # tenant senza business_info configurato
+
+            last_boundary = biz.error_summary_last_check
+            if last_boundary is not None and last_boundary.tzinfo is None:
+                last_boundary = pytz_timezone('Europe/Rome').localize(last_boundary)
+
+            if last_boundary is None:
+                # Primo controllo in assoluto per questo tenant: non conosciamo lo
+                # storico, fissiamo solo il checkpoint da cui partire da ora in poi.
+                biz.error_summary_last_check = current_hour_start
+                session.commit()
+                _ERR_SUMMARY_STATE[tenant_id] = current_hour_start
+                return
+
+            if current_hour_start <= last_boundary:
+                return  # nessuna nuova ora piena da controllare
+
+            window_start, window_end = last_boundary, current_hour_start
+
             errori = session.query(BookingErrorLog).filter(
                 BookingErrorLog.created_at >= window_start,
                 BookingErrorLog.created_at < window_end
             ).order_by(BookingErrorLog.created_at.asc()).all()
 
+            biz.error_summary_last_check = current_hour_start
+            session.commit()
             _ERR_SUMMARY_STATE[tenant_id] = current_hour_start
 
             if not errori:
-                return  # ora pulita, nessuna mail
+                return  # periodo pulito, nessuna mail
 
-            biz = session.query(BusinessInfo).first()
             nome_negozio = getattr(biz, 'business_name', None) or tenant_id
 
             righe_html = "".join(
