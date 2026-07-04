@@ -122,10 +122,18 @@ def _start_error_summary_scheduler_once(app):
 
     def worker():
         import importlib
+        from datetime import timedelta
         booking_mod = importlib.import_module('routes.booking')
-        poll_seconds = getattr(booking_mod, 'ERROR_SUMMARY_POLL_SECONDS', 3600)
         process_error_summary_tick = getattr(booking_mod, 'process_error_summary_tick')
+        now_rome = getattr(booking_mod, '_now_rome')
         while True:
+            # Allinea il risveglio esattamente alla prossima ora piena (00:00, 01:00, ...),
+            # invece di un intervallo fisso dal momento del deploy: cosi' l'orario del
+            # controllo/invio e' sempre prevedibile.
+            now = now_rome()
+            next_hour = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+            sleep_seconds = max(1, (next_hour - now).total_seconds())
+            time_mod.sleep(sleep_seconds)
             try:
                 with app.app_context():
                     sessions = app.config.get('DB_SESSIONS', {})
@@ -136,7 +144,6 @@ def _start_error_summary_scheduler_once(app):
                             print(f"[ERR-SUMMARY][{tenant_id}] tick error: {repr(e)}")
             except Exception as e:
                 print(f"[ERR-SUMMARY] loop error: {repr(e)}")
-            time_mod.sleep(poll_seconds)
 
     t = threading.Thread(target=worker, name="err_summary_scheduler", daemon=True)
     t.start()

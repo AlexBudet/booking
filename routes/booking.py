@@ -77,7 +77,6 @@ _OP_DONE = {}             # tenant_id -> date: giorno in cui il batch operatori 
 _OP_LOCKS = {}            # tenant_id -> threading.Lock()
 
 # Stato per il riepilogo orario degli errori di prenotazione (per-tenant, in memoria)
-ERROR_SUMMARY_POLL_SECONDS = 3600  # ogni ora
 ERROR_SUMMARY_EMAIL_TO = os.environ.get('ERROR_SUMMARY_EMAIL_TO', 'alessio.budetta@gmail.com')
 _ERR_SUMMARY_STATE = {}   # tenant_id -> datetime: inizio dell'ultima ora piena già elaborata
 _ERR_SUMMARY_LOCKS = {}   # tenant_id -> threading.Lock()
