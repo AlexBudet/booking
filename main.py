@@ -137,7 +137,7 @@ def _start_error_summary_scheduler_once(app):
                 sessions = app.config.get('DB_SESSIONS', {})
                 for tenant_id in sessions.keys():
                     try:
-                        process_error_summary_tick(app, tenant_id)
+                        process_error_summary_tick(app, tenant_id, force_previous_hour=True)
                     except Exception as e:
                         print(f"[ERR-SUMMARY][{tenant_id}] startup check error: {repr(e)}")
         except Exception as e:

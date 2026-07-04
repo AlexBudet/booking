@@ -117,7 +117,7 @@ def _log_prenota_error(tenant_id, reason, **ctx):
             pass
         print(f"[PRENOTA-ERROR][{tenant_id}] ATTENZIONE: impossibile salvare il log su DB (tabella mancante? esegui la CREATE TABLE booking_error_logs): {repr(e)}")
 
-def process_error_summary_tick(app, tenant_id: str):
+def process_error_summary_tick(app, tenant_id: str, force_previous_hour: bool = False):
     """Controlla se, dall'ultimo controllo effettuato, si sono chiuse una o più ore
     con errori di prenotazione (BookingErrorLog) e in caso invia una mail di riepilogo.
     Se il periodo è pulito, non manda nulla.
@@ -128,7 +128,14 @@ def process_error_summary_tick(app, tenant_id: str):
     dell'ora in cui è avvenuto il riavvio - alla ripartenza la finestra si allarga
     dall'ultimo checkpoint salvato fino all'ora corrente, recuperando anche più ore
     se necessario. Questa funzione viene chiamata sia dal ticker orario sia una
-    volta subito all'avvio del processo (vedi main.py)."""
+    volta subito all'avvio del processo (vedi main.py).
+
+    force_previous_hour: usato SOLO dalla chiamata di avvio del processo (main.py).
+    Garantisce che l'ultima ora piena venga sempre ricontrollata al riavvio, a
+    prescindere da cosa risulti già segnato come controllato sul checkpoint: un
+    riavvio è proprio il momento in cui il checkpoint può essere avanzato in modo
+    errato (es. per un bug, o per un tick precedente eseguito su dati incoerenti),
+    quindi non ci si può fidare ciecamente di esso subito dopo un riavvio."""
     lock = _ERR_SUMMARY_LOCKS.get(tenant_id)
     if lock is None:
         lock = threading.Lock()
@@ -137,6 +144,7 @@ def process_error_summary_tick(app, tenant_id: str):
     with lock:
         now = _now_rome()
         current_hour_start = now.replace(minute=0, second=0, microsecond=0)
+        previous_hour_start = current_hour_start - timedelta(hours=1)
 
         SessionFactory = app.config['DB_SESSIONS'][tenant_id]
         session = SessionFactory()
@@ -151,11 +159,15 @@ def process_error_summary_tick(app, tenant_id: str):
 
             if last_boundary is None:
                 # Primo controllo in assoluto per questo tenant: non conosciamo lo
-                # storico, fissiamo solo il checkpoint da cui partire da ora in poi.
-                biz.error_summary_last_check = current_hour_start
-                session.commit()
-                _ERR_SUMMARY_STATE[tenant_id] = current_hour_start
-                return
+                # storico completo, ma controlliamo comunque subito l'ora precedente
+                # appena conclusa, cosi' un riavvio non perde gli errori piu' recenti.
+                last_boundary = previous_hour_start
+
+            if force_previous_hour and last_boundary > previous_hour_start:
+                print(f"[ERR-SUMMARY][{tenant_id}] riavvio: forzo il controllo dell'ultima ora "
+                      f"piena ({previous_hour_start} - {current_hour_start}) anche se il checkpoint "
+                      f"salvato ({last_boundary}) la segnava già come verificata")
+                last_boundary = previous_hour_start
 
             if current_hour_start <= last_boundary:
                 return  # nessuna nuova ora piena da controllare
