@@ -125,6 +125,7 @@ def _start_error_summary_scheduler_once(app):
         from datetime import timedelta
         booking_mod = importlib.import_module('routes.booking')
         process_error_summary_tick = getattr(booking_mod, 'process_error_summary_tick')
+        process_crm_error_summary_tick = getattr(booking_mod, 'process_crm_error_summary_tick')
         now_rome = getattr(booking_mod, '_now_rome')
 
         # Controllo immediato all'avvio/riavvio del processo (deploy, recycle,
@@ -140,13 +141,19 @@ def _start_error_summary_scheduler_once(app):
                         process_error_summary_tick(app, tenant_id, force_previous_hour=True)
                     except Exception as e:
                         print(f"[ERR-SUMMARY][{tenant_id}] startup check error: {repr(e)}")
+                    try:
+                        process_crm_error_summary_tick(app, tenant_id)
+                    except Exception as e:
+                        print(f"[CRM-ERR-SUMMARY][{tenant_id}] startup check error: {repr(e)}")
         except Exception as e:
             print(f"[ERR-SUMMARY] startup check loop error: {repr(e)}")
 
         while True:
             # Allinea il risveglio esattamente alla prossima ora piena (00:00, 01:00, ...),
             # invece di un intervallo fisso dal momento del deploy: cosi' l'orario del
-            # controllo/invio e' sempre prevedibile.
+            # controllo/invio e' sempre prevedibile. Questo stesso risveglio orario serve
+            # anche al riepilogo giornaliero CRM: una granularità di un'ora è sufficiente
+            # per un controllo "è già passata l'ora configurata di oggi?".
             now = now_rome()
             next_hour = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
             sleep_seconds = max(1, (next_hour - now).total_seconds())
@@ -159,6 +166,10 @@ def _start_error_summary_scheduler_once(app):
                             process_error_summary_tick(app, tenant_id)
                         except Exception as e:
                             print(f"[ERR-SUMMARY][{tenant_id}] tick error: {repr(e)}")
+                        try:
+                            process_crm_error_summary_tick(app, tenant_id)
+                        except Exception as e:
+                            print(f"[CRM-ERR-SUMMARY][{tenant_id}] tick error: {repr(e)}")
             except Exception as e:
                 print(f"[ERR-SUMMARY] loop error: {repr(e)}")
 

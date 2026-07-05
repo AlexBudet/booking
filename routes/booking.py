@@ -5,7 +5,7 @@ import traceback
 from flask import Blueprint, g, request, jsonify, render_template, render_template_string, session, url_for, current_app, Response
 from flask_wtf import CSRFProtect
 from flask_wtf.csrf import generate_csrf
-from appl.models import Appointment, AppointmentSource, Service, Operator, OperatorShift, Client, BusinessInfo, BookingErrorLog
+from appl.models import Appointment, AppointmentSource, Service, Operator, OperatorShift, Client, BusinessInfo, BookingErrorLog, CrmErrorLog
 from datetime import date, datetime, timezone, timedelta, time
 from sqlalchemy import func, or_
 from pytz import timezone as pytz_timezone
@@ -80,6 +80,9 @@ _OP_LOCKS = {}            # tenant_id -> threading.Lock()
 ERROR_SUMMARY_EMAIL_TO = os.environ.get('ERROR_SUMMARY_EMAIL_TO', 'alessio.budetta@gmail.com')
 _ERR_SUMMARY_STATE = {}   # tenant_id -> datetime: inizio dell'ultima ora piena già elaborata
 _ERR_SUMMARY_LOCKS = {}   # tenant_id -> threading.Lock()
+
+# Stato per il riepilogo giornaliero degli errori CRM/gestionale (per-tenant, in memoria)
+_CRM_ERR_SUMMARY_LOCKS = {}   # tenant_id -> threading.Lock()
 
 # --- RATE LIMITING PRENOTAZIONI ---
 _BOOKING_TIMESTAMPS = []  # Lista di timestamp delle ultime prenotazioni completate
@@ -213,6 +216,118 @@ def process_error_summary_tick(app, tenant_id: str, force_previous_hour: bool = 
             print(f"[ERR-SUMMARY][{tenant_id}] riepilogo inviato: {len(errori)} errori tra {window_start} e {window_end}")
         except Exception as e:
             print(f"[ERR-SUMMARY][{tenant_id}] error: {repr(e)}")
+            raise
+        finally:
+            try:
+                session.close()
+            finally:
+                try:
+                    SessionFactory.remove()
+                except Exception:
+                    pass
+
+def process_crm_error_summary_tick(app, tenant_id: str):
+    """Controlla, una volta al giorno all'ora configurata (BusinessInfo.crm_error_summary_time,
+    default 21:00), se ci sono nuovi errori in crm_error_logs - tabella scritta dal gestionale
+    CRM SunBooking (appuntamenti, comunicazione fiscale RCH), mai letta finora da questo repo -
+    e in caso invia una mail di riepilogo separata da quella oraria dei booking_error_logs.
+    Se il periodo è pulito, non manda nulla.
+
+    Il checkpoint (data dell'ultimo invio) è persistito su DB in
+    BusinessInfo.crm_error_summary_last_sent_date, non solo in memoria: così un riavvio del
+    processo non fa perdere né duplica l'invio giornaliero. A differenza del riepilogo orario,
+    qui la finestra non è delimitata da confini di ora piena ma dal momento esatto dell'ultimo
+    invio (data ultimo invio + orario configurato) fino ad ora corrente.
+
+    Questa funzione viene chiamata dallo stesso scheduler di process_error_summary_tick
+    (vedi main.py), che gira una volta all'ora: è sufficiente per un controllo con
+    granularità giornaliera."""
+    lock = _CRM_ERR_SUMMARY_LOCKS.get(tenant_id)
+    if lock is None:
+        lock = threading.Lock()
+        _CRM_ERR_SUMMARY_LOCKS[tenant_id] = lock
+
+    with lock:
+        now = _now_rome()
+        rome_tz = pytz_timezone('Europe/Rome')
+
+        SessionFactory = app.config['DB_SESSIONS'][tenant_id]
+        session = SessionFactory()
+        try:
+            biz = session.query(BusinessInfo).first()
+            if biz is None:
+                return  # tenant senza business_info configurato
+
+            configured_time = biz.crm_error_summary_time or time(21, 0)
+            today = now.date()
+
+            if now.time() < configured_time:
+                return  # l'ora configurata di oggi non è ancora passata
+
+            last_sent_date = biz.crm_error_summary_last_sent_date
+            if last_sent_date is not None and last_sent_date >= today:
+                return  # digest di oggi già inviato
+
+            if last_sent_date is not None:
+                window_start = rome_tz.localize(datetime.combine(last_sent_date, configured_time))
+            else:
+                # Primo controllo in assoluto per questo tenant: come il riepilogo orario
+                # guarda solo all'ultima ora piena, qui guardiamo solo alle ultime 24 ore.
+                window_start = now - timedelta(days=1)
+            window_end = now
+
+            errori = session.query(CrmErrorLog).filter(
+                CrmErrorLog.created_at >= window_start,
+                CrmErrorLog.created_at < window_end
+            ).order_by(CrmErrorLog.created_at.asc()).all()
+
+            biz.crm_error_summary_last_sent_date = today
+            session.commit()
+
+            if not errori:
+                return  # periodo pulito, nessuna mail
+
+            nome_negozio = getattr(biz, 'business_name', None) or tenant_id
+
+            client_ids = {e.client_id for e in errori if e.client_id}
+            clienti_by_id = {}
+            if client_ids:
+                clienti_by_id = {
+                    c.id: c for c in session.query(Client).filter(Client.id.in_(client_ids)).all()
+                }
+
+            def _client_cell(err):
+                c = clienti_by_id.get(err.client_id)
+                if not c:
+                    return ''
+                nome = f"{c.cliente_nome or ''} {c.cliente_cognome or ''}".strip()
+                contatti = " / ".join(x for x in [c.cliente_cellulare, c.cliente_email] if x)
+                return f"{escape(nome)}<br>{escape(contatti)}" if contatti else escape(nome)
+
+            righe_html = "".join(
+                f"<tr>"
+                f"<td style='padding:6px 10px;border-bottom:1px solid #eee;'>{e.created_at.strftime('%d/%m %H:%M:%S')}</td>"
+                f"<td style='padding:6px 10px;border-bottom:1px solid #eee;'>{escape(e.reason)}</td>"
+                f"<td style='padding:6px 10px;border-bottom:1px solid #eee;'>{_client_cell(e)}</td>"
+                f"</tr>"
+                for e in errori
+            )
+            html_content = f"""
+            <h3>Riepilogo errori CRM/gestionale - {escape(nome_negozio)}</h3>
+            <p>Finestra: {window_start.strftime('%d/%m/%Y %H:%M')} - {window_end.strftime('%d/%m/%Y %H:%M')} ({len(errori)} errori)</p>
+            <table style="border-collapse:collapse;width:100%;font-size:13px;">
+                <tr style="background:#f5f5f5;"><th>Data/Ora</th><th>Motivo</th><th>Cliente</th></tr>
+                {righe_html}
+            </table>
+            """
+            invia_email_async(
+                to_email=ERROR_SUMMARY_EMAIL_TO,
+                subject=f"[{nome_negozio}] {len(errori)} errori CRM/gestionale",
+                html_content=html_content
+            )
+            print(f"[CRM-ERR-SUMMARY][{tenant_id}] riepilogo inviato: {len(errori)} errori tra {window_start} e {window_end}")
+        except Exception as e:
+            print(f"[CRM-ERR-SUMMARY][{tenant_id}] error: {repr(e)}")
             raise
         finally:
             try:

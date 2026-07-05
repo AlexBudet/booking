@@ -5,6 +5,7 @@ from sqlalchemy import Boolean, Enum, ForeignKey, Integer, String, Time, Text
 from sqlalchemy.sql import func
 from sqlalchemy import JSON, DateTime
 from sqlalchemy.dialects.postgresql import ENUM
+from sqlalchemy.orm import validates
 from appl import db
 from datetime import timedelta, datetime
 from werkzeug.security import generate_password_hash
@@ -121,6 +122,17 @@ class Client(db.Model):
     def __repr__(self):
         return f"<Cliente {self.cliente_nome} {self.cliente_cognome}>"
 
+    @validates('cliente_cellulare')
+    def _strip_cellulare_spaces(self, key, value):
+        # Garantisce che il cellulare sia sempre scritto in DB senza spazi,
+        # qualunque sia la rotta che salva (Agenda, anagrafica, Booking via
+        # Web, update_client_phone, ecc.). split() senza argomenti tratta come
+        # whitespace anche tab, newline e non-breaking space (U+00A0), che
+        # arrivano spesso dal copia-incolla.
+        if value is None:
+            return value
+        return ''.join(str(value).split())
+
     @classmethod
     def get_dummy(cls):
         dummy = cls.query.filter_by(cliente_nome="dummy", cliente_cognome="dummy").first()
@@ -154,7 +166,7 @@ class Service(db.Model):
     __tablename__ = 'servizi'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     servizio_nome = db.Column(db.String(30), nullable=False)
-    servizio_tag = db.Column(db.String(12), nullable=True)
+    servizio_tag = db.Column(db.String(19), nullable=True)
     servizio_durata = db.Column(db.Integer, nullable=False)
     servizio_prezzo = db.Column(db.Float, nullable=False)
     servizio_categoria = db.Column(Enum(ServiceCategory), nullable=False)
@@ -218,11 +230,6 @@ class Appointment(db.Model):
     booking_session_id = db.Column(db.String(64), nullable=True, index=True) 
     is_cancelled_by_client = db.Column(db.Boolean, default=False)
     pacchetto_seduta_id = db.Column(db.Integer, db.ForeignKey('pacchetto_sedute.id'), nullable=True)
-    # Data dell'ultimo invio del memo WhatsApp mattutino per QUESTO appuntamento.
-    # Serve all'idempotenza del job mattutino (routes/booking.py): _build_today_targets
-    # esclude gli appuntamenti già inviati oggi, così un riavvio del processo non rimanda
-    # i memo già spediti e la coda riprende da dove era rimasta. NULL = mai inviato.
-    morning_memo_sent_date = db.Column(db.Date, nullable=True)
 
     # Relazioni
     client = db.relationship('Client', backref='appointments')
@@ -329,6 +336,16 @@ class BusinessInfo(db.Model):
     # un riavvio del processo non fa perdere il controllo dell'ora in cui e' avvenuto.
     error_summary_last_check = db.Column(db.DateTime(timezone=True), nullable=True)
 
+    # Riepilogo giornaliero errori CRM/gestionale (routes/booking.py:
+    # process_crm_error_summary_tick). A differenza del checkpoint orario sopra,
+    # qui la cadenza e' giornaliera: si invia una sola mail al giorno, all'ora
+    # configurata in crm_error_summary_time (default 21:00). Il checkpoint tiene
+    # solo la DATA dell'ultimo invio, non l'ora esatta - basta per l'idempotenza
+    # ("ho gia' inviato oggi?") e per ricostruire l'inizio della finestra
+    # (data ultimo invio + orario configurato).
+    crm_error_summary_time = db.Column(db.Time, nullable=False, default=datetime.strptime("21:00", "%H:%M").time())
+    crm_error_summary_last_sent_date = db.Column(db.Date, nullable=True)
+
     @property
     def closing_days_list(self):
         """Ritorna una lista di stringhe (es. ["Domenica","Sabato"]) se presente, altrimenti vuota."""
@@ -346,6 +363,55 @@ class BusinessInfo(db.Model):
 
     def __repr__(self):
         return f"<BusinessInfo {self.business_name}>"
+
+class DgfeReading(db.Model):
+    """Lettura DGFE (registratore fiscale) riconciliata per un giorno.
+
+    Sostituisce il vecchio log JSON su file: la riconciliazione DGFE<->DB viene
+    persistita qui, in DB, una riga per (negozio, giorno). `payload` conserva il
+    dict completo dell'esito per retro-compatibilita' (badge registro + colonna
+    DGFE nei corrispettivi). Le colonne dedicate servono per query/ispezione.
+    """
+    __tablename__ = 'dgfe_readings'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    # Non usiamo una FK per robustezza (era una semplice chiave nel vecchio log);
+    # None viene normalizzato a 0 dal codice cosi' il vincolo UNIQUE funziona.
+    business_info_id = db.Column(db.Integer, nullable=False, default=0, index=True)
+    giorno = db.Column(db.Date, nullable=False, index=True)
+    dgfe_total = db.Column(db.Float, nullable=True)
+    dgfe_count = db.Column(db.Integer, nullable=True)
+    status = db.Column(db.String(32), nullable=True)
+    run_at = db.Column(db.DateTime, nullable=True)
+    payload = db.Column(db.Text, nullable=True)  # JSON completo dell'esito
+    updated_at = db.Column(db.DateTime, nullable=True)
+
+    __table_args__ = (
+        db.UniqueConstraint('business_info_id', 'giorno', name='uq_dgfe_readings_bi_day'),
+    )
+
+    def __repr__(self):
+        return f"<DgfeReading {self.giorno} bi={self.business_info_id} tot={self.dgfe_total}>"
+
+class FiscalClosure(db.Model):
+    """Registro delle chiusure fiscali (Z) eseguite. Una riga per ogni Z, cosi' il
+    gestionale ha uno storico in DB (oltre al dato volatile letto dalla stampante via
+    =C453). Usato anche per confermare che una Z e' stata fatta quando la stampante
+    non e' leggibile (es. documento aperto)."""
+    __tablename__ = 'fiscal_closures'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    business_info_id = db.Column(db.Integer, nullable=False, default=0, index=True)
+    z_number = db.Column(db.Integer, nullable=True, index=True)  # lastZ DOPO questa chiusura
+    closed_at = db.Column(db.DateTime, nullable=False)           # quando e' stata eseguita
+    giorno = db.Column(db.Date, nullable=True, index=True)       # giorno solare della Z
+    dgfe_total = db.Column(db.Float, nullable=True)              # totale del giorno (se noto)
+    note = db.Column(db.String(255), nullable=True)
+
+    __table_args__ = (
+        db.UniqueConstraint('business_info_id', 'z_number', name='uq_fiscal_closures_bi_z'),
+    )
+
+    def __repr__(self):
+        return f"<FiscalClosure Z={self.z_number} bi={self.business_info_id} {self.closed_at}>"
 
 class MarketingTemplate(db.Model):
     __tablename__ = 'marketing_templates'
@@ -645,19 +711,27 @@ class AIAssistantSession(db.Model):
             'ref_date': self.ref_date,
             'warnings_json': self.warnings_json,  # JSON array serializzato come stringa
         }
-
+    
 class OWNER(db.Model):
     __tablename__ = 'owners'
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
 
-    # opzionale: nome owner globale che gestisce il tenant
     owner_username = db.Column(db.String(80), nullable=True, default='Alessio')
 
     # Moduli contratto (gestione owner per tenant/database)
     module_base_enabled = db.Column(db.Boolean, nullable=False, default=True)
     module_web_enabled = db.Column(db.Boolean, nullable=False, default=True)
     module_pacchetti_enabled = db.Column(db.Boolean, nullable=False, default=True)
+
+    # Abilita la sezione Cassa quando l'app gira in cloud (wsgi.py). Default
+    # False perche' sul cloud la stampante fiscale RCH della LAN del salone
+    # non e' raggiungibile; l'owner puo' attivarlo a sua discrezione da
+    # Tools / Info Azienda (solo per uso non-fiscale o setup particolari).
+    # Sull'eseguibile locale (start.py) il flag e' ignorato e la Cassa e'
+    # sempre visibile.
+    cassa_enabled_on_web = db.Column(db.Boolean, nullable=False,
+                                     server_default='false', default=False)
 
     # Date attivazione moduli
     module_base_activated_on = db.Column(db.Date, nullable=True)
@@ -682,3 +756,18 @@ class BookingErrorLog(db.Model):
     telefono = db.Column(db.String, nullable=True)
     email = db.Column(db.String, nullable=True)
     context = db.Column(db.JSON, nullable=True)  # dettagli extra (data, ora, servizi, eccezione, ecc.)
+
+class CrmErrorLog(db.Model):
+    """Traccia permanente degli errori incontrati nel gestionale CRM (gestione
+    appuntamenti, comunicazione fiscale con la stampante RCH). Un errore puo'
+    capitare lavorando con un cliente o senza (es. blocco OFF, utenza generica):
+    per questo si salva solo client_id (se collegato), non dati anagrafici
+    duplicati - per quelli si risale al cliente con un join su clienti."""
+    __tablename__ = 'crm_error_logs'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    created_at = db.Column(db.DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    reason = db.Column(db.String(255), nullable=False)
+    client_id = db.Column(db.Integer, db.ForeignKey('clienti.id'), nullable=True)
+    context = db.Column(db.JSON, nullable=True)  # dettagli extra (appuntamento, errCode RCH, endpoint, eccezione, ecc.)
