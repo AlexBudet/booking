@@ -230,6 +230,11 @@ class Appointment(db.Model):
     booking_session_id = db.Column(db.String(64), nullable=True, index=True) 
     is_cancelled_by_client = db.Column(db.Boolean, default=False)
     pacchetto_seduta_id = db.Column(db.Integer, db.ForeignKey('pacchetto_sedute.id'), nullable=True)
+    # Data dell'ultimo invio del memo WhatsApp mattutino per QUESTO appuntamento.
+    # Serve all'idempotenza del job mattutino (routes/booking.py): _build_today_targets
+    # esclude gli appuntamenti già inviati oggi, così un riavvio del processo non rimanda
+    # i memo già spediti e la coda riprende da dove era rimasta. NULL = mai inviato.
+    morning_memo_sent_date = db.Column(db.Date, nullable=True)
 
     # Relazioni
     client = db.relationship('Client', backref='appointments')

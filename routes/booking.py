@@ -120,6 +120,53 @@ def _log_prenota_error(tenant_id, reason, **ctx):
             pass
         print(f"[PRENOTA-ERROR][{tenant_id}] ATTENZIONE: impossibile salvare il log su DB (tabella mancante? esegui la CREATE TABLE booking_error_logs): {repr(e)}")
 
+# Dedup in memoria per gli errori dei ticker: al massimo 1 riga su DB per
+# (tenant, messaggio) per ora piena. Senza dedup un errore sistemico (es. un
+# AttributeError a ogni tick) genererebbe ~60 righe identiche l'ora, rendendo
+# illeggibile sia la tabella sia l'email di riepilogo.
+_TICKER_ERR_LAST_LOGGED = {}   # (tenant_id, reason) -> datetime inizio ora piena dell'ultimo salvataggio
+_TICKER_ERR_LOCK = threading.Lock()
+
+def log_ticker_error(app, tenant_id: str, source: str, exc: Exception):
+    """Registra su booking_error_logs un errore sollevato da un ticker in background
+    (WA-MORNING, WA-OP, ERR-SUMMARY, CRM-ERR-SUMMARY): cosi' entra nel riepilogo
+    orario via email come ogni altro errore, invece di restare solo su stdout
+    (i log Azure hanno retention ~90 minuti e nessuno li guarda in tempo reale).
+
+    Non usa g.db_session (nei thread scheduler non c'e' request context) ma apre
+    una sessione propria dal SessionFactory del tenant. Non solleva MAI: il
+    fallimento del logging non deve rompere il ticker che lo chiama."""
+    try:
+        reason = f"[{source}] {repr(exc)}"[:255]
+        hour_key = _now_rome().replace(minute=0, second=0, microsecond=0)
+        dedup_key = (tenant_id, reason)
+        with _TICKER_ERR_LOCK:
+            if _TICKER_ERR_LAST_LOGGED.get(dedup_key) == hour_key:
+                return
+            _TICKER_ERR_LAST_LOGGED[dedup_key] = hour_key
+
+        SessionFactory = app.config['DB_SESSIONS'][tenant_id]
+        session_db = SessionFactory()
+        try:
+            session_db.add(BookingErrorLog(
+                reason=reason,
+                context={"source": source, "error": repr(exc)}
+            ))
+            session_db.commit()
+        except Exception:
+            session_db.rollback()
+            raise
+        finally:
+            try:
+                session_db.close()
+            finally:
+                try:
+                    SessionFactory.remove()
+                except Exception:
+                    pass
+    except Exception as log_exc:
+        print(f"[TICKER-ERR-LOG][{tenant_id}] impossibile salvare l'errore su DB: {repr(log_exc)}")
+
 def process_error_summary_tick(app, tenant_id: str, force_previous_hour: bool = False):
     """Controlla se, dall'ultimo controllo effettuato, si sono chiuse una o più ore
     con errori di prenotazione (BookingErrorLog) e in caso invia una mail di riepilogo.

@@ -71,6 +71,7 @@ def _start_morning_scheduler_once(app):
         booking_mod = importlib.import_module('routes.booking')
         poll_seconds = getattr(booking_mod, 'MORNING_POLL_SECONDS', 60)
         process_morning_tick = getattr(booking_mod, 'process_morning_tick')
+        log_ticker_error = getattr(booking_mod, 'log_ticker_error')
 
         while True:
             try:
@@ -81,6 +82,7 @@ def _start_morning_scheduler_once(app):
                             process_morning_tick(app, tenant_id)
                         except Exception as e:
                             print(f"[WA-MORNING][{tenant_id}] tick error: {repr(e)}")
+                            log_ticker_error(app, tenant_id, "WA-MORNING", e)
             except Exception as e:
                 print(f"[WA-MORNING] loop error: {repr(e)}")
             time_mod.sleep(poll_seconds)
@@ -98,6 +100,7 @@ def _start_operator_scheduler_once(app):
         booking_mod = importlib.import_module('routes.booking')
         poll_seconds = getattr(booking_mod, 'MORNING_POLL_SECONDS', 60)
         process_operator_tick = getattr(booking_mod, 'process_operator_tick')
+        log_ticker_error = getattr(booking_mod, 'log_ticker_error')
         while True:
             try:
                 with app.app_context():
@@ -107,6 +110,7 @@ def _start_operator_scheduler_once(app):
                             process_operator_tick(app, tenant_id)
                         except Exception as e:
                             print(f"[WA-OP][{tenant_id}] tick error: {repr(e)}")
+                            log_ticker_error(app, tenant_id, "WA-OP", e)
             except Exception as e:
                 print(f"[WA-OP] loop error: {repr(e)}")
             time_mod.sleep(poll_seconds)
@@ -127,6 +131,7 @@ def _start_error_summary_scheduler_once(app):
         process_error_summary_tick = getattr(booking_mod, 'process_error_summary_tick')
         process_crm_error_summary_tick = getattr(booking_mod, 'process_crm_error_summary_tick')
         now_rome = getattr(booking_mod, '_now_rome')
+        log_ticker_error = getattr(booking_mod, 'log_ticker_error')
 
         # Controllo immediato all'avvio/riavvio del processo (deploy, recycle,
         # cold start): recupera subito eventuali errori delle ore precedenti
@@ -141,10 +146,12 @@ def _start_error_summary_scheduler_once(app):
                         process_error_summary_tick(app, tenant_id, force_previous_hour=True)
                     except Exception as e:
                         print(f"[ERR-SUMMARY][{tenant_id}] startup check error: {repr(e)}")
+                        log_ticker_error(app, tenant_id, "ERR-SUMMARY", e)
                     try:
                         process_crm_error_summary_tick(app, tenant_id)
                     except Exception as e:
                         print(f"[CRM-ERR-SUMMARY][{tenant_id}] startup check error: {repr(e)}")
+                        log_ticker_error(app, tenant_id, "CRM-ERR-SUMMARY", e)
         except Exception as e:
             print(f"[ERR-SUMMARY] startup check loop error: {repr(e)}")
 
@@ -166,10 +173,12 @@ def _start_error_summary_scheduler_once(app):
                             process_error_summary_tick(app, tenant_id)
                         except Exception as e:
                             print(f"[ERR-SUMMARY][{tenant_id}] tick error: {repr(e)}")
+                            log_ticker_error(app, tenant_id, "ERR-SUMMARY", e)
                         try:
                             process_crm_error_summary_tick(app, tenant_id)
                         except Exception as e:
                             print(f"[CRM-ERR-SUMMARY][{tenant_id}] tick error: {repr(e)}")
+                            log_ticker_error(app, tenant_id, "CRM-ERR-SUMMARY", e)
             except Exception as e:
                 print(f"[ERR-SUMMARY] loop error: {repr(e)}")
 
