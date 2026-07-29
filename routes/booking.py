@@ -1350,12 +1350,25 @@ def _prenota_impl(tenant_id):
                 "errori": ["Errore database: " + str(e)]
             }), 500
 
+        # Se il servizio è collegato a una lampada solarium, la durata mostrata
+        # al cliente (pagina finale + email) deve essere quella EFFETTIVA della
+        # seduta, non quella dello slot prenotato
+        solarium_device = g.db_session.query(SolariumDevice).filter(
+            SolariumDevice.service_id == servizio_id,
+            SolariumDevice.is_deleted == False
+        ).first()
+        servizio_durata_display = (
+            int(solarium_device.durata_seduta_minuti)
+            if solarium_device and solarium_device.durata_seduta_minuti
+            else (servizio.servizio_durata or 30)
+        )
+
         risultati.append({
             "success": True,
             "id": nuovo.id,
             "servizio_id": servizio_id,
             "servizio_nome": servizio.servizio_nome,
-            "servizio_durata": servizio.servizio_durata or 30,
+            "servizio_durata": servizio_durata_display,
             "servizio_prezzo": float(getattr(servizio, 'servizio_prezzo', 0) or 0),
             "data": data_str,
             "ora": inizio.strftime("%H:%M"),
@@ -1378,18 +1391,10 @@ def _prenota_impl(tenant_id):
         totale_durata = 0
         totale_prezzo = 0
         for r in risultati:
-            servizio_obj = g.db_session.get(Service, r['servizio_id'])
-            # Se il servizio è collegato a una lampada solarium, l'email deve mostrare
-            # la durata EFFETTIVA della seduta (da SolariumDevice), non la durata dello slot
-            solarium_device = g.db_session.query(SolariumDevice).filter(
-                SolariumDevice.service_id == r['servizio_id'],
-                SolariumDevice.is_deleted == False
-            ).first()
-            if solarium_device:
-                durata_i = int(solarium_device.durata_seduta_minuti or 0)
-            else:
-                durata_i = int(servizio_obj.servizio_durata or 30)
-            prezzo_i = float(getattr(servizio_obj, 'servizio_prezzo', 0) or 0)
+            # servizio_durata è già la durata corretta da mostrare (effettiva per
+            # il solarium, altrimenti quella dello slot), calcolata sopra
+            durata_i = int(r['servizio_durata'] or 30)
+            prezzo_i = float(r.get('servizio_prezzo', 0) or 0)
             totale_durata += durata_i
             totale_prezzo += prezzo_i
             appuntamenti_data.append({
