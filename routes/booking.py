@@ -5,7 +5,7 @@ import traceback
 from flask import Blueprint, g, request, jsonify, render_template, render_template_string, session, url_for, current_app, Response
 from flask_wtf import CSRFProtect
 from flask_wtf.csrf import generate_csrf
-from appl.models import Appointment, AppointmentSource, Service, Operator, OperatorShift, Client, BusinessInfo, BookingErrorLog, CrmErrorLog
+from appl.models import Appointment, AppointmentSource, Service, Operator, OperatorShift, Client, BusinessInfo, BookingErrorLog, CrmErrorLog, SolariumDevice
 from datetime import date, datetime, timezone, timedelta, time
 from sqlalchemy import func, or_
 from pytz import timezone as pytz_timezone
@@ -1379,7 +1379,16 @@ def _prenota_impl(tenant_id):
         totale_prezzo = 0
         for r in risultati:
             servizio_obj = g.db_session.get(Service, r['servizio_id'])
-            durata_i = int(servizio_obj.servizio_durata or 30)
+            # Se il servizio è collegato a una lampada solarium, l'email deve mostrare
+            # la durata EFFETTIVA della seduta (da SolariumDevice), non la durata dello slot
+            solarium_device = g.db_session.query(SolariumDevice).filter(
+                SolariumDevice.service_id == r['servizio_id'],
+                SolariumDevice.is_deleted == False
+            ).first()
+            if solarium_device:
+                durata_i = int(solarium_device.durata_seduta_minuti or 0)
+            else:
+                durata_i = int(servizio_obj.servizio_durata or 30)
             prezzo_i = float(getattr(servizio_obj, 'servizio_prezzo', 0) or 0)
             totale_durata += durata_i
             totale_prezzo += prezzo_i
