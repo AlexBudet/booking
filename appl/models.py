@@ -499,6 +499,36 @@ class PromoPacchetto(db.Model):
             'attiva': self.attiva
         }
 
+class PrepagataRicaricaRegola(db.Model):
+    """Soglie di ricarica automatica: se il servizio abbinato (service_id) o un servizio
+    qualsiasi della categoria abbinata (categoria) viene pagato in Cassa esattamente a
+    importo_pagato, la prepagata del cliente viene accreditata di importo_accreditato.
+    Ogni riga ha ESATTAMENTE UNO tra service_id e categoria valorizzato, mai entrambi né
+    nessuno dei due (validato lato route). Più righe per lo stesso service_id/categoria =
+    più soglie per quel servizio/categoria."""
+    __tablename__ = 'prepagata_ricarica_regole'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    service_id = db.Column(db.Integer, db.ForeignKey('servizi.id'), nullable=True)
+    categoria = db.Column(db.String(50), nullable=True)  # alternativa a service_id: es. "Solarium"
+    importo_pagato = db.Column(db.Numeric(10, 2), nullable=False)
+    importo_accreditato = db.Column(db.Numeric(10, 2), nullable=False)
+    attiva = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, server_default=func.now())
+
+    service = db.relationship('Service', backref='prepagata_ricarica_regole')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'service_id': self.service_id,
+            'service_nome': self.service.servizio_nome if self.service else None,
+            'categoria': self.categoria,
+            'importo_pagato': float(self.importo_pagato),
+            'importo_accreditato': float(self.importo_accreditato),
+            'attiva': self.attiva
+        }
+
+
 class SedutaStatus(PyEnum):
     Presente = 1      # Solo presente
     Pianificata = 2   # Pianificata (con data)
@@ -538,6 +568,7 @@ class Pacchetto(db.Model):
     credito_residuo = db.Column(db.Numeric(10, 2), nullable=True)   # Saldo disponibile
     data_scadenza = db.Column(db.Date, nullable=True)               # Scadenza carta
     beneficiario_nome = db.Column(db.String(100), nullable=True)    # Nome beneficiario (se diverso da client)
+    numero_tessera = db.Column(db.String(50), nullable=True, unique=True)  # Numero tessera carta (inserito a mano)
     
     # Vincoli utilizzo prepagata (JSON)
     # Formato: {"tipo": "tutti" | "categoria" | "sottocategoria" | "servizi", 
@@ -832,3 +863,52 @@ class SolariumSession(db.Model):
 
     def __repr__(self):
         return f"<SolariumSession device_id={self.device_id} inizio={self.inizio}>"
+
+class BeautyNews(db.Model):
+    """Notizie dal mondo beauty / estetica / normativa / solarium raccolte due
+    volte a settimana dallo scan automatico (appl/news_beauty.py), che interroga
+    l'API di Claude con la ricerca web attiva.
+
+    Le notizie sono le stesse per tutti i tenant: lo scan viene eseguito una
+    sola volta e il risultato viene scritto nel database di ogni tenant, cosi'
+    la pagina Report legge sempre e solo dal proprio DB.
+
+    Ogni scan genera un batch nuovo (scan_batch). Le notizie vecchie restano in
+    tabella come archivio: il tile mostra soltanto l'ultimo batch."""
+    __tablename__ = 'beauty_news'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    scan_batch = db.Column(db.String(40), nullable=False, index=True)  # es. 20260805T0700
+    titolo = db.Column(db.String(300), nullable=False)
+    sintesi = db.Column(db.Text, nullable=True)
+    categoria = db.Column(db.String(50), nullable=True)   # beauty | estetica | normativa | solarium
+    fonte = db.Column(db.String(200), nullable=True)      # nome della testata
+    url = db.Column(db.String(1000), nullable=True)
+    data_notizia = db.Column(db.Date, nullable=True)      # data della notizia, se nota
+    ordine = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, server_default=func.now(), nullable=False)
+
+    def __repr__(self):
+        return f"<BeautyNews {self.scan_batch} {self.titolo[:40]}>"
+
+class Oroscopo(db.Model):
+    """Oroscopo settimanale in chiave estetista, generato una volta a settimana
+    (il lunedi') dallo stesso thread che raccoglie le notizie - vedi
+    appl/oroscopo.py.
+
+    In tabella finisce solo il testo per segno: simbolo e periodo dello zodiaco
+    sono dati fissi e stanno nel codice, non ha senso salvarli ogni settimana.
+
+    Come le notizie, e' identico per tutti i tenant: si genera una volta sola e
+    si scrive nel database di ciascuno."""
+    __tablename__ = 'oroscopo_settimanale'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    scan_batch = db.Column(db.String(40), nullable=False, index=True)
+    segno = db.Column(db.String(30), nullable=False)
+    testo = db.Column(db.Text, nullable=False)
+    ordine = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, server_default=func.now(), nullable=False)
+
+    def __repr__(self):
+        return f"<Oroscopo {self.scan_batch} {self.segno}>"
