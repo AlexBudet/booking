@@ -17,6 +17,7 @@ from markupsafe import escape
 import threading
 import requests
 from azure.communication.email import EmailClient
+from routes.usage import registra_uso
 import html as html_lib
 
 # --- UTIL: formato data per email (solo output email, non DB) ---
@@ -258,7 +259,8 @@ def process_error_summary_tick(app, tenant_id: str, force_previous_hour: bool = 
             invia_email_async(
                 to_email=ERROR_SUMMARY_EMAIL_TO,
                 subject=f"[{nome_negozio}] {len(errori)} errori prenotazione nell'ultima ora",
-                html_content=html_content
+                html_content=html_content,
+                app=app, tenant_id=tenant_id, tipo='riepilogo_errori'
             )
             print(f"[ERR-SUMMARY][{tenant_id}] riepilogo inviato: {len(errori)} errori tra {window_start} e {window_end}")
         except Exception as e:
@@ -370,7 +372,8 @@ def process_crm_error_summary_tick(app, tenant_id: str):
             invia_email_async(
                 to_email=ERROR_SUMMARY_EMAIL_TO,
                 subject=f"[{nome_negozio}] {len(errori)} errori CRM/gestionale",
-                html_content=html_content
+                html_content=html_content,
+                app=app, tenant_id=tenant_id, tipo='riepilogo_errori'
             )
             print(f"[CRM-ERR-SUMMARY][{tenant_id}] riepilogo inviato: {len(errori)} errori tra {window_start} e {window_end}")
         except Exception as e:
@@ -401,7 +404,8 @@ def _tenant_env_prefix(tenant_id: str) -> str:
     digits = ''.join(ch for ch in raw if ch.isdigit())
     return f'T{digits}' if digits else raw
 
-def invia_email_azure(to_email, subject, html_content, from_email=None, plain_text=None):
+def invia_email_azure(to_email, subject, html_content, from_email=None, plain_text=None,
+                      app=None, tenant_id=None, tipo='altro'):
     connection_string = os.environ.get('AZURE_EMAIL_CONNECTION_STRING')
     if not connection_string:
         print("ERROR: AZURE_EMAIL_CONNECTION_STRING not set")
@@ -432,12 +436,16 @@ def invia_email_azure(to_email, subject, html_content, from_email=None, plain_te
     try:
         result = poller.result()
         print(f"[EMAIL] sent id={getattr(result,'message_id',None)} sender={sender}")
-        return getattr(result, "status", "Succeeded") == "Succeeded"
+        ok = getattr(result, "status", "Succeeded") == "Succeeded"
+        registra_uso(app, tenant_id, 'email', tipo=tipo, esito=ok)
+        return ok
     except Exception as e:
         print(f"[EMAIL] ERROR result: {repr(e)}")
+        registra_uso(app, tenant_id, 'email', tipo=tipo, esito='errore', errore=e)
         return False
 
-def invia_email_async(to_email, subject, html_content, from_email=None, plain_text=None, delay_seconds=0):
+def invia_email_async(to_email, subject, html_content, from_email=None, plain_text=None,
+                      delay_seconds=0, app=None, tenant_id=None, tipo='altro'):
     """
     Invio email in background thread separato (parallelo).
     Versione originale che funzionava perfettamente.
@@ -489,6 +497,7 @@ def invia_email_async(to_email, subject, html_content, from_email=None, plain_te
             status = getattr(result, 'status', 'Unknown')
             message_id = getattr(result, 'message_id', None)
             print(f"[EMAIL-ASYNC] SUCCESS to={to_email} status={status} id={message_id}")
+            registra_uso(app, tenant_id, 'email', tipo=tipo, esito='ok')
             
         except Exception as e:
             # Log dettagliato degli errori Azure (429, 409, ecc.)
@@ -507,6 +516,7 @@ def invia_email_async(to_email, subject, html_content, from_email=None, plain_te
             # Log completo per debug (se necessario)
             import traceback
             print(f"[EMAIL-ASYNC] Traceback: {traceback.format_exc()}")
+            registra_uso(app, tenant_id, 'email', tipo=tipo, esito='errore', errore=e)
     
     thread = threading.Thread(target=send_email, daemon=True)
     thread.start()
@@ -1525,7 +1535,9 @@ def _prenota_impl(tenant_id):
                 to_email=email,
                 subject=f'{company_name} - Nuova prenotazione - {escape(nome)}',
                 html_content=riepilogo,
-                from_email=None
+                from_email=None,
+                app=current_app._get_current_object(),
+                tenant_id=getattr(g, 'tenant_id', None), tipo='conferma'
             )
         except Exception as e:
             print(f"ERROR queueing confirmation email: {repr(e)}")
@@ -1539,7 +1551,9 @@ def _prenota_impl(tenant_id):
                     subject=f'{company_name} - Nuova prenotazione - {escape(nome)}',
                     html_content=admin_riepilogo,
                     from_email=None,
-                    delay_seconds=65
+                    delay_seconds=65,
+                    app=current_app._get_current_object(),
+                    tenant_id=getattr(g, 'tenant_id', None), tipo='conferma_admin'
                 )
             except Exception as e:
                 print(f"ERROR queueing admin email: {repr(e)}")
@@ -1726,7 +1740,9 @@ def cancel_booking(tenant_id, token):
                     to_email=admin_email,
                     subject=f'{company_name} - Annullamento Prenotazione - {nome} {cognome}',
                     html_content=riepilogo_admin,
-                    from_email=None
+                    from_email=None,
+                    app=current_app._get_current_object(),
+                    tenant_id=getattr(g, 'tenant_id', None), tipo='annullamento'
                 )
             except Exception as e:
                 print(f"[CANCEL] ERROR sending admin email: {repr(e)}")
@@ -1882,7 +1898,9 @@ Se non hai richiesto questo codice, ignora questa email.
             subject=f'Codice {codice} - {company_name}',
             html_content=html_content,
             plain_text=plain_text,
-            from_email=None
+            from_email=None,
+            app=current_app._get_current_object(),
+            tenant_id=getattr(g, 'tenant_id', None), tipo='codice_accesso'
         )
         print(f"[INVIA-CODICE] invia_email_async returned: {result}")
         return jsonify({"success": True})
@@ -2043,8 +2061,12 @@ def _render_morning_text(session, template: str, item: dict) -> str:
     except Exception:
         return template or ''
 
-def _send_unipile_message(creds: dict, to_phone: str, text: str) -> bool:
-    """Invia messaggio WhatsApp con API REST Unipile"""
+def _send_unipile_message(creds: dict, to_phone: str, text: str,
+                          app=None, tenant_id=None, tipo='altro') -> bool:
+    """Invia messaggio WhatsApp con API REST Unipile.
+
+    app/tenant_id/tipo servono solo al conteggio dei consumi (usage_events):
+    se non arrivano, l'invio funziona lo stesso e non viene contato."""
     try:
         numero_whatsapp = _prepare_unipile_phone(to_phone)
         if not numero_whatsapp:
@@ -2070,21 +2092,27 @@ def _send_unipile_message(creds: dict, to_phone: str, text: str) -> bool:
         if response.status_code in [200, 201]:
             result = response.json()
             print(f"[UNIPILE] Messaggio inviato con successo a {numero_whatsapp}: {result}")
+            registra_uso(app, tenant_id, 'whatsapp', tipo=tipo, esito='ok')
             return True
         else:
             print(f"[UNIPILE] Errore HTTP {response.status_code}: {response.text}")
+            registra_uso(app, tenant_id, 'whatsapp', tipo=tipo, esito='errore',
+                         errore=f"HTTP {response.status_code}: {response.text[:200]}")
             return False
             
     except requests.exceptions.Timeout:
         print(f"[UNIPILE] Timeout invio a {to_phone}")
+        registra_uso(app, tenant_id, 'whatsapp', tipo=tipo, esito='errore', errore='timeout')
         return False
     except requests.exceptions.RequestException as e:
         print(f"[UNIPILE] Errore connessione: {repr(e)}")
+        registra_uso(app, tenant_id, 'whatsapp', tipo=tipo, esito='errore', errore=e)
         return False
     except Exception as e:
         print(f"[UNIPILE] ERROR invio a {to_phone}: {repr(e)}")
         import traceback
         print(f"[UNIPILE] Traceback: {traceback.format_exc()}")
+        registra_uso(app, tenant_id, 'whatsapp', tipo=tipo, esito='errore', errore=e)
         return False
     
 def _build_today_targets(session, start_from=None) -> list:
@@ -2280,7 +2308,9 @@ def process_morning_tick(app, tenant_id: str):
                 ok = False
                 if creds:
                     try:
-                        ok = _send_unipile_message(creds, item["phone"], text_to_send)
+                        ok = _send_unipile_message(creds, item["phone"], text_to_send,
+                                                   app=app, tenant_id=tenant_id,
+                                                   tipo='promemoria')
                     except Exception as e:
                         _wa_dbg(tenant_id, f"send raised exception appt_id={item.get('appointment_id')}: {repr(e)}")
                         ok = False
@@ -2622,7 +2652,9 @@ def process_operator_tick(app, tenant_id: str):
                 ok = False
                 if creds:
                     try:
-                        ok = _send_unipile_message(creds, item["phone"], text_to_send)
+                        ok = _send_unipile_message(creds, item["phone"], text_to_send,
+                                                   app=app, tenant_id=tenant_id,
+                                                   tipo='memo_operatore')
                     except Exception as e:
                         _op_dbg(tenant_id, f"send error: {repr(e)}")
                         ok = False
@@ -2695,7 +2727,10 @@ def operator_notifications_trigger(tenant_id):
             ok = False
             if creds:
                 try:
-                    ok = _send_unipile_message(creds, item["phone"], text)
+                    ok = _send_unipile_message(creds, item["phone"], text,
+                                               app=current_app._get_current_object(),
+                                               tenant_id=tenant_id,
+                                               tipo='memo_operatore')
                 except Exception as e:
                     ok = False
                     print(f"[WA-OP][{tenant_id}] send error operator_id={item.get('operator_id')}: {repr(e)}")
