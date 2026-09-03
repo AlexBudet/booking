@@ -455,6 +455,7 @@ Tipologia dei dati raccolti, finalità e modalità del trattamento
 I dati trattati sono quelli forniti volontariamente dall’utente tramite il form di registrazione presente sulla piattaforma o durante l’acquisto di prodotti, come nome, indirizzo e-mail, numero di telefono e dati necessari alla gestione del pagamento.
 Non vengono trattati dati relativi alla semplice navigazione sul sito.
 La raccolta e il trattamento di questi dati hanno lo scopo di consentire la registrazione alla piattaforma, la gestione degli acquisti effettuati, l’adempimento di eventuali obblighi contrattuali e precontrattuali, oltre al rispetto degli obblighi previsti da normative nazionali o comunitarie.
+Se i recapiti che indichi (numero di cellulare o indirizzo e-mail) corrispondono a quelli di un cliente già presente nella nostra anagrafica, la prenotazione potrà essere collegata a quella scheda cliente, previa verifica da parte del nostro personale. In tal caso le comunicazioni relative all’appuntamento (conferme e promemoria) riporteranno i dati anagrafici già presenti in scheda. Puoi chiederne in ogni momento la rettifica scrivendo a {{ business_info.email }}.
 
 Base giuridica del trattamento – obbligatorietà del conferimento e conseguenze del mancato conferimento
 La base giuridica del trattamento è di tipo contrattuale.
@@ -553,7 +554,9 @@ Per quanto non espressamente previsto nelle presenti CGV, si applica la legge it
     </tr>
     <tr>
       <td style="padding: 6px 0;"><label for="telefono" style="margin-bottom:0;">Cellulare:</label></td>
-      <td><input type="tel" id="telefono" required class="form-control" autocomplete="tel"></td>
+      <td><input type="tel" id="telefono" required class="form-control" autocomplete="tel">
+        <div class="form-text mt-1" style="font-size:0.85em; font-weight:normal; color:#c2aebc;">Se hai già lasciato questo numero in negozio, la prenotazione verrà collegata alla tua scheda esistente.</div>
+      </td>
     </tr>
     <tr>
       <td style="padding: 6px 0;"><label for="email" style="margin-bottom:0;">Email:</label></td>
