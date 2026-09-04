@@ -920,6 +920,14 @@ if (res.success && res.prenotazioni && res.prenotazioni.length) {
 }
 </script>
 <script>
+// Vero solo se dentro l'HTML c'e' del testo. Serve per la "i" accanto ai
+// servizi: il gestionale salva HTML, e un riquadro svuotato lascia "<br>".
+function haTestoVisibile(html) {
+  if (!html) return false;
+  const d = document.createElement('div');
+  d.innerHTML = html;
+  return (d.textContent || '').replace(/ /g, ' ').trim().length > 0;
+}
 document.addEventListener('DOMContentLoaded', function() {
   const servizioIniziale = document.getElementById('servizio-iniziale');
   const servizioIdSelezionato = document.getElementById('servizio-id-selezionato');
@@ -1068,7 +1076,10 @@ function showModalSuggestions(lista, query = "") {
         nameSpan.textContent = s.servizio_nome;
         item.appendChild(nameSpan);
 
-        if (s.servizio_descrizione && s.servizio_descrizione.trim()) {
+        // NON basta che la descrizione sia non vuota: cancellandola dal
+        // gestionale resta "<br>", che e' una stringa non vuota. Cosi' la "i"
+        // restava li' e apriva un riquadro senza niente dentro.
+        if (haTestoVisibile(s.servizio_descrizione)) {
           const infoBtn = document.createElement('button');
           infoBtn.type = 'button';
           infoBtn.className = 'btn btn-sm btn-info ms-2';
