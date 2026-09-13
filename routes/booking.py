@@ -62,6 +62,14 @@ def _html_to_text(html_content: str) -> str:
 def _now_rome():
     return datetime.now(pytz_timezone('Europe/Rome'))
 
+def _ora_rome(dt):
+    """Solo per la stampa nelle e-mail: i timestamptz letti dal DB arrivano in UTC
+    (sessione DB in UTC), qui si portano all'ora italiana. Un datetime naive resta
+    com'e'."""
+    if dt is not None and dt.tzinfo is not None:
+        return dt.astimezone(pytz_timezone('Europe/Rome'))
+    return dt
+
 # Stato semplice per il job mattutino (per-tenant, in memoria)
 _MORNING_STATE = {}        # tenant_id -> {"date": date, "queue": [dict], "idx": int, "last_sent_minute": datetime}
 _MORNING_DONE = {}         # tenant_id -> date: giorno in cui il batch è già stato AVVIATO (ottimizzazione in memoria; la correttezza è sul DB)
@@ -241,7 +249,7 @@ def process_error_summary_tick(app, tenant_id: str, force_previous_hour: bool = 
 
             righe_html = "".join(
                 f"<tr>"
-                f"<td style='padding:6px 10px;border-bottom:1px solid #eee;'>{e.created_at.strftime('%H:%M:%S')}</td>"
+                f"<td style='padding:6px 10px;border-bottom:1px solid #eee;'>{_ora_rome(e.created_at).strftime('%H:%M:%S')}</td>"
                 f"<td style='padding:6px 10px;border-bottom:1px solid #eee;'>{escape(e.reason)}</td>"
                 f"<td style='padding:6px 10px;border-bottom:1px solid #eee;'>{escape(e.nome or '')} {escape(e.cognome or '')}</td>"
                 f"<td style='padding:6px 10px;border-bottom:1px solid #eee;'>{escape(e.telefono or '')}<br>{escape(e.email or '')}</td>"
@@ -250,7 +258,7 @@ def process_error_summary_tick(app, tenant_id: str, force_previous_hour: bool = 
             )
             html_content = f"""
             <h3>Riepilogo errori prenotazione online - {escape(nome_negozio)}</h3>
-            <p>Finestra: {window_start.strftime('%d/%m/%Y %H:%M')} - {window_end.strftime('%H:%M')} ({len(errori)} errori)</p>
+            <p>Finestra: {_ora_rome(window_start).strftime('%d/%m/%Y %H:%M')} - {_ora_rome(window_end).strftime('%H:%M')} ({len(errori)} errori)</p>
             <table style="border-collapse:collapse;width:100%;font-size:13px;">
                 <tr style="background:#f5f5f5;"><th>Ora</th><th>Motivo</th><th>Cliente</th><th>Contatti</th></tr>
                 {righe_html}
@@ -355,7 +363,7 @@ def process_crm_error_summary_tick(app, tenant_id: str):
 
             righe_html = "".join(
                 f"<tr>"
-                f"<td style='padding:6px 10px;border-bottom:1px solid #eee;'>{e.created_at.strftime('%d/%m %H:%M:%S')}</td>"
+                f"<td style='padding:6px 10px;border-bottom:1px solid #eee;'>{_ora_rome(e.created_at).strftime('%d/%m %H:%M:%S')}</td>"
                 f"<td style='padding:6px 10px;border-bottom:1px solid #eee;'>{escape(e.reason)}</td>"
                 f"<td style='padding:6px 10px;border-bottom:1px solid #eee;'>{_client_cell(e)}</td>"
                 f"</tr>"
@@ -363,7 +371,7 @@ def process_crm_error_summary_tick(app, tenant_id: str):
             )
             html_content = f"""
             <h3>Riepilogo errori CRM/gestionale - {escape(nome_negozio)}</h3>
-            <p>Finestra: {window_start.strftime('%d/%m/%Y %H:%M')} - {window_end.strftime('%d/%m/%Y %H:%M')} ({len(errori)} errori)</p>
+            <p>Finestra: {_ora_rome(window_start).strftime('%d/%m/%Y %H:%M')} - {_ora_rome(window_end).strftime('%d/%m/%Y %H:%M')} ({len(errori)} errori)</p>
             <table style="border-collapse:collapse;width:100%;font-size:13px;">
                 <tr style="background:#f5f5f5;"><th>Data/Ora</th><th>Motivo</th><th>Cliente</th></tr>
                 {righe_html}
