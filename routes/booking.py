@@ -1991,41 +1991,41 @@ def _services_bullet_for_contiguous_block(session, appt) -> str:
                 Appointment.service_id != 9999,
                 Appointment.is_cancelled_by_client == False
             )
-            .order_by(Appointment.start_time.asc())
+            .order_by(Appointment.start_time.asc(), Appointment.id.asc())
             .all()
         )
         if not appts:
             return ""
 
-        # prepara start/end per catena contigua
-        starts, ends = [], []
+        # Divide la giornata in blocchi contigui con la STESSA regola della coda
+        # (_build_today_targets): un appuntamento sta nel blocco se inizia entro la
+        # fine PIU' LONTANA raggiunta finora, non solo entro la fine di quello
+        # subito prima. Con due servizi paralleli alla stessa ora (Manicure 30' e
+        # Doccia 15' alle 15:00) il confronto col solo vicino vedeva un buco
+        # 15:15-15:30 che non c'era e il memo perdeva i servizi successivi.
+        blocks = []
+        block_end = None
         for a in appts:
-            start = a.start_time
             dur_min = int(getattr(a, "_duration", 0) or 0)
             if dur_min <= 0:
                 svc = session.get(Service, a.service_id) if a.service_id else None
                 dur_min = int(getattr(svc, "servizio_durata", 0) or 30)
-            ends.append(start + timedelta(minutes=dur_min))
-            starts.append(start)
+            a_end = a.start_time + timedelta(minutes=dur_min)
+            if blocks and a.start_time <= block_end:
+                blocks[-1].append(a)
+                block_end = max(block_end, a_end)
+            else:
+                blocks.append([a])
+                block_end = a_end
 
-        # trova indice dell'appuntamento corrente
-        try:
-            idx = next(i for i, a in enumerate(appts) if a.id == appt.id)
-        except StopIteration:
+        block = next((b for b in blocks if any(a.id == appt.id for a in b)), None)
+        if not block:
             return ""
-
-        # espandi a sinistra/destra finché contigui (overlap o adiacenti)
-        lower = idx
-        while lower - 1 >= 0 and ends[lower - 1] >= starts[lower]:
-            lower -= 1
-        upper = idx
-        while upper + 1 < len(appts) and starts[upper + 1] <= ends[upper]:
-            upper += 1
 
         # costruisci elenco servizi (in ordine)
         lines = []
-        for i in range(lower, upper + 1):
-            svc = session.get(Service, appts[i].service_id) if appts[i].service_id else None
+        for a in block:
+            svc = session.get(Service, a.service_id) if a.service_id else None
             label = ((getattr(svc, "servizio_nome", "") or "").strip() if svc else "")
             if label:
                 lines.append(f"• {label}")
@@ -2168,7 +2168,7 @@ def _build_today_targets(session, start_from=None) -> list:
     if dummy_service_ids:
         q = q.filter(Appointment.service_id.notin_(dummy_service_ids))
 
-    q = q.order_by(Appointment.start_time.asc())
+    q = q.order_by(Appointment.start_time.asc(), Appointment.id.asc())
     apps = q.all()
 
     targets = []
