@@ -1017,6 +1017,39 @@ document.getElementById('modal-servizio-input').addEventListener('input', functi
   }
 });
 
+// La "i" accanto a un servizio, o null se la descrizione non ha testo.
+// UNA sola funzione per l'elenco per sottocategoria e per i risultati della
+// ricerca: prima erano due copie, e quella della ricerca era rimasta alla
+// versione vecchia (textContent), quindi appena si scriveva nel campo di ricerca
+// la descrizione compariva con tutti i tag visibili (<div>, <b>, <br>...).
+// La descrizione e' HTML scritto dal gestionale, per questo innerHTML.
+// NON basta che sia non vuota: cancellandola dal gestionale resta "<br>", che e'
+// una stringa non vuota, e la "i" aprirebbe un riquadro senza niente dentro.
+function creaPulsanteInfoServizio(s) {
+  if (!haTestoVisibile(s.servizio_descrizione)) return null;
+  const infoBtn = document.createElement('button');
+  infoBtn.type = 'button';
+  infoBtn.className = 'btn btn-sm btn-info ms-2';
+  infoBtn.textContent = 'i';
+  infoBtn.style.backgroundColor = 'pink';
+  infoBtn.style.color = 'black';
+  infoBtn.style.border = 'none';
+  infoBtn.style.width = '30px';
+  infoBtn.style.height = '30px';
+  infoBtn.style.borderRadius = '50%';
+  infoBtn.style.fontSize = '14px';
+  infoBtn.style.fontWeight = 'bold';
+  infoBtn.style.cursor = 'pointer';
+  infoBtn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    document.getElementById('modalDescrizioneTitle').textContent = s.servizio_nome;
+    document.getElementById('modalDescrizioneBody').innerHTML = s.servizio_descrizione;
+    const modal = new bootstrap.Modal(document.getElementById('modalDescrizioneServizio'));
+    modal.show();
+  });
+  return infoBtn;
+}
+
 function showModalSuggestions(lista, query = "") {
   const modalSuggestions = document.getElementById('modal-servizio-suggestions');
   modalSuggestions.innerHTML = '';
@@ -1076,32 +1109,8 @@ function showModalSuggestions(lista, query = "") {
         nameSpan.textContent = s.servizio_nome;
         item.appendChild(nameSpan);
 
-        // NON basta che la descrizione sia non vuota: cancellandola dal
-        // gestionale resta "<br>", che e' una stringa non vuota. Cosi' la "i"
-        // restava li' e apriva un riquadro senza niente dentro.
-        if (haTestoVisibile(s.servizio_descrizione)) {
-          const infoBtn = document.createElement('button');
-          infoBtn.type = 'button';
-          infoBtn.className = 'btn btn-sm btn-info ms-2';
-          infoBtn.textContent = 'i';
-          infoBtn.style.backgroundColor = 'pink';
-          infoBtn.style.color = 'black';
-          infoBtn.style.border = 'none';
-          infoBtn.style.width = '30px';
-          infoBtn.style.height = '30px';
-          infoBtn.style.borderRadius = '50%';
-          infoBtn.style.fontSize = '14px';
-          infoBtn.style.fontWeight = 'bold';
-          infoBtn.style.cursor = 'pointer';
-          infoBtn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            document.getElementById('modalDescrizioneTitle').textContent = s.servizio_nome;
-            document.getElementById('modalDescrizioneBody').innerHTML = s.servizio_descrizione;  // Cambiato da textContent a innerHTML
-            const modal = new bootstrap.Modal(document.getElementById('modalDescrizioneServizio'));
-            modal.show();
-          });
-          item.appendChild(infoBtn);
-        }
+        const infoBtn = creaPulsanteInfoServizio(s);
+        if (infoBtn) item.appendChild(infoBtn);
 
         serviziList.appendChild(item);
       });
@@ -1126,28 +1135,8 @@ function showModalSuggestions(lista, query = "") {
       nameSpan.textContent = s.servizio_nome;
       item.appendChild(nameSpan);
 
-      if (s.servizio_descrizione && s.servizio_descrizione.trim()) {
-        const infoBtn = document.createElement('button');
-        infoBtn.type = 'button';
-        infoBtn.className = 'btn btn-sm btn-info ms-2';
-        infoBtn.textContent = 'i';
-        infoBtn.style.backgroundColor = 'pink';
-        infoBtn.style.color = 'black';
-        infoBtn.style.border = 'none';
-        infoBtn.style.width = '30px';
-        infoBtn.style.height = '30px';
-        infoBtn.style.borderRadius = '50%';
-        infoBtn.style.fontSize = '14px';
-        infoBtn.style.fontWeight = 'bold';
-        infoBtn.addEventListener('click', function(e) {
-          e.stopPropagation();
-          document.getElementById('modalDescrizioneTitle').textContent = s.servizio_nome;
-          document.getElementById('modalDescrizioneBody').textContent = s.servizio_descrizione;
-          const modal = new bootstrap.Modal(document.getElementById('modalDescrizioneServizio'));
-          modal.show();
-        });
-        item.appendChild(infoBtn);
-      }
+      const infoBtn = creaPulsanteInfoServizio(s);
+      if (infoBtn) item.appendChild(infoBtn);
 
       modalSuggestions.appendChild(item);
     });
