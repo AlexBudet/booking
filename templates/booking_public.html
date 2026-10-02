@@ -159,11 +159,6 @@ body {
     color: #eaced6 !important;
   }
 
-  input[type="date"]::-webkit-calendar-picker-indicator {
-  filter: invert(1) brightness(2);
-  /* oppure: filter: brightness(2); per solo schiarire */
-}
-
 #inviaCodiceBtn {
   background-color: #87647c !important;
   color: #fff !important;
@@ -323,6 +318,192 @@ body {
   visibility: hidden !important;
   position: absolute !important;
   bottom: -9999px !important;
+}
+
+/* ===== Calendario della data =====
+   Una tabella vera: 7 colonne a larghezza fissa (table-layout: fixed), cosi'
+   intestazioni e giorni stanno sempre nella stessa colonna a qualunque larghezza. */
+.calendario {
+  max-width: 420px;
+  margin: 4px auto 0;
+  padding: 8px 8px 6px;
+  background: #1d1a1c;
+  border: 1px solid #3b3238;
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.calendario-testa {
+  display: flex;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.calendario-titolo {
+  flex: 1;
+  text-align: center;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #f3dfe8;
+}
+.calendario-freccia {
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #d9bccb;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+.calendario-freccia:hover,
+.calendario-freccia:focus-visible {
+  background: rgba(255, 255, 255, 0.06);
+  color: #ffffff;
+}
+.calendario-freccia:disabled {
+  visibility: hidden; /* tiene il posto: il titolo resta centrato */
+}
+.calendario-tabella {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  margin: 0;
+}
+.calendario-tabella th,
+.calendario-tabella td {
+  width: 14.2857%;
+  padding: 2px;
+  text-align: center;
+  vertical-align: middle;
+}
+.calendario-tabella th {
+  height: 30px;
+  color: #9c8792;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.calendario-giorno {
+  display: block;
+  width: 100%;
+  height: 40px;
+  padding: 0;
+  border: 1px solid rgba(169, 140, 167, 0.3);
+  border-radius: 10px;
+  background: rgba(169, 140, 167, 0.16);
+  color: #f1dfe7;
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 500;
+  line-height: 38px;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+  touch-action: manipulation;
+}
+.calendario-giorno:hover,
+.calendario-giorno:focus-visible {
+  background: rgba(169, 140, 167, 0.34);
+  border-color: #a98ca7;
+  color: #ffffff;
+  outline: none;
+}
+.calendario-giorno:focus-visible {
+  box-shadow: 0 0 0 2px #d9bccb;
+}
+.calendario-giorno.is-oggi {
+  border-color: #d9bccb;
+}
+.calendario-giorno.is-scelto,
+.calendario-giorno.is-scelto:hover,
+.calendario-giorno.is-scelto:focus-visible {
+  background: linear-gradient(135deg, #b48fae, #87647c);
+  border-color: transparent;
+  color: #ffffff;
+  font-weight: 700;
+  box-shadow: 0 3px 10px rgba(135, 100, 124, 0.45);
+}
+.calendario-giorno.is-spento,
+.calendario-giorno.is-spento:hover {
+  background: transparent;
+  border-color: transparent;
+  color: #5f545a;
+  text-decoration: line-through;
+  text-decoration-color: rgba(160, 140, 150, 0.55);
+  cursor: not-allowed;
+}
+/* Mentre arrivano le disponibilita' i giorni non sono "non disponibili": pulsano */
+.calendario-giorno.is-attesa,
+.calendario-giorno.is-attesa:hover {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: transparent;
+  color: #8a7b83;
+  cursor: progress;
+  animation: calendario-attesa 1.2s ease-in-out infinite;
+}
+.calendario-giorno.is-spento:focus-visible,
+.calendario-giorno.is-attesa:focus-visible {
+  box-shadow: 0 0 0 2px #6f6168;
+}
+@keyframes calendario-attesa {
+  50% { opacity: 0.45; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .calendario-giorno.is-attesa { animation: none; }
+}
+@media (max-width: 767px) {
+  .calendario-giorno {
+    height: 38px;
+    line-height: 36px;
+  }
+}
+
+/* Legenda e messaggio sotto al calendario: piccoli, non spostano il resto */
+.calendario-legenda {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px 12px;
+  max-width: 420px;
+  margin: 6px auto 0;
+  font-size: 0.68rem;
+  line-height: 1.3;
+  color: #a8949f;
+}
+.calendario-legenda span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.legenda-colore {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+}
+.legenda-disponibile {
+  background: rgba(169, 140, 167, 0.22);
+  box-shadow: inset 0 0 0 1px rgba(169, 140, 167, 0.6);
+}
+.legenda-selezionata {
+  background: linear-gradient(135deg, #b48fae, #87647c);
+}
+.legenda-non-disponibile {
+  /* trattino orizzontale: richiama il numero barrato dei giorni non disponibili */
+  background: linear-gradient(transparent 42%, #7d6f77 42%, #7d6f77 58%, transparent 58%);
+  box-shadow: inset 0 0 0 1px #4a4046;
+}
+.calendario-stato {
+  max-width: 420px;
+  min-height: 1.3em; /* riga riservata: il messaggio che compare non sposta nulla */
+  margin: 2px auto 0;
+  font-size: 0.68rem;
+  line-height: 1.3;
+  text-align: center;
+  color: #c2aebc;
 }
 </style>
 </head>
@@ -532,8 +713,36 @@ Per quanto non espressamente previsto nelle presenti CGV, si applica la legge it
 </div>
 
 <div class="mb-3" id="data_wrapper" style="display:none;">
-  <label for="data" class="form-label">Data*</label>
-  <input type="date" id="data" name="data" class="form-control" min="{{ oggi }}" required>
+  <div class="form-label" id="data-etichetta">Data*</div>
+  <!-- Valore YYYY-MM-DD scelto nel calendario: lo leggono loadOrari e /prenota -->
+  <input type="hidden" id="data" name="data">
+  <div class="calendario" id="calendario">
+    <div class="calendario-testa">
+      <button type="button" class="calendario-freccia" id="calendario-prec" aria-label="Mese precedente"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button>
+      <div class="calendario-titolo" id="calendario-titolo" aria-live="polite"></div>
+      <button type="button" class="calendario-freccia" id="calendario-succ" aria-label="Mese successivo"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
+    </div>
+    <table class="calendario-tabella" role="grid" aria-labelledby="data-etichetta calendario-titolo">
+      <thead>
+        <tr>
+          <th scope="col" abbr="Lunedì">Lun</th>
+          <th scope="col" abbr="Martedì">Mar</th>
+          <th scope="col" abbr="Mercoledì">Mer</th>
+          <th scope="col" abbr="Giovedì">Gio</th>
+          <th scope="col" abbr="Venerdì">Ven</th>
+          <th scope="col" abbr="Sabato">Sab</th>
+          <th scope="col" abbr="Domenica">Dom</th>
+        </tr>
+      </thead>
+      <tbody id="calendario-giorni"></tbody>
+    </table>
+  </div>
+  <div id="calendario-legenda" class="calendario-legenda">
+    <span><i class="legenda-colore legenda-disponibile"></i>Disponibile</span>
+    <span><i class="legenda-colore legenda-selezionata"></i>Selezionata</span>
+    <span><i class="legenda-colore legenda-non-disponibile"></i>Non disponibile</span>
+  </div>
+  <div id="calendario-stato" class="calendario-stato" role="status"></div>
   <div id="data_label" class="form-text mt-2" style="font-size:0.9em; font-weight:normal; color:#c2aebc; padding-left:15px;"></div>
 </div>
 <div class="mb-3" id="ora_wrapper" style="display:none;">
@@ -554,9 +763,13 @@ Per quanto non espressamente previsto nelle presenti CGV, si applica la legge it
     </tr>
     <tr>
       <td style="padding: 6px 0;"><label for="telefono" style="margin-bottom:0;">Cellulare:</label></td>
-      <td><input type="tel" id="telefono" required class="form-control" autocomplete="tel">
-        <div class="form-text mt-1" style="font-size:0.85em; font-weight:normal; color:#c2aebc;">Se hai già lasciato questo numero in negozio, la prenotazione verrà collegata alla tua scheda esistente.</div>
-      </td>
+      <td><input type="tel" id="telefono" required class="form-control" autocomplete="tel" aria-describedby="telefono-nota"></td>
+    </tr>
+    <!-- Nota in una riga sua: dentro la cella del campo allungava la riga e
+         "Cellulare:", centrato in verticale, scendeva sotto il livello del campo -->
+    <tr>
+      <td></td>
+      <td><div id="telefono-nota" class="form-text mt-1 mb-1" style="font-size:0.85em; font-weight:normal; color:#c2aebc;">Se hai già lasciato questo numero in negozio, la prenotazione verrà collegata alla tua scheda esistente.</div></td>
     </tr>
     <tr>
       <td style="padding: 6px 0;"><label for="email" style="margin-bottom:0;">Email:</label></td>
@@ -600,21 +813,11 @@ const csrfToken = (document.getElementById('csrf_token') && document.getElementB
 // Nascondi la select operatore inizialmente
 document.getElementById('select_operatore_wrapper').style.display = 'none';
 
-function loadOrari() {
+// Servizi scelti come parametri per il server: li usano sia /orari sia
+// /giorni-disponibili (calendario), che devono vedere la stessa richiesta.
+function parametriServizi() {
   const servizi = getServiziSelezionati();
-  const data = document.getElementById('data').value;
-  if (!servizi.length || !data) return;
-
-  const oraSelect = document.getElementById('ora');
-  oraSelect.options.length = 0;
-  const optLoading = document.createElement('option');
-  optLoading.value = '';
-  optLoading.textContent = 'Caricamento orari...';
-  oraSelect.appendChild(optLoading);
-
-  // Costruisci la query string con tutti i servizi selezionati
   const params = new URLSearchParams();
-  params.append('data', data);
   servizi.forEach(s => {
     params.append('servizi[]', JSON.stringify({
       servizio_id: s.servizio_id,
@@ -628,10 +831,36 @@ function loadOrari() {
   if (operatoriUnici.length === 1) {
     params.append('operatore_id', operatoriUnici[0]);
   }
+  return params;
+}
+
+let richiestaOrari = 0;
+
+function loadOrari() {
+  const servizi = getServiziSelezionati();
+  const data = document.getElementById('data').value;
+  if (!servizi.length || !data) return;
+
+  const oraSelect = document.getElementById('ora');
+  oraSelect.options.length = 0;
+  const optLoading = document.createElement('option');
+  optLoading.value = '';
+  optLoading.textContent = 'Caricamento orari...';
+  oraSelect.appendChild(optLoading);
+
+  // Costruisci la query string con tutti i servizi selezionati
+  const params = parametriServizi();
+  params.append('data', data);
+
+  // Se nel frattempo sono cambiati servizi o data (o la data e' stata tolta dal
+  // calendario) questa risposta e' superata e non deve riaprire il pannello orari.
+  const questaRichiesta = ++richiestaOrari;
+  const superata = () => questaRichiesta !== richiestaOrari || document.getElementById('data').value !== data;
 
 fetch(`/${tenantId}/orari?` + params.toString())
     .then(r => r.json())
     .then(res => {
+      if (superata()) return;
       // Mostra il pannello orari
       document.getElementById('ora_wrapper').style.display = '';
       oraSelect.innerHTML = '';
@@ -659,6 +888,7 @@ fetch(`/${tenantId}/orari?` + params.toString())
       }
     })
     .catch(() => {
+      if (superata()) return;
       oraSelect.options.length = 0;
       const optErr = document.createElement('option');
       optErr.value = '';
@@ -681,10 +911,13 @@ function aggiornaDataLabel() {
     return;
   }
   const giorni = ['DOMENICA', 'LUNEDÌ', 'MARTEDÌ', 'MERCOLEDÌ', 'GIOVEDÌ', 'VENERDÌ', 'SABATO'];
+  const mesi = ['GENNAIO', 'FEBBRAIO', 'MARZO', 'APRILE', 'MAGGIO', 'GIUGNO',
+                'LUGLIO', 'AGOSTO', 'SETTEMBRE', 'OTTOBRE', 'NOVEMBRE', 'DICEMBRE'];
   const [yyyy, mm, dd] = dataInput.value.split('-');
   const dataObj = new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
   const giornoSettimana = giorni[dataObj.getDay()];
-  dataLabel.textContent = `${giornoSettimana}`;
+  // Col calendario il campo data e' nascosto: qui si ripete la data scelta per intero
+  dataLabel.textContent = `${giornoSettimana} ${parseInt(dd, 10)} ${mesi[parseInt(mm, 10) - 1]} ${yyyy}`;
 }
 
 // Aggiorna quando cambia la data
@@ -1265,7 +1498,7 @@ if (!blockPrezzo && maxPrezzo > 0 && totalePrezzo > maxPrezzo) {
     aggiungiBtn.style.display = 'none';
     aggiornaTotaleServizi();
     mostraDataSePronto();
-    loadOrari();
+    calendario.aggiorna(); // giorni disponibili per i nuovi servizi + orari della data scelta
   });
 
   // Rimuovi pseudoblocco
@@ -1276,6 +1509,7 @@ if (!blockPrezzo && maxPrezzo > 0 && totalePrezzo > maxPrezzo) {
       btn.closest('.alert').remove();
       aggiornaTotaleServizi();
       mostraDataSePronto();
+      calendario.aggiorna();
     }
   });
 });
@@ -1352,6 +1586,303 @@ window.mostraDataSePronto = function() {
     inviaCodiceBtn.style.display = 'none';
   }
 };
+</script>
+
+<script>
+// Calendario della data: una tabella (7 colonne, settimana da lunedi') disegnata
+// qui, al posto del campo data nativo, che sa limitare solo un minimo e un
+// massimo e non spegnere giorni qualsiasi. Un giorno in cui i servizi scelti non
+// hanno nessun orario libero non e' selezionabile. Le disponibilita' arrivano da
+// /giorni-disponibili un mese alla volta, con lo stesso calcolo di /orari.
+// La data scelta finisce nel campo nascosto #data, con gli eventi input/change
+// che il resto della pagina gia' ascolta.
+const calendario = (function() {
+  const input = document.getElementById('data');
+  const box = document.getElementById('calendario');
+  const corpo = document.getElementById('calendario-giorni');
+  const titolo = document.getElementById('calendario-titolo');
+  const btnPrec = document.getElementById('calendario-prec');
+  const btnSucc = document.getElementById('calendario-succ');
+  const stato = document.getElementById('calendario-stato');
+  const OGGI = {{ oggi|tojson }}; // data di Roma dal server, YYYY-MM-DD
+  const MESI = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
+                'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
+  const GIORNI = ['domenica', 'lunedì', 'martedì', 'mercoledì', 'giovedì', 'venerdì', 'sabato'];
+
+  // disponibilita[chiave dei servizi]['YYYY-MM'] = {stato: 'caricamento'|'ok'|'errore', giorni: Set, promessa}
+  const disponibilita = {};
+  let chiaveServizi = '';
+  let versione = 0;           // cresce a ogni cambio di servizi: le risposte vecchie non toccano niente
+  let avanzaSeVuoto = false;  // mese senza posti e nessuna data scelta: si apre il mese dopo
+  let avviso = '';            // es. la data scelta non e' piu' disponibile
+  let dataFocus = null;       // giorno su cui sta la tastiera
+  const annoOggi = +OGGI.slice(0, 4), meseOggi = +OGGI.slice(5, 7) - 1;
+  let anno = annoOggi, mese = meseOggi; // mese mostrato (0-11)
+
+  const pad = n => String(n).padStart(2, '0');
+  const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const daYmd = s => new Date(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10));
+  const chiaveMese = (a, m) => `${a}-${pad(m + 1)}`;
+
+  function voceMese(a, m) {
+    const perServizi = disponibilita[chiaveServizi];
+    return perServizi ? perServizi[chiaveMese(a, m)] : undefined;
+  }
+
+  function inAttesa(a, m) {
+    const voce = voceMese(a, m);
+    return !!chiaveServizi && (!voce || voce.stato === 'caricamento');
+  }
+
+  // true = giorno non selezionabile
+  function giornoSpento(ds) {
+    if (ds < OGGI) return true; // stesso formato YYYY-MM-DD: il confronto fra stringhe basta
+    const voce = voceMese(+ds.slice(0, 4), +ds.slice(5, 7) - 1);
+    if (!voce || voce.stato === 'caricamento') return true;
+    if (voce.stato === 'errore') return false; // senza risposta non si blocca nessuno: decide /orari
+    return !voce.giorni.has(ds);
+  }
+
+  function caricaMese(a, m) {
+    const chiave = chiaveServizi;
+    if (!chiave) return Promise.resolve();
+    const perServizi = disponibilita[chiave] = disponibilita[chiave] || {};
+    const km = chiaveMese(a, m);
+    const esistente = perServizi[km];
+    if (esistente && esistente.stato !== 'errore') return esistente.promessa; // errore: si riprova
+
+    const params = new URLSearchParams(chiave);
+    params.append('da', ymd(new Date(a, m, 1)));
+    params.append('a', ymd(new Date(a, m + 1, 0)));
+    const voce = { stato: 'caricamento', giorni: new Set() };
+    voce.promessa = fetch(`/${tenantId}/giorni-disponibili?` + params.toString())
+      .then(r => {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(res => {
+        voce.giorni = new Set(res.disponibili || []);
+        voce.stato = 'ok';
+      })
+      .catch(() => {
+        voce.stato = 'errore';
+      });
+    perServizi[km] = voce;
+    return voce.promessa;
+  }
+
+  function aggiornaStato() {
+    const voce = voceMese(anno, mese);
+    let msg = avviso;
+    if (!msg && chiaveServizi) {
+      if (!voce || voce.stato === 'caricamento') msg = 'Verifico le disponibilità…';
+      else if (voce.stato === 'errore') msg = 'Disponibilità non verificabili: scegli un giorno e controlla gli orari.';
+      else if (voce.giorni.size === 0) msg = 'Nessuna data disponibile in questo mese.';
+    }
+    stato.textContent = msg;
+  }
+
+  // Ridisegna il mese mostrato: una riga <tr> per settimana, celle vuote prima del 1°
+  // e dopo l'ultimo giorno, cosi' ogni giorno resta sotto la sua intestazione.
+  // conFocus: porta il focus su dataFocus (tastiera). Senza, se il focus era gia' su
+  // un giorno lo si tiene lo', perche' il bottone viene ricreato.
+  function disegna(conFocus) {
+    if (!conFocus && corpo.contains(document.activeElement) && document.activeElement.dataset.data) {
+      dataFocus = document.activeElement.dataset.data;
+      conFocus = true;
+    }
+    const attesa = inAttesa(anno, mese);
+    const scelta = input.value;
+    const prefisso = chiaveMese(anno, mese);
+    const giorniMese = new Date(anno, mese + 1, 0).getDate();
+    const vuotiPrima = (new Date(anno, mese, 1).getDay() + 6) % 7; // lunedi' = colonna 0
+
+    box.classList.toggle('is-loading', attesa);
+    titolo.textContent = `${MESI[mese]} ${anno}`;
+    btnPrec.disabled = anno < annoOggi || (anno === annoOggi && mese <= meseOggi);
+
+    // Tiene il tab (un solo giorno, gli altri con le frecce): il giorno della
+    // tastiera, poi la data scelta, poi il primo disponibile, poi il primo del mese.
+    let tab = [dataFocus, scelta].find(d => d && d.slice(0, 7) === prefisso) || null;
+    const righe = document.createDocumentFragment();
+    let tr = null;
+    const celle = vuotiPrima + giorniMese;
+    for (let i = 0; i < Math.ceil(celle / 7) * 7; i++) {
+      if (i % 7 === 0) {
+        tr = document.createElement('tr');
+        righe.appendChild(tr);
+      }
+      const td = document.createElement('td');
+      const g = i - vuotiPrima + 1;
+      if (g >= 1 && g <= giorniMese) {
+        const ds = `${prefisso}-${pad(g)}`;
+        const spento = giornoSpento(ds);
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'calendario-giorno';
+        btn.textContent = g;
+        btn.dataset.data = ds;
+        btn.tabIndex = -1;
+        const d = daYmd(ds);
+        let etichetta = `${GIORNI[d.getDay()]} ${g} ${MESI[mese].toLowerCase()} ${anno}`;
+        if (spento) {
+          btn.setAttribute('aria-disabled', 'true');
+          btn.classList.add(attesa && ds >= OGGI ? 'is-attesa' : 'is-spento');
+          if (!(attesa && ds >= OGGI)) etichetta += ', non disponibile';
+        } else if (!tab) {
+          tab = ds;
+        }
+        if (ds === OGGI) {
+          btn.classList.add('is-oggi');
+          btn.setAttribute('aria-current', 'date');
+        }
+        if (ds === scelta) {
+          btn.classList.add('is-scelto');
+          td.setAttribute('aria-selected', 'true');
+        }
+        btn.setAttribute('aria-label', etichetta);
+        td.appendChild(btn);
+      }
+      tr.appendChild(td);
+    }
+    corpo.replaceChildren(righe);
+
+    const tabBtn = corpo.querySelector(`[data-data="${tab}"]`) || corpo.querySelector('.calendario-giorno');
+    tabBtn.tabIndex = 0;
+    if (conFocus) tabBtn.focus();
+    aggiornaStato();
+  }
+
+  // Mostra il mese (anche fuori da 0-11: new Date normalizza), lo carica se serve
+  // e lo ridisegna quando arriva la risposta.
+  function mostraMese(a, m, conFocus) {
+    const d = new Date(a, m, 1);
+    anno = d.getFullYear();
+    mese = d.getMonth();
+    const annoMostrato = anno, meseMostrato = mese, v = versione;
+    const promessa = caricaMese(anno, mese);
+    disegna(conFocus);
+    promessa.then(() => {
+      if (v !== versione || anno !== annoMostrato || mese !== meseMostrato) return;
+      const voce = voceMese(anno, mese);
+      if (avanzaSeVuoto && voce && voce.stato === 'ok' && voce.giorni.size === 0 && !input.value) {
+        avanzaSeVuoto = false;
+        mostraMese(anno, mese + 1);
+        return;
+      }
+      avanzaSeVuoto = false;
+      disegna();
+    });
+  }
+
+  function notifica() {
+    // stessi eventi di un campo vero: aggiornaDataLabel, pannello orari, avvisi
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  function seleziona(ds) {
+    avviso = '';
+    dataFocus = ds;
+    input.value = ds;
+    disegna();
+    notifica();
+  }
+
+  // Cambiati i servizi: se la data gia' scelta non e' piu' disponibile si toglie,
+  // cosi' si chiudono anche orari e dati cliente (evento change sul campo #data).
+  function verificaDataScelta() {
+    const scelta = input.value;
+    if (!scelta) return;
+    const v = versione;
+    caricaMese(+scelta.slice(0, 4), +scelta.slice(5, 7) - 1).then(() => {
+      if (v !== versione || input.value !== scelta) return;
+      const voce = voceMese(+scelta.slice(0, 4), +scelta.slice(5, 7) - 1);
+      if (voce && voce.stato === 'ok' && !voce.giorni.has(scelta)) {
+        avviso = 'La data scelta non è disponibile per questi servizi: scegline un’altra.';
+        input.value = '';
+        disegna();
+        notifica();
+      }
+    });
+  }
+
+  // Da chiamare a ogni aggiunta/rimozione di un servizio
+  function aggiorna() {
+    loadOrari(); // orari della data gia' scelta per i nuovi servizi, subito come prima
+    const params = parametriServizi();
+    versione++;
+    avviso = '';
+    chiaveServizi = params.has('servizi[]') ? params.toString() : '';
+    if (!chiaveServizi) {
+      disegna();
+      return;
+    }
+    if (input.value) {
+      mostraMese(anno, mese);
+    } else {
+      // Nessuna data scelta: si riparte da oggi, e se questo mese e' tutto pieno si apre il prossimo
+      avanzaSeVuoto = true;
+      dataFocus = null;
+      mostraMese(annoOggi, meseOggi);
+    }
+    verificaDataScelta();
+  }
+
+  btnPrec.addEventListener('click', () => {
+    avanzaSeVuoto = false; // il cliente sfoglia da se': niente salti automatici
+    mostraMese(anno, mese - 1);
+  });
+  btnSucc.addEventListener('click', () => {
+    avanzaSeVuoto = false;
+    mostraMese(anno, mese + 1);
+  });
+
+  corpo.addEventListener('click', e => {
+    const btn = e.target.closest('.calendario-giorno');
+    if (!btn || btn.getAttribute('aria-disabled') === 'true') return;
+    seleziona(btn.dataset.data);
+  });
+
+  // Tastiera come nei calendari accessibili (WAI-ARIA, date picker): frecce di un
+  // giorno o di una settimana, Home/Fine inizio e fine settimana, PagSu/PagGiu' un
+  // mese. Invio/Spazio li gestisce il bottone. Prima di oggi non si va.
+  corpo.addEventListener('keydown', e => {
+    const btn = e.target.closest('.calendario-giorno');
+    if (!btn) return;
+    const d = daYmd(btn.dataset.data);
+    const colonna = (d.getDay() + 6) % 7;
+    const spostaGiorni = n => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+    const spostaMesi = n => {
+      const ultimo = new Date(d.getFullYear(), d.getMonth() + n + 1, 0).getDate();
+      return new Date(d.getFullYear(), d.getMonth() + n, Math.min(d.getDate(), ultimo));
+    };
+    const tasti = {
+      ArrowLeft: () => spostaGiorni(-1),
+      ArrowRight: () => spostaGiorni(1),
+      ArrowUp: () => spostaGiorni(-7),
+      ArrowDown: () => spostaGiorni(7),
+      Home: () => spostaGiorni(-colonna),
+      End: () => spostaGiorni(6 - colonna),
+      PageUp: () => spostaMesi(-1),
+      PageDown: () => spostaMesi(1)
+    };
+    if (!tasti[e.key]) return;
+    e.preventDefault();
+    let nuova = ymd(tasti[e.key]());
+    if (nuova < OGGI) nuova = OGGI;
+    dataFocus = nuova;
+    if (nuova.slice(0, 7) !== chiaveMese(anno, mese)) {
+      avanzaSeVuoto = false;
+      mostraMese(+nuova.slice(0, 4), +nuova.slice(5, 7) - 1, true);
+    } else {
+      disegna(true);
+    }
+  });
+
+  disegna();
+  return { aggiorna };
+})();
 </script>
 
 <script>

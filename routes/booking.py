@@ -676,7 +676,9 @@ def serve_logo(tenant_id):
 @booking_bp.route('/booking')
 def booking_page(tenant_id):
     # Il tenant_id viene preso dall'URL grazie al prefisso dinamico nel blueprint
-    oggi = date.today().strftime('%Y-%m-%d')
+    # Data di Roma, non del server (UTC su Azure): e' il primo giorno selezionabile
+    # nel calendario, e /orari ragiona gia' in ora italiana.
+    oggi = _now_rome().strftime('%Y-%m-%d')
     servizi = g.db_session.query(Service).filter(
         Service.servizio_durata != 0,
         ~Service.servizio_nome.ilike('dummy'),
@@ -745,15 +747,17 @@ def search_servizi(tenant_id):
         for s in risultati
     ])
 
-@booking_bp.route('/orari', methods=['GET'])
-def orari_disponibili(tenant_id):
-    data_str = request.args.get('data')  # formato: YYYY-MM-DD
-    if not data_str:
-        return jsonify({"error": "Data non specificata"}), 400
-    servizi_raw = request.args.getlist('servizi[]')
+# Giorni che /giorni-disponibili accetta in una sola richiesta. Al calendario serve
+# un mese alla volta: il limite evita che l'endpoint pubblico venga usato per far
+# calcolare anni interi in un colpo.
+GIORNI_DISPONIBILI_MAX = 62
+
+def _leggi_servizi_richiesti():
+    """Servizi scelti dal cliente, dalla querystring: ogni servizi[] e' un JSON
+    {servizio_id, operatore_id}. Le voci illeggibili vengono scartate."""
     servizi_items = []
     servizi_ids = []
-    for s in servizi_raw:
+    for s in request.args.getlist('servizi[]'):
         try:
             item = json.loads(s)
             sid = int(item["servizio_id"])
@@ -761,39 +765,79 @@ def orari_disponibili(tenant_id):
             servizi_items.append(item)
         except Exception:
             continue
+    return servizi_items, servizi_ids
 
-    if not servizi_ids:
-        return jsonify({"error": "Servizi non trovati"}), 404
-
-    servizi = g.db_session.query(Service).filter(
+def _servizi_prenotabili(servizi_ids):
+    return g.db_session.query(Service).filter(
         Service.id.in_(servizi_ids),
         Service.is_deleted == False,
         Service.is_visible_online == True
     ).all()
-    if not servizi:
-        return jsonify({"error": "Servizi non trovati"}), 404
-    
-    servizi_operatori = {s.id: [op.id for op in s.operators] for s in servizi}
 
-    data = datetime.strptime(data_str, "%Y-%m-%d").date()
-    business_info = g.db_session.query(BusinessInfo).first()
+def _carica_turni_e_appuntamenti(data_da, data_a, operatori):
+    """Turni e appuntamenti (blocchi OFF compresi) dei giorni da data_da a data_a
+    inclusi, raggruppati per giorno. Sono le query che /orari faceva per un giorno
+    solo: per il calendario di un mese si fanno una volta invece che trenta."""
+    inizio = datetime.combine(data_da, time.min)
+    fine = datetime.combine(data_a + timedelta(days=1), time.min)
+
+    turni = g.db_session.query(OperatorShift).filter(
+        OperatorShift.operator_id.in_([o.id for o in operatori]),
+        OperatorShift.shift_date >= data_da,
+        OperatorShift.shift_date <= data_a
+    ).all()
+    appuntamenti = g.db_session.query(Appointment).filter(
+        Appointment.start_time >= inizio,
+        Appointment.start_time < fine,
+        Appointment.is_cancelled_by_client == False
+    ).all()
+    blocchi_off = g.db_session.query(Appointment).filter(
+        Appointment.start_time >= inizio,
+        Appointment.start_time < fine,
+        or_(
+            Appointment.note.ilike('%OFF%'),
+            Appointment.service_id == 9999
+        )
+    ).all()
+    gia_presenti = {a.id for a in appuntamenti}
+    appuntamenti.extend(b for b in blocchi_off if b.id not in gia_presenti)
+
+    turni_per_giorno = {}
+    for t in turni:
+        turni_per_giorno.setdefault(t.shift_date, []).append(t)
+    appuntamenti_per_giorno = {}
+    for a in appuntamenti:
+        appuntamenti_per_giorno.setdefault(a.start_time.date(), []).append(a)
+    return turni_per_giorno, appuntamenti_per_giorno
+
+def _calcola_orari_giorno(data, servizi, servizi_items, operatore_id, operatori,
+                          business_info, turni_giorno, appuntamenti_giorno, now):
+    """Orari prenotabili di UN giorno per la combinazione di servizi richiesta:
+    restituisce (orari, slot_operatori, debug_info).
+
+    E' il calcolo di /orari, separato dalla rotta perche' lo usa anche
+    /giorni-disponibili: il calendario deve spegnere esattamente i giorni in cui
+    /orari non troverebbe nulla, e con una funzione sola le due risposte non
+    possono divergere. `now` e' l'ora di Roma senza secondi; turni_giorno e
+    appuntamenti_giorno arrivano gia' filtrati sul giorno."""
+    servizi_operatori = {s.id: [op.id for op in s.operators] for s in servizi}
     apertura = business_info.active_opening_time
     chiusura = business_info.active_closing_time
     closing_days = getattr(business_info, "closing_days_list", [])
 
     orari = []
     debug_info = []
-    now = datetime.now()  # naive Europe/Rome
     slot_operatori = {}  # AGGIUNTA: dict ora -> lista operatori
 
     # Escludi giorni di chiusura
     if data.strftime('%A') in closing_days:
         debug_info.append(f"Giorno {data.strftime('%A')} in closing_days: nessuno slot disponibile")
-        return jsonify({"orari_disponibili": [], "operatori_assegnati": {}, "debug": debug_info})
+        return [], {}, debug_info
 
-    # Carica tutti gli operatori disponibili e relativi turni
-    operatori_disponibili = g.db_session.query(Operator).filter_by(is_deleted=False, is_visible=True).all()
-    operatore_id = request.args.get('operatore_id')
+    if data < now.date():
+        return [], {}, debug_info + ["Data selezionata già passata"]
+
+    operatori_disponibili = list(operatori)
 
     # Preferenze per-servizio: raccogli gli ID scelti
     preferred_ids = set()
@@ -812,11 +856,6 @@ def orari_disponibili(tenant_id):
     if not has_per_service_prefs and operatore_id:
         operatori_disponibili = [op for op in operatori_disponibili if str(op.id) == str(operatore_id)]
 
-    turni_disponibili = g.db_session.query(OperatorShift).filter(
-        OperatorShift.operator_id.in_([o.id for o in operatori_disponibili]),
-        OperatorShift.shift_date == data
-    ).all()
-
     # Costruisce una mappa operator_id -> lista di (inizio, fine) turno per più turni
     turni_per_operatore = {}
     for op in operatori_disponibili:
@@ -825,7 +864,7 @@ def orari_disponibili(tenant_id):
                 t.shift_start_time if isinstance(t.shift_start_time, time) else apertura,
                 t.shift_end_time if isinstance(t.shift_end_time, time) else chiusura
             )
-            for t in turni_disponibili if t.operator_id == op.id
+            for t in turni_giorno if t.operator_id == op.id
         ]
         if not op_turni:
             op_turni = [(apertura, chiusura)]
@@ -840,47 +879,38 @@ def orari_disponibili(tenant_id):
     # NUOVO: se ci sono preferenze per-servizio e dopo il filtro non ci sono turni
     # per le operatrici scelte, restituisci subito nessuna disponibilità.
     if has_per_service_prefs and not turni_per_operatore:
-        return jsonify({"orari_disponibili": [], "operatori_assegnati": {}, "debug": ["Nessun turno per le operatrici selezionate"]})
-
-    appuntamenti = g.db_session.query(Appointment).filter(
-        Appointment.start_time >= datetime.combine(data, time.min),
-        Appointment.start_time < datetime.combine(data + timedelta(days=1), time.min),
-        Appointment.is_cancelled_by_client == False
-    ).all()
-    blocchi_off = g.db_session.query(Appointment).filter(
-        Appointment.start_time >= datetime.combine(data, time.min),
-        Appointment.start_time < datetime.combine(data + timedelta(days=1), time.min),
-        or_(
-            Appointment.note.ilike('%OFF%'),
-            Appointment.service_id == 9999
-        )
-    ).all()
-    for b in blocchi_off:
-        if b not in appuntamenti:
-            appuntamenti.append(b)
+        return [], {}, ["Nessun turno per le operatrici selezionate"]
 
     def to_naive(dt):
         if dt is not None and getattr(dt, "tzinfo", None) is not None:
             return dt.replace(tzinfo=None)
         return dt
 
+    # Gli appuntamenti del giorno indicizzati una volta sola: i blocchi OFF senza
+    # operatore fermano tutti, il resto solo l'operatore a cui appartiene.
+    # operatore_disponibile li scorreva tutti a ogni verifica, e per il calendario
+    # le verifiche sono decine di migliaia.
+    off_globali = []
+    occupato_per_operatore = {}
+    for app in appuntamenti_giorno:
+        app_start = to_naive(app.start_time)
+        app_end = to_naive(app_start + timedelta(minutes=app._duration))
+        if app.operator_id is None and app.note and "OFF" in app.note:
+            off_globali.append((app_start, app_end))
+        occupato_per_operatore.setdefault(str(app.operator_id), []).append((app_start, app_end))
+
     def operatore_disponibile(operator_id, inizio, fine):
         turni = turni_per_operatore.get(operator_id, [])
         if not any(start <= inizio.time() and fine.time() <= end for start, end in turni):
             return False, "fuori turno"
-        for app in appuntamenti:
-            if app.operator_id is None and app.note and "OFF" in app.note:
-                app_start = to_naive(app.start_time)
-                app_end = to_naive(app_start + timedelta(minutes=app._duration))
-                if app_start < to_naive(fine) and app_end > to_naive(inizio):
-                    return False, "blocco OFF globale"
-            if str(app.operator_id) == str(operator_id):
-                app_start = to_naive(app.start_time)
-                app_end = to_naive(app_start + timedelta(minutes=app._duration))
-                if app_start < to_naive(fine) and app_end > to_naive(inizio):
-                    if app.note and "OFF" in app.note:
-                        return False, "blocco OFF"
-                    return False, "occupato"
+        inizio = to_naive(inizio)
+        fine = to_naive(fine)
+        for app_start, app_end in off_globali:
+            if app_start < fine and app_end > inizio:
+                return False, "blocco OFF globale"
+        for app_start, app_end in occupato_per_operatore.get(str(operator_id), []):
+            if app_start < fine and app_end > inizio:
+                return False, "occupato"
         return True, None
 
     intervalli_tmp = []
@@ -888,7 +918,7 @@ def orari_disponibili(tenant_id):
         for t in turni:
             intervalli_tmp.append(t)
     if not intervalli_tmp:
-        return jsonify({"orari_disponibili": [], "operatori_assegnati": {}, "debug": ["Nessun turno disponibile"]})
+        return [], {}, ["Nessun turno disponibile"]
     intervalli_tmp.sort()
     intervalli = []
     for intervallo in intervalli_tmp:
@@ -928,7 +958,7 @@ def orari_disponibili(tenant_id):
                         inizio = slot_corrente_temp
                         fine_servizio = slot_corrente_temp + durata_td
 
-                        if op.id not in servizi_operatori[servizio_id]:
+                        if op.id not in servizi_operatori.get(servizio_id, []):
                             ok = False
                             break
                         disponibile, _ = operatore_disponibile(op.id, inizio, fine_servizio)
@@ -1043,10 +1073,9 @@ def orari_disponibili(tenant_id):
                     slot_operatori[slot_str] = assegnati
 
                 slot += slot_step
-                
+
     orari = sorted(list(set(orari)))
 
-    now = datetime.now(pytz_timezone('Europe/Rome')).replace(second=0, microsecond=0)
     if data == now.date():
         orari = [
             o for o in orari
@@ -1054,17 +1083,81 @@ def orari_disponibili(tenant_id):
         ]
         slot_operatori = {o: slot_operatori[o] for o in orari}
 
-    if data < now.date():
-        return jsonify({
-            "orari_disponibili": [],
-            "operatori_assegnati": {},
-            "debug": debug_info + ["Data selezionata già passata"]
-        })
+    return orari, slot_operatori, debug_info
 
+@booking_bp.route('/orari', methods=['GET'])
+def orari_disponibili(tenant_id):
+    data_str = request.args.get('data')  # formato: YYYY-MM-DD
+    if not data_str:
+        return jsonify({"error": "Data non specificata"}), 400
+    servizi_items, servizi_ids = _leggi_servizi_richiesti()
+    if not servizi_ids:
+        return jsonify({"error": "Servizi non trovati"}), 404
+
+    servizi = _servizi_prenotabili(servizi_ids)
+    if not servizi:
+        return jsonify({"error": "Servizi non trovati"}), 404
+
+    data = datetime.strptime(data_str, "%Y-%m-%d").date()
+    business_info = g.db_session.query(BusinessInfo).first()
+    operatori = g.db_session.query(Operator).filter_by(is_deleted=False, is_visible=True).all()
+    turni_per_giorno, appuntamenti_per_giorno = _carica_turni_e_appuntamenti(data, data, operatori)
+    now = datetime.now(pytz_timezone('Europe/Rome')).replace(second=0, microsecond=0)
+
+    orari, slot_operatori, debug_info = _calcola_orari_giorno(
+        data, servizi, servizi_items, request.args.get('operatore_id'), operatori,
+        business_info, turni_per_giorno.get(data, []), appuntamenti_per_giorno.get(data, []), now
+    )
     return jsonify({
         "orari_disponibili": orari,
         "operatori_assegnati": slot_operatori,
         "debug": debug_info
+    })
+
+@booking_bp.route('/giorni-disponibili', methods=['GET'])
+def giorni_disponibili(tenant_id):
+    """Per il calendario della pagina di prenotazione: i giorni fra `da` e `a`
+    (YYYY-MM-DD, inclusi) in cui i servizi scelti hanno almeno un orario libero.
+    Stessi parametri servizi[]/operatore_id di /orari e stesso calcolo, giorno per
+    giorno: un giorno che qui manca e' un giorno in cui /orari risponderebbe vuoto."""
+    try:
+        data_da = datetime.strptime(request.args.get('da', ''), "%Y-%m-%d").date()
+        data_a = datetime.strptime(request.args.get('a', ''), "%Y-%m-%d").date()
+    except ValueError:
+        return jsonify({"error": "Intervallo di date non valido"}), 400
+    if data_a < data_da or (data_a - data_da).days >= GIORNI_DISPONIBILI_MAX:
+        return jsonify({"error": f"Intervallo di date non valido (massimo {GIORNI_DISPONIBILI_MAX} giorni)"}), 400
+
+    servizi_items, servizi_ids = _leggi_servizi_richiesti()
+    if not servizi_ids:
+        return jsonify({"error": "Servizi non trovati"}), 404
+    servizi = _servizi_prenotabili(servizi_ids)
+    if not servizi:
+        return jsonify({"error": "Servizi non trovati"}), 404
+
+    now = datetime.now(pytz_timezone('Europe/Rome')).replace(second=0, microsecond=0)
+    # I giorni gia' passati non sono mai prenotabili: inutile caricarli.
+    primo_giorno = max(data_da, now.date())
+    disponibili = []
+    if primo_giorno <= data_a:
+        business_info = g.db_session.query(BusinessInfo).first()
+        operatori = g.db_session.query(Operator).filter_by(is_deleted=False, is_visible=True).all()
+        turni_per_giorno, appuntamenti_per_giorno = _carica_turni_e_appuntamenti(primo_giorno, data_a, operatori)
+        operatore_id = request.args.get('operatore_id')
+        giorno = primo_giorno
+        while giorno <= data_a:
+            orari, _, _ = _calcola_orari_giorno(
+                giorno, servizi, servizi_items, operatore_id, operatori, business_info,
+                turni_per_giorno.get(giorno, []), appuntamenti_per_giorno.get(giorno, []), now
+            )
+            if orari:
+                disponibili.append(giorno.strftime("%Y-%m-%d"))
+            giorno += timedelta(days=1)
+
+    return jsonify({
+        "da": data_da.strftime("%Y-%m-%d"),
+        "a": data_a.strftime("%Y-%m-%d"),
+        "disponibili": disponibili
     })
 
 @booking_bp.route('/prenota', methods=['POST'])
