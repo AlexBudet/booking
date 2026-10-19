@@ -7,7 +7,7 @@ from flask_wtf import CSRFProtect
 from flask_wtf.csrf import generate_csrf
 from appl.models import Appointment, AppointmentSource, Service, Operator, OperatorShift, Client, BusinessInfo, BookingErrorLog, CrmErrorLog, SolariumDevice
 from datetime import date, datetime, timezone, timedelta, time
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, text
 from pytz import timezone as pytz_timezone
 import re
 import os
@@ -2523,12 +2523,14 @@ def _build_operator_targets_for_tomorrow(session, require_phone: bool = True):  
     tomorrow = datetime.now().date() + timedelta(days=1)
     
     # Query operators who are active, visible, not machines, and opted for WhatsApp notifications
+    # Ordine fisso per id: dopo un riavvio process_operator_tick riprende la coda
+    # dal punto in cui era rimasta, e serve che la coda ricostruita sia la stessa.
     operators = session.query(Operator).filter(
         Operator.is_deleted == False,
         Operator.is_visible == True,
         Operator.user_tipo != 'macchinario',
         Operator.notify_turni_via_whatsapp == True
-    ).all()
+    ).order_by(Operator.id).all()
     
     targets = []
     for op in operators:
@@ -2719,6 +2721,24 @@ _OP_TPL_DEFAULT = (
     "Buon lavoro!"
 )
 
+def _memo_operatori_registrati(session, tenant_id: str, dalle) -> int:
+    """Quanti memo operatori la coda di oggi ha gia' servito, per riprenderla dopo
+    un riavvio senza colonne nuove nel DB.
+
+    Ogni elemento della coda passa da _send_unipile_message, che lascia una riga in
+    usage_events (tipo 'memo_operatore', esito ok o errore): contate dall'ora del memo
+    in poi, sono il punto in cui la coda si era fermata. Se la lettura non riesce si
+    torna a 0, cioe' al comportamento di prima (coda intera)."""
+    try:
+        return int(session.execute(text(
+            "SELECT count(*) FROM usage_events "
+            "WHERE origine = 'booking' AND tipo = 'memo_operatore' AND created_at >= :dalle"
+        ), {"dalle": dalle}).scalar() or 0)
+    except Exception as e:
+        session.rollback()
+        _op_dbg(tenant_id, f"lettura usage_events fallita, coda intera: {repr(e)}")
+        return 0
+
 def process_operator_tick(app, tenant_id: str):
     """
     Ogni 60s: al minuto del reminder costruisce la coda degli operatori per DOMANI.
@@ -2760,14 +2780,19 @@ def process_operator_tick(app, tenant_id: str):
             # Catch-up window: stessa logica di process_morning_tick. Costruisce la coda se
             # è ORA o è GIÀ PASSATA l'ora del reminder (entro la finestra) e oggi non è
             # ancora stata avviata. NON dipende dal minuto esatto -> con più tenant nessuno
-            # viene saltato. Qui lo stato è SOLO in memoria (niente colonna DB): un
-            # eventuale doppio invio dopo un riavvio è raro e poco grave per gli operatori.
+            # viene saltato. _OP_DONE e' solo in memoria: per non rimandare i memo dopo un
+            # riavvio entro la finestra, la coda riparte da quanti memo risultano gia'
+            # registrati in usage_events dall'ora del memo (vedi _memo_operatori_registrati).
             reminder_dt = now.replace(hour=reminder_time.hour, minute=reminder_time.minute, second=0, microsecond=0)
             within_window = reminder_dt <= now <= reminder_dt + timedelta(minutes=MORNING_CATCHUP_MINUTES)
             already_done_today = (_OP_DONE.get(tenant_id) == today)
 
             if within_window and not already_done_today and not has_active_queue:
                 queue = _build_operator_targets_for_tomorrow(session, require_phone=True)
+                gia_serviti = _memo_operatori_registrati(session, tenant_id, reminder_dt)
+                if gia_serviti:
+                    _op_dbg(tenant_id, f"ripresa dopo riavvio: {gia_serviti} memo gia' registrati su {len(queue)}")
+                    queue = queue[gia_serviti:]
                 _OP_DONE[tenant_id] = today
                 if not queue:
                     _op_dbg(tenant_id, "coda vuota per domani")
