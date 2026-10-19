@@ -18,6 +18,7 @@ import threading
 import requests
 from azure.communication.email import EmailClient
 from routes.usage import registra_uso
+from appl.formati import nome_proprio
 import html as html_lib
 
 # --- UTIL: formato data per email (solo output email, non DB) ---
@@ -251,7 +252,7 @@ def process_error_summary_tick(app, tenant_id: str, force_previous_hour: bool = 
                 f"<tr>"
                 f"<td style='padding:6px 10px;border-bottom:1px solid #eee;'>{_ora_rome(e.created_at).strftime('%H:%M:%S')}</td>"
                 f"<td style='padding:6px 10px;border-bottom:1px solid #eee;'>{escape(e.reason)}</td>"
-                f"<td style='padding:6px 10px;border-bottom:1px solid #eee;'>{escape(e.nome or '')} {escape(e.cognome or '')}</td>"
+                f"<td style='padding:6px 10px;border-bottom:1px solid #eee;'>{escape(nome_proprio(e.nome))} {escape(nome_proprio(e.cognome))}</td>"
                 f"<td style='padding:6px 10px;border-bottom:1px solid #eee;'>{escape(e.telefono or '')}<br>{escape(e.email or '')}</td>"
                 f"</tr>"
                 for e in errori
@@ -357,7 +358,7 @@ def process_crm_error_summary_tick(app, tenant_id: str):
                 c = clienti_by_id.get(err.client_id)
                 if not c:
                     return ''
-                nome = f"{c.cliente_nome or ''} {c.cliente_cognome or ''}".strip()
+                nome = f"{nome_proprio(c.cliente_nome)} {nome_proprio(c.cliente_cognome)}".strip()
                 contatti = " / ".join(x for x in [c.cliente_cellulare, c.cliente_email] if x)
                 return f"{escape(nome)}<br>{escape(contatti)}" if contatti else escape(nome)
 
@@ -1180,8 +1181,10 @@ def prenota(tenant_id):
 
 def _prenota_impl(tenant_id):
     data = request.get_json()
-    nome = data.get('nome')
-    cognome = data.get('cognome')
+    # Nome e cognome come li scrive il gestionale (appl/formati.py): da qui in poi
+    # nota dell'appuntamento, email e oggetti li usano gia' sistemati.
+    nome = nome_proprio(data.get('nome'))
+    cognome = nome_proprio(data.get('cognome'))
     telefono = data.get('telefono')
     email = data.get('email')
     data_str = data.get('data')
@@ -1437,7 +1440,9 @@ def _prenota_impl(tenant_id):
             f"Telefono: {escape(telefono)}, Email: {escape(email)} - ha selezionato l'operatrice? {desiderata_str}"
         )
         operatore = g.db_session.get(Operator, operatore_id)
-        operatore_nome = f"{escape(operatore.user_nome)}" if operatore else ""
+        # Testo semplice: lo escapano il template dell'email (Jinja) e la pagina
+        # (escapeHtml). Escapato qui, un apostrofo usciva "&#39;" in tutti e due.
+        operatore_nome = (operatore.user_nome or "") if operatore else ""
         nuovo = Appointment(
             client_id=dummy_client.id,
             operator_id=operatore_id,
@@ -1630,11 +1635,12 @@ def _prenota_impl(tenant_id):
             totale_prezzo=f"{totale_prezzo:.2f}"
         )
 
-        # Invio email al cliente (immediato)
+        # Invio email al cliente (immediato). L'oggetto e' testo semplice, non HTML:
+        # con escape() "D'Angelo" arrivava "D&#39;Angelo".
         try:
             invia_email_async(
                 to_email=email,
-                subject=f'{company_name} - Nuova prenotazione - {escape(nome)}',
+                subject=f'{company_name} - Nuova prenotazione - {nome}',
                 html_content=riepilogo,
                 from_email=None,
                 app=current_app._get_current_object(),
@@ -1649,7 +1655,7 @@ def _prenota_impl(tenant_id):
             try:
                 invia_email_async(
                     to_email=admin_email,
-                    subject=f'{company_name} - Nuova prenotazione - {escape(nome)}',
+                    subject=f'{company_name} - Nuova prenotazione - {nome}',
                     html_content=admin_riepilogo,
                     from_email=None,
                     delay_seconds=65,
@@ -1770,10 +1776,12 @@ def cancel_booking(tenant_id, token):
                     cognome_part = note.split("Cognome: ")[1].split(",")[0].strip()
                     telefono_part = note.split("Telefono: ")[1].split(",")[0].strip()
                     email_part = note.split("Email: ")[1].split(" - ")[0].strip()
-                    nome = nome_part
-                    cognome = cognome_part
-                    telefono = telefono_part
-                    email_cliente = email_part
+                    # La nota e' salvata con escape(): decodificata qui, se no
+                    # Jinja la escapa una seconda volta e "&#39;" resta a video.
+                    nome = nome_proprio(nome_part)
+                    cognome = nome_proprio(cognome_part)
+                    telefono = html_lib.unescape(telefono_part)
+                    email_cliente = html_lib.unescape(email_part)
                 except:
                     pass  # Fallback a N/A
 
@@ -1795,7 +1803,7 @@ def cancel_booking(tenant_id, token):
                     "servizio_nome": getattr(servizio, 'servizio_nome', '') if servizio else '',
                     "durata": durata,
                     "prezzo": f"{prezzo:.2f}",
-                    "note": a.note or ''
+                    "note": html_lib.unescape(a.note or '')
                 })
 
             # Template email distintivo per annullamento (rosso, titolo "Annullamento Prenotazione")
@@ -1891,8 +1899,8 @@ def invia_codice(tenant_id):
         return jsonify({"success": False, "error": "Dati mancanti."}), 400
 
     email = data.get('email', '').strip()
-    nome = data.get('nome', '').strip()
-    cognome = data.get('cognome', '').strip()
+    nome = nome_proprio(data.get('nome'))
+    cognome = nome_proprio(data.get('cognome'))
     telefono = data.get('telefono', '').strip()
     
     print(f"[INVIA-CODICE] Parsed: email={email}, nome={nome}, cognome={cognome}, telefono={telefono}")
@@ -2143,15 +2151,16 @@ def _render_morning_text(session, template: str, item: dict) -> str:
         dt = getattr(appt, 'start_time', None)
         data_str = dt.strftime('%d/%m/%Y') if dt else ''
         ora_str = dt.strftime('%H:%M') if dt else ''
-        nome = (getattr(cli, 'cliente_nome', '') or '').strip()
-        cognome = (getattr(cli, 'cliente_cognome', '') or '').strip()
+        # Stessa regola del gestionale (appl/formati.py): capitalize() lasciava
+        # "D'angelo" e "Maria-grazia", e il cognome usciva com'era in anagrafica.
+        nome = nome_proprio(getattr(cli, 'cliente_nome', ''))
+        cognome = nome_proprio(getattr(cli, 'cliente_cognome', ''))
         azienda = (getattr(biz, 'business_name', '') or '').strip()
-        nome_fmt = " ".join([w.capitalize() for w in nome.split()])
         servizi_str = _services_bullet_for_contiguous_block(session, appt)
 
         sito = (getattr(biz, 'website', '') or '').strip()
         txt = (template or "")
-        return (txt.replace('{{nome}}', nome_fmt)
+        return (txt.replace('{{nome}}', nome)
                    .replace('{{cognome}}', cognome)
                    .replace('{{data}}', data_str)
                    .replace('{{ora}}', ora_str)
@@ -2663,6 +2672,15 @@ def preview_route(tenant_id):
     session = g.db_session  # USA g.db_session nel route
     return preview_operator_notifications(session)
     
+# Deve restare identico a _OPERATOR_TPL_DEFAULT di SunBooking (appl/routes/settings.py).
+_OP_TPL_DEFAULT = (
+    "Ciao {{operatore}},\n\n"
+    "Domani {{data}} il tuo turno sarà: {{ora_inizio}}-{{ora_fine}}\n\n"
+    "{{sezione_pausa}}"
+    "{{sezione_primo_app}}\n\n"
+    "Buon lavoro!"
+)
+
 def process_operator_tick(app, tenant_id: str):
     """
     Ogni 60s: al minuto del reminder costruisce la coda degli operatori per DOMANI.
@@ -2685,9 +2703,11 @@ def process_operator_tick(app, tenant_id: str):
                 return
 
             reminder_time = getattr(biz, 'operator_whatsapp_notification_time', time(20, 0))
-            msg_text = getattr(biz, 'operator_whatsapp_message_template', None)
-            if not msg_text or not isinstance(reminder_time, time):
-                _op_dbg(tenant_id, "config mancante (msg/time)")
+            # Template vuoto = testo di default (lo stesso che SunBooking mostra nella
+            # pagina WhatsApp): un template svuotato non deve mai fermare i memo.
+            msg_text = (getattr(biz, 'operator_whatsapp_message_template', None) or '').strip() or _OP_TPL_DEFAULT
+            if not isinstance(reminder_time, time):
+                _op_dbg(tenant_id, "config mancante (time)")
                 return
 
             now = _now_rome()
