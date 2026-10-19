@@ -2225,7 +2225,7 @@ def _send_unipile_message(creds: dict, to_phone: str, text: str,
         registra_uso(app, tenant_id, 'whatsapp', tipo=tipo, esito='errore', errore=e)
         return False
     
-def _build_today_targets(session, start_from=None) -> list:
+def _build_today_targets(session, start_from=None, created_before=None) -> list:
     """
     Seleziona gli appuntamenti odierni ordinati, esclusi OFF e servizio 9999,
     esclude i client finti BOOKING/ONLINE e dummy/dummy, e i servizi dummy (blocchi OFF/PAUSA).
@@ -2233,6 +2233,15 @@ def _build_today_targets(session, start_from=None) -> list:
     Ritorna una lista di dict: {"appointment_id", "client_id", "phone"}.
     Regola: il cellulare viene SEMPRE letto dal record Client usando client_id.
     Non si estrae nulla dalla nota.
+
+    Idempotenza: un blocco e' escluso se ANCHE UNO SOLO dei suoi appuntamenti ha
+    il memo di oggi segnato. L'invio segna solo il primo appuntamento del blocco:
+    escludendo dalla query gli appuntamenti segnati, in una coda ricostruita dopo
+    un riavvio il secondo appuntamento diventava testa di blocco e il cliente
+    riceveva un doppione (19/10/2026, Sun Express: 2 casi su 15).
+
+    created_before: se valorizzato, salta i blocchi i cui appuntamenti sono stati
+    creati TUTTI dopo quell'istante (vedi process_morning_tick, ripresa dopo un riavvio).
     """
     today = _now_rome().date()
     start = datetime.combine(today, time.min)
@@ -2267,11 +2276,7 @@ def _build_today_targets(session, start_from=None) -> list:
         Appointment.start_time < end,
         or_(Appointment.note.is_(None), ~Appointment.note.ilike('%OFF%')),
         Appointment.service_id != 9999,
-        Appointment.is_cancelled_by_client == False,
-        # Idempotenza: escludi gli appuntamenti il cui memo è GIÀ stato inviato oggi.
-        # Così, dopo un riavvio del processo, la coda ricostruita contiene solo i memo
-        # ancora da spedire (nessun doppione, ripresa da dove era rimasta).
-        or_(Appointment.morning_memo_sent_date.is_(None), Appointment.morning_memo_sent_date != today)
+        Appointment.is_cancelled_by_client == False
     )
     if excluded_client_ids:
         q = q.filter(Appointment.client_id.notin_(excluded_client_ids))
@@ -2281,8 +2286,10 @@ def _build_today_targets(session, start_from=None) -> list:
     q = q.order_by(Appointment.start_time.asc(), Appointment.id.asc())
     apps = q.all()
 
-    targets = []
-    last_end_by_client = {}
+    # Blocchi contigui per cliente, con TUTTI gli appuntamenti del giorno (anche
+    # quelli col memo gia' segnato), cosi' i blocchi restano quelli del primo giro.
+    blocks = []
+    open_block_by_client = {}   # client_id -> [lista appuntamenti, fine piu' lontana]
 
     for a in apps:
         c_id = a.client_id
@@ -2291,11 +2298,33 @@ def _build_today_targets(session, start_from=None) -> list:
         a_start = a.start_time
         a_end = a_start + timedelta(minutes=dur_min)
 
-        last_end = last_end_by_client.get(c_id)
-        if last_end and a_start <= last_end:
-            # blocco contiguo per lo stesso cliente: salta (già coperto)
-            last_end_by_client[c_id] = max(last_end, a_end)
+        open_block = open_block_by_client.get(c_id)
+        if open_block and a_start <= open_block[1]:
+            # blocco contiguo per lo stesso cliente: un solo memo per tutto il blocco
+            open_block[0].append(a)
+            open_block[1] = max(open_block[1], a_end)
             continue
+
+        open_block = [[a], a_end]
+        open_block_by_client[c_id] = open_block
+        blocks.append(open_block[0])
+
+    def _creato_dopo(x):
+        ca = getattr(x, 'created_at', None)
+        if ca is None:
+            return False
+        if ca.tzinfo is None:
+            ca = ca.replace(tzinfo=timezone.utc)
+        return ca > created_before
+
+    targets = []
+    for block in blocks:
+        if any(x.morning_memo_sent_date == today for x in block):
+            continue  # memo di oggi gia' partito per questo blocco
+        if created_before is not None and all(_creato_dopo(x) for x in block):
+            continue  # blocco nato dopo il primo giro: non era in coda
+        a = block[0]
+        c_id = a.client_id
 
         # Preleva SEMPRE il cellulare dal record Client (client_id)
         client = session.get(Client, c_id) if c_id else None
@@ -2313,7 +2342,6 @@ def _build_today_targets(session, start_from=None) -> list:
             "client_id": c_id,
             "phone": phone  # valore normalizzato preso dal DB (può essere '' o '000000000' normalizzato)
         })
-        last_end_by_client[c_id] = a_end
 
     return targets
 
@@ -2368,7 +2396,17 @@ def process_morning_tick(app, tenant_id: str):
             already_done_today = (_MORNING_DONE.get(tenant_id) == today)
 
             if within_window and not already_done_today and not has_active_queue:
-                queue = _build_today_targets(session, start_from=None)
+                # Memo gia' segnati oggi = il primo giro e' partito e il processo e'
+                # stato riavviato (deploy, recycle di Azure). Si riprende solo cio' che
+                # esisteva all'ora del memo: un appuntamento preso in giornata il memo
+                # non lo riceve nel giro normale, e non deve riceverlo per un riavvio.
+                gia_partita = session.query(Appointment.id).filter(
+                    Appointment.morning_memo_sent_date == today
+                ).first() is not None
+                queue = _build_today_targets(session, start_from=None,
+                                             created_before=reminder_dt if gia_partita else None)
+                if gia_partita:
+                    _wa_dbg(tenant_id, f"ripresa dopo riavvio: {len(queue)} memo ancora da inviare")
                 # Marca SUBITO il giorno come avviato: evita di ricostruire la coda a ogni
                 # tick (ottimizzazione in memoria; la correttezza è garantita dal marcatore
                 # su DB morning_memo_sent_date, che sopravvive ai riavvii).
