@@ -505,6 +505,23 @@ body {
   text-align: center;
   color: #c2aebc;
 }
+/* Messaggio informativo del negozio (Impostazioni > Web Booking del gestionale) */
+.info-prenotazioni {
+  --bs-alert-bg: #241d22;
+  --bs-alert-color: #eedbe2;
+  --bs-alert-border-color: #87647c;
+  border-left-width: 4px;
+  border-left-color: #a98ca7;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+.info-prenotazioni .info-prenotazioni-icona {
+  color: #a98ca7;
+  margin-right: 6px;
+}
+.info-prenotazioni .info-prenotazioni-testo {
+  white-space: pre-line; /* gli a capo scritti nel gestionale restano */
+}
 </style>
 </head>
 <body>
@@ -533,6 +550,14 @@ body {
         Scegli i <b>servizi</b>, la <b>data</b> e l'<b>orario</b>.<br>
       </p>
     </div>
+{% if business_info.booking_info_message and business_info.booking_info_message.strip() %}
+<!-- Fuori da #regole-prenotazione e dalle liste di hideAlerts/nascondiSidebarEAvvisi:
+     resta visibile mentre si sceglie data e orario, si chiude solo con la X. -->
+<div class="alert alert-dismissible fade show info-prenotazioni" role="note" id="info-prenotazioni">
+  <i class="fa-solid fa-circle-info info-prenotazioni-icona" aria-hidden="true"></i><span class="info-prenotazioni-testo">{{ business_info.booking_info_message.strip() }}</span>
+  <button type="button" class="btn-close btn-close-white" data-bs-dismiss="alert" aria-label="Chiudi"></button>
+</div>
+{% endif %}
 <form id="bookingForm" autocomplete="off">
 <input type="hidden" id="csrf_token" name="csrf_token" value="{{ csrf_token }}">
 <div class="row align-items-end mb-2" id="selezione-iniziale-servizio">
