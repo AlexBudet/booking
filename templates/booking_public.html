@@ -505,23 +505,6 @@ body {
   text-align: center;
   color: #c2aebc;
 }
-/* Messaggio informativo del negozio (Impostazioni > Web Booking del gestionale) */
-.info-prenotazioni {
-  --bs-alert-bg: #241d22;
-  --bs-alert-color: #eedbe2;
-  --bs-alert-border-color: #87647c;
-  border-left-width: 4px;
-  border-left-color: #a98ca7;
-  font-size: 0.92rem;
-  line-height: 1.45;
-}
-.info-prenotazioni .info-prenotazioni-icona {
-  color: #a98ca7;
-  margin-right: 6px;
-}
-.info-prenotazioni .info-prenotazioni-testo {
-  white-space: pre-line; /* gli a capo scritti nel gestionale restano */
-}
 </style>
 </head>
 <body>
@@ -550,14 +533,6 @@ body {
         Scegli i <b>servizi</b>, la <b>data</b> e l'<b>orario</b>.<br>
       </p>
     </div>
-{% if business_info.booking_info_message and business_info.booking_info_message.strip() %}
-<!-- Fuori da #regole-prenotazione e dalle liste di hideAlerts/nascondiSidebarEAvvisi:
-     resta visibile mentre si sceglie data e orario, si chiude solo con la X. -->
-<div class="alert alert-dismissible fade show info-prenotazioni" role="note" id="info-prenotazioni">
-  <i class="fa-solid fa-circle-info info-prenotazioni-icona" aria-hidden="true"></i><span class="info-prenotazioni-testo">{{ business_info.booking_info_message.strip() }}</span>
-  <button type="button" class="btn-close btn-close-white" data-bs-dismiss="alert" aria-label="Chiudi"></button>
-</div>
-{% endif %}
 <form id="bookingForm" autocomplete="off">
 <input type="hidden" id="csrf_token" name="csrf_token" value="{{ csrf_token }}">
 <div class="row align-items-end mb-2" id="selezione-iniziale-servizio">
@@ -583,7 +558,17 @@ body {
 
 <div id="pseudoblocchi-servizi"></div>
 
+<!-- Tutti i messaggi della pagina stanno qui, sotto il campo di ricerca, e
+     spariscono insieme alla prima interazione (nascondiSidebarEAvvisi, hideAlerts). -->
 <div id="regole-prenotazione" class="mb-3">
+  {% if business_info.booking_info_message %}
+    {# HTML dell'editor del gestionale, gia' ripulito al salvataggio
+       (settings.py, _PulisciHtmlInfo): solo b/i/u/a capo/link #}
+    <div class="alert alert-info alert-dismissible fade show" role="alert" id="alert-info-prenotazioni">
+      {{ business_info.booking_info_message|safe }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Chiudi"></button>
+    </div>
+  {% endif %}
   {% if business_info.booking_rule_type_durata == 'warning' and business_info.booking_max_durata %}
     <div class="alert alert-warning alert-dismissible fade show" role="alert" id="alert-warning-durata">
       <b>Attenzione:</b> {{ business_info.booking_rule_message_durata }}
@@ -1237,16 +1222,9 @@ function nascondiSidebarEAvvisi() {
     document.querySelectorAll('.booking-sidebar').forEach(sb => sb.style.display = 'none');
     document.getElementById('container-booking').classList.add('no-sidebar');
   }
-  // Nascondi tutti gli alert di warning/blocco/condizioni
-  [
-    'alert-warning-durata',
-    'alert-block-durata',
-    'alert-warning-prezzo',
-    'alert-block-prezzo',
-    'alert-privacy-condizioni'
-  ].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = 'none';
+  // Nascondi tutti i messaggi: info negozio, warning/blocco, condizioni
+  document.querySelectorAll('#regole-prenotazione .alert').forEach(el => {
+    el.style.display = 'none';
   });
 }
 
@@ -1916,9 +1894,8 @@ const calendario = (function() {
  */
 document.addEventListener('DOMContentLoaded', function() {
   function hideAlerts() {
-  ['alert-warning-durata', 'alert-block-durata', 'alert-warning-prezzo', 'alert-block-prezzo', 'alert-privacy-condizioni'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.style.display = 'none';
+    document.querySelectorAll('#regole-prenotazione .alert').forEach(el => {
+      el.style.display = 'none';
     });
   }
 
