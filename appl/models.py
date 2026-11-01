@@ -340,6 +340,13 @@ class BusinessInfo(db.Model):
     logo_filename = db.Column(db.String(255), nullable=True)   # nome file originale
     logo_visible_in_booking_page = db.Column(db.Boolean, default=True)  # Se True, mostra il logo nella pagina booking_public
 
+    # Sfondo della pagina di prenotazione online, solo su schermi grandi (WebP
+    # max 1920px, caricato dal gestionale: Impostazioni > Booking Web). deferred
+    # come il logo: pesa centinaia di KB e BusinessInfo si legge a ogni richiesta.
+    # Il mime type c'e' solo se c'e' l'immagine: dice "c'e' uno sfondo" senza caricarla.
+    booking_background_image = db.deferred(db.Column(db.LargeBinary, nullable=True))
+    booking_background_mime_type = db.Column(db.String(50), nullable=True)
+
     # Preset turni giornalieri salvati come array JSON
     # Formato: [{"name":"Turno lungo","start":"09:00","end":"18:00","breakStart":"13:00","breakDuration":"60"}, ...]
     shift_presets = db.Column(db.Text, nullable=True, default='[]')

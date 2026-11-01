@@ -824,6 +824,27 @@ body {
 }
 .btn-ho-capito:hover { background-color: #a98ca7 !important; }
 </style>
+{% if sfondo_versione %}
+<style>
+/* Sfondo scelto dal negozio (gestionale, Impostazioni > Booking Web), solo su
+   schermi grandi: dentro il media query telefoni e tablet non lo scaricano
+   nemmeno. Il velo scuro sopra la foto tiene in primo piano il riquadro. */
+@media (min-width: 992px) {
+  body {
+    background-color: #100f0f;
+    background-image:
+      linear-gradient(rgba(16, 15, 15, 0.45), rgba(16, 15, 15, 0.45)),
+      url("{{ url_for('booking.serve_sfondo', tenant_id=tenant_id, v=sfondo_versione) }}");
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+  }
+  .container-booking {
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  }
+}
+</style>
+{% endif %}
 </head>
 <body>
   <div id="container-booking" class="container-booking">

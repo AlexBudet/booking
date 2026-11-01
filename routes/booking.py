@@ -673,6 +673,21 @@ def serve_logo(tenant_id):
         headers={'Cache-Control': 'public, max-age=86400'}  # Cache per 24 ore
     )
 
+@booking_bp.route('/sfondo')
+def serve_sfondo(tenant_id):
+    """Sfondo della pagina di prenotazione (solo schermi grandi, vedi booking_public.html).
+
+    La pagina lo chiede con ?v=<md5 dell'immagine>: cambiato lo sfondo dal
+    gestionale cambia l'indirizzo, quindi la copia nel browser puo' valere un anno."""
+    business_info = g.db_session.query(BusinessInfo).first()
+    if not business_info or not business_info.booking_background_mime_type:
+        return Response(status=404)
+    return Response(
+        business_info.booking_background_image,
+        mimetype=business_info.booking_background_mime_type,
+        headers={'Cache-Control': 'public, max-age=31536000, immutable'}
+    )
+
 @booking_bp.route('/')
 @booking_bp.route('/booking')
 def booking_page(tenant_id):
@@ -693,6 +708,14 @@ def booking_page(tenant_id):
         .all()
     )
     business_info = g.db_session.query(BusinessInfo).first()
+
+    # Versione dello sfondo per l'indirizzo dell'immagine (serve_sfondo): l'md5 lo
+    # calcola Postgres, cosi' qui non si caricano centinaia di KB a ogni visita.
+    sfondo_versione = None
+    if business_info and business_info.booking_background_mime_type:
+        sfondo_versione = g.db_session.query(
+            func.md5(BusinessInfo.booking_background_image)
+        ).filter(BusinessInfo.id == business_info.id).scalar()
 
     servizi_json = [{
         'id': s.id, 
@@ -718,6 +741,7 @@ def booking_page(tenant_id):
         operatori=operatori,
         oggi=oggi,
         business_info=business_info,
+        sfondo_versione=sfondo_versione,
         csrf_token=csrf_token,
         tenant_id=tenant_id
     )
