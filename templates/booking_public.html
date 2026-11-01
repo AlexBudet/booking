@@ -99,12 +99,24 @@
 #selezione-iniziale-servizio .form-select {
   height: 44px;
 }
-/* "Scegli operatore", piccolo sopra la tendina */
+/* "Scelta operatore", piccolo sopra la tendina: con align-items-end della riga
+   la tendina resta allineata in basso al campo di ricerca */
 .operatore-etichetta {
   display: block;
   margin-bottom: 4px;
-  font-size: 0.8rem;
+  overflow: hidden;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   color: #c2aebc;
+}
+/* All'apertura: ricerca da sola, centrata, larga l'80% (vedi #selezione-iniziale-servizio) */
+#selezione-iniziale-servizio.ricerca-iniziale > .col-8 {
+  width: 80%;
+  margin: 0 auto;
+}
+#selezione-iniziale-servizio.ricerca-iniziale > .col-4 {
+  display: none;
 }
 
   /* Cambia colore pseudoblocchi */
@@ -831,20 +843,22 @@ body {
     </div>
 <form id="bookingForm" autocomplete="off">
 <input type="hidden" id="csrf_token" name="csrf_token" value="{{ csrf_token }}">
-<div class="row align-items-end mb-2" id="selezione-iniziale-servizio">
-<!-- Ricerca a tutta larghezza; l'operatore ha una riga sua sotto, con l'etichetta,
-     e compare solo dopo la scelta del servizio (select_operatore_wrapper) -->
-<div class="col-12 position-relative mb-2">
+<!-- ricerca-iniziale: all'apertura la ricerca e' da sola, centrata e larga l'80%;
+     al primo tocco (focus su #servizio-iniziale) la classe se ne va e torna la riga
+     ricerca col-8 + operatore col-4. col-8 e non 7: con il "?" accanto, a 7 su un
+     telefono il segnaposto veniva tagliato. -->
+<div class="row align-items-end mb-2 ricerca-iniziale" id="selezione-iniziale-servizio">
+<div class="col-8 position-relative mb-2">
   <div class="d-flex align-items-center gap-2">
     <input type="text" id="servizio-iniziale" class="form-control" placeholder="Cerca un servizio..." aria-label="Cerca un servizio" autocomplete="off" style="flex:1 1 auto; min-width:0;">
     <button type="button" class="tutorial-btn" data-bs-toggle="modal" data-bs-target="#modalTutorial" aria-label="Come prenotare" title="Come prenotare">?</button>
   </div>
   <input type="hidden" id="servizio-id-selezionato">
 </div>
-  <div class="col-12">
+  <div class="col-4 mb-2">
     <div id="risultati_operatore" class="list-group" style="display:none; z-index:10;"></div>
-    <div id="select_operatore_wrapper" class="mb-2">
-      <label for="operatore" class="operatore-etichetta">Scegli operatore</label>
+    <div id="select_operatore_wrapper">
+      <label for="operatore" class="operatore-etichetta">Scelta operatore</label>
       <select id="operatore" class="form-select">
         <option value="">Operatore</option>
         {% for operatore in operatori %}
@@ -1634,6 +1648,8 @@ function nascondiSidebarEAvvisi() {
 // --- APERTURA MODAL CUSTOM ---
 document.getElementById('servizio-iniziale').addEventListener('focus', function() {
   nascondiSidebarEAvvisi();
+  // dalla ricerca centrata all'80% alla riga ricerca + operatore
+  document.getElementById('selezione-iniziale-servizio').classList.remove('ricerca-iniziale');
   document.getElementById('modalServizi').style.display = 'block';
   document.getElementById('modal-servizio-input').value = '';
   showModalSuggestions(servizi);
