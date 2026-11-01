@@ -99,6 +99,13 @@
 #selezione-iniziale-servizio .form-select {
   height: 44px;
 }
+/* "Scegli operatore", piccolo sopra la tendina */
+.operatore-etichetta {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.8rem;
+  color: #c2aebc;
+}
 
   /* Cambia colore pseudoblocchi */
 #pseudoblocchi-servizi .alert-secondary {
@@ -618,9 +625,9 @@ body {
 /* ===== Mini-tutorial "Come prenotare" =====
    Il tasto "?" sta accanto al campo di ricerca e apre #modalTutorial. */
 .tutorial-btn {
-  flex: 0 0 44px;
-  width: 44px;
-  height: 44px; /* come il campo di ricerca accanto */
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px; /* piu' piccolo del campo accanto (44px): e' un aiuto, non un comando */
   padding: 0;
   border: 1px solid #87647c;
   border-radius: 50%;
@@ -825,17 +832,19 @@ body {
 <form id="bookingForm" autocomplete="off">
 <input type="hidden" id="csrf_token" name="csrf_token" value="{{ csrf_token }}">
 <div class="row align-items-end mb-2" id="selezione-iniziale-servizio">
-<!-- col-8 e non 7: con il "?" accanto, a 7 su un telefono il segnaposto veniva tagliato -->
-<div class="col-8 position-relative mb-2">
+<!-- Ricerca a tutta larghezza; l'operatore ha una riga sua sotto, con l'etichetta,
+     e compare solo dopo la scelta del servizio (select_operatore_wrapper) -->
+<div class="col-12 position-relative mb-2">
   <div class="d-flex align-items-center gap-2">
     <input type="text" id="servizio-iniziale" class="form-control" placeholder="Cerca un servizio..." aria-label="Cerca un servizio" autocomplete="off" style="flex:1 1 auto; min-width:0;">
     <button type="button" class="tutorial-btn" data-bs-toggle="modal" data-bs-target="#modalTutorial" aria-label="Come prenotare" title="Come prenotare">?</button>
   </div>
   <input type="hidden" id="servizio-id-selezionato">
 </div>
-  <div class="col-4 mb-2">
+  <div class="col-12">
     <div id="risultati_operatore" class="list-group" style="display:none; z-index:10;"></div>
-    <div id="select_operatore_wrapper">
+    <div id="select_operatore_wrapper" class="mb-2">
+      <label for="operatore" class="operatore-etichetta">Scegli operatore</label>
       <select id="operatore" class="form-select">
         <option value="">Operatore</option>
         {% for operatore in operatori %}
