@@ -505,6 +505,48 @@ body {
   text-align: center;
   color: #c2aebc;
 }
+/* Avvisi sotto la ricerca: scuri, nei colori del sito, tre famiglie appena
+   distinguibili dal bordo a sinistra. Selettori con #regole-prenotazione per
+   battere le classi Bootstrap (.alert-info, .alert-warning, ...). */
+#regole-prenotazione .alert {
+  --bs-alert-bg: #1f1b1e;
+  --bs-alert-color: #eedbe2;
+  --bs-alert-border-color: #3d3439;
+  --bs-alert-link-color: #e3bfd3;
+  border-left-width: 4px;
+}
+#regole-prenotazione .alert a { color: #e3bfd3; }
+#regole-prenotazione .alert .btn-close {
+  filter: invert(1) grayscale(100%) brightness(200%);
+  opacity: 0.55;
+}
+#regole-prenotazione .alert .btn-close:hover { opacity: 0.9; }
+/* messaggio del negozio su appuntamenti e tempi */
+#regole-prenotazione #alert-info-prenotazioni {
+  --bs-alert-bg: #251d23;
+  --bs-alert-border-color: #4f3d49;
+  border-left-color: #a98ca7;
+}
+/* privacy e condizioni di vendita: il piu' discreto */
+#regole-prenotazione #alert-privacy-condizioni {
+  --bs-alert-bg: #1b1a1b;
+  --bs-alert-color: #c9bcc2;
+  --bs-alert-border-color: #353033;
+  border-left-color: #6f6469;
+}
+/* regole durata/prezzo: warning rosa, blocco rosso */
+#regole-prenotazione .alert.alert-warning {
+  --bs-alert-bg: #2b1a23;
+  --bs-alert-border-color: #57304a;
+  border-left-color: #d0769c;
+}
+#regole-prenotazione .alert.alert-danger {
+  --bs-alert-bg: #2d171c;
+  --bs-alert-border-color: #632c36;
+  border-left-color: #e0606f;
+}
+#regole-prenotazione .alert.alert-warning > b:first-child { color: #eaa4c2; }
+#regole-prenotazione .alert.alert-danger > b:first-child { color: #f08a95; }
 </style>
 </head>
 <body>
