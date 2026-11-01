@@ -574,50 +574,70 @@ body {
   opacity: 0.55;
 }
 #regole-prenotazione .alert .btn-close:hover { opacity: 0.9; }
-/* Messaggio del negozio: una riga con titolo e inizio del testo, che apre
-   #modalInfoPrenotazioni. E' un <button>: via gli stili da bottone del browser. */
-#regole-prenotazione .info-prenotazioni {
+/* Messaggio del negozio: titolo e prime tre righe; se e' piu' lungo sfuma e
+   "Leggi tutto" apre il testo intero in #modalInfoPrenotazioni */
+#regole-prenotazione #alert-info-prenotazioni {
   --bs-alert-bg: #251d23;
   --bs-alert-border-color: #4f3d49;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  margin-bottom: 0.75rem;
-  padding: 8px 12px;
   border-left-color: #a98ca7;
-  font: inherit;
-  font-size: 0.875rem;
-  text-align: left;
-  cursor: pointer;
-  transition: background-color 0.15s;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  font-size: 0.875rem; /* 14px contro i 16 degli altri avvisi: e' testo lungo */
 }
-#regole-prenotazione .info-prenotazioni:hover,
-#regole-prenotazione .info-prenotazioni:focus-visible {
-  --bs-alert-bg: #30242d;
-  outline: none;
-}
-#regole-prenotazione .info-prenotazioni:focus-visible {
-  box-shadow: 0 0 0 2px #d9bccb;
-}
-.info-prenotazioni-icona {
-  font-size: 1.05rem;
-  color: #c9a3b8;
-}
-.info-prenotazioni-testi {
-  flex: 1;
-  min-width: 0; /* senza, l'anteprima non si accorcia con i puntini */
-}
-.info-prenotazioni-testi b {
-  display: block;
+.info-prenotazioni-titolo {
+  margin-bottom: 4px;
+  font-weight: 700;
   color: #ffffff;
 }
-.info-prenotazioni-anteprima {
-  display: block;
+.info-prenotazioni-titolo i {
+  margin-right: 6px;
+  color: #c9a3b8;
+}
+.info-prenotazioni-testo.is-tagliato {
+  position: relative;
+  max-height: 4.5em; /* tre righe da 1.5 */
   overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  color: #c9b5bf;
+}
+.info-prenotazioni-testo.is-tagliato::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1.5em;
+  background: linear-gradient(rgba(37, 29, 35, 0), #251d23); /* sfuma nel fondo dell'avviso */
+}
+.info-prenotazioni-tutto {
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #e3bfd3;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.info-prenotazioni-tutto:hover,
+.info-prenotazioni-tutto:focus-visible {
+  color: #ffffff;
+  text-decoration: underline;
+}
+.info-prenotazioni-tutto i {
+  margin-left: 2px;
+  font-size: 0.75em;
+}
+/* privacy e condizioni di vendita: il piu' discreto, e piu' piccolo degli altri */
+#regole-prenotazione #alert-privacy-condizioni {
+  --bs-alert-bg: #1b1a1b;
+  --bs-alert-color: #c9bcc2;
+  --bs-alert-border-color: #353033;
+  border-left-color: #6f6469;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  font-size: 0.8rem;
+}
+#regole-prenotazione #alert-privacy-condizioni .btn-close {
+  padding: 0.85rem 1rem; /* centrata sull'avviso piu' basso */
 }
 /* Privacy e condizioni di vendita, accanto al tasto che invia i dati */
 .nota-consenso {
@@ -859,23 +879,30 @@ body {
 
 <div id="pseudoblocchi-servizi"></div>
 
-<!-- I messaggi del negozio stanno qui, sotto il campo di ricerca, e spariscono
-     insieme alla prima interazione (nascondiSidebarEAvvisi, hideAlerts). La nota
-     su privacy e condizioni di vendita invece sta accanto a "Invia codice". -->
+<!-- Tutti i messaggi della pagina stanno qui, sotto il campo di ricerca, e
+     spariscono insieme alla prima interazione (nascondiSidebarEAvvisi, hideAlerts).
+     La nota su privacy e condizioni di vendita e' ripetuta accanto a "Invia codice". -->
 <div id="regole-prenotazione" class="mb-3">
   {% if business_info.booking_info_message %}
-    {# Qui solo titolo e inizio del testo, per lasciare in vista la ricerca: il
-       messaggio intero e' in #modalInfoPrenotazioni. L'anteprima e' testo
-       semplice; lo spazio prima di div/br/p evita parole incollate fra due righe
-       (il gestionale, _PulisciHtmlInfo, lascia solo b/strong/i/em/u/br/div/p/a). #}
-    <button type="button" class="alert info-prenotazioni" id="alert-info-prenotazioni" data-bs-toggle="modal" data-bs-target="#modalInfoPrenotazioni">
-      <i class="fa-solid fa-circle-info info-prenotazioni-icona" aria-hidden="true"></i>
-      <span class="info-prenotazioni-testi">
-        <b>Condizioni di prenotazione</b>
-        <span class="info-prenotazioni-anteprima">{{ business_info.booking_info_message|replace('<div', ' <div')|replace('<br', ' <br')|replace('<p', ' <p')|striptags }}</span>
-      </span>
-      <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
-    </button>
+    {# HTML dell'editor del gestionale, gia' ripulito al salvataggio
+       (settings.py, _PulisciHtmlInfo): solo b/i/u/a capo/link.
+       Qui le prime tre righe, il testo intero in #modalInfoPrenotazioni. #}
+    <div class="alert alert-dismissible fade show" role="alert" id="alert-info-prenotazioni">
+      <div class="info-prenotazioni-titolo"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>Condizioni di prenotazione</div>
+      <div class="info-prenotazioni-testo is-tagliato">{{ business_info.booking_info_message|safe }}</div>
+      <button type="button" class="info-prenotazioni-tutto" data-bs-toggle="modal" data-bs-target="#modalInfoPrenotazioni">Leggi tutto <i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Chiudi"></button>
+    </div>
+    <script>
+    // Messaggio che sta tutto nelle tre righe: niente sfumatura e niente "Leggi tutto"
+    (function() {
+      const testo = document.querySelector('#alert-info-prenotazioni .info-prenotazioni-testo');
+      if (testo.scrollHeight <= testo.clientHeight + 1) {
+        testo.classList.remove('is-tagliato');
+        document.querySelector('#alert-info-prenotazioni .info-prenotazioni-tutto').hidden = true;
+      }
+    })();
+    </script>
   {% endif %}
   {% if business_info.booking_rule_type_durata == 'warning' and business_info.booking_max_durata %}
     <div class="alert alert-warning alert-dismissible fade show" role="alert" id="alert-warning-durata">
@@ -899,6 +926,13 @@ body {
       <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Chiudi"></button>
     </div>
   {% endif %}
+<div class="alert alert-info alert-dismissible fade show" role="alert" id="alert-privacy-condizioni">
+  <b>Attenzione:</b> Proseguendo si accettano
+  <a href="#" class="link-privacy" style="text-decoration:underline;">l'informativa sulla privacy</a>
+  e
+  <a href="#" class="link-condizioni" style="text-decoration:underline;">le condizioni di vendita</a>.
+  <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Chiudi"></button>
+</div>
 </div>
 
 <!-- Modal Descrizione Servizi -->
@@ -1082,7 +1116,7 @@ Per quanto non espressamente previsto nelle presenti CGV, si applica la legge it
 
 {% if business_info.booking_info_message %}
 <!-- Modal Condizioni di prenotazione: il messaggio informativo del negozio per intero,
-     aperto dalla riga #alert-info-prenotazioni sotto la ricerca -->
+     aperto da "Leggi tutto" nell'avviso #alert-info-prenotazioni sotto la ricerca -->
 <div class="modal fade modal-scuro" id="modalInfoPrenotazioni" tabindex="-1" aria-labelledby="modalInfoPrenotazioniLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content bg-dark-custom">
@@ -1164,13 +1198,13 @@ Per quanto non espressamente previsto nelle presenti CGV, si applica la legge it
       <td><input type="email" id="email" required class="form-control" autocomplete="email" enterkeyhint="done"></td>
     </tr>
   </table>
-  <!-- Accanto al tasto che invia i dati, e non in cima alla pagina dove spariva
-       al primo tocco, prima ancora che il cliente scrivesse i suoi dati -->
+  <!-- Ripete l'avviso in cima alla pagina, che sparisce al primo tocco: qui resta
+       accanto al tasto che invia i dati -->
   <p class="nota-consenso">
     Proseguendo si accettano
-    <a href="#" id="link-privacy">l'informativa sulla privacy</a>
+    <a href="#" class="link-privacy">l'informativa sulla privacy</a>
     e
-    <a href="#" id="link-condizioni">le condizioni di vendita</a>.
+    <a href="#" class="link-condizioni">le condizioni di vendita</a>.
   </p>
   <!-- Invia codice (appare dopo conferma) -->
   <button type="button" id="inviaCodiceBtn" class="btn btn-success w-100" style="display:none; margin-top:10px;">Invia codice di conferma</button>
@@ -2295,15 +2329,20 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 <script>
-document.getElementById('link-privacy').addEventListener('click', function(e) {
-  e.preventDefault();
-  var modal = new bootstrap.Modal(document.getElementById('modalPrivacy'));
-  modal.show();
+// I link sono due: nell'avviso in cima e nella nota accanto a "Invia codice"
+document.querySelectorAll('.link-privacy').forEach(function(link) {
+  link.addEventListener('click', function(e) {
+    e.preventDefault();
+    var modal = new bootstrap.Modal(document.getElementById('modalPrivacy'));
+    modal.show();
+  });
 });
-document.getElementById('link-condizioni').addEventListener('click', function(e) {
-  e.preventDefault();
-  var modal = new bootstrap.Modal(document.getElementById('modalCondizioni'));
-  modal.show();
+document.querySelectorAll('.link-condizioni').forEach(function(link) {
+  link.addEventListener('click', function(e) {
+    e.preventDefault();
+    var modal = new bootstrap.Modal(document.getElementById('modalCondizioni'));
+    modal.show();
+  });
 });
 </script>
 <script>
