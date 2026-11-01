@@ -10,9 +10,9 @@
   <style>
     .container-booking {
       max-width: 600px;
-      margin: 40px auto;
+      margin: 24px auto;
       border-radius: 12px;
-      padding: 2rem;
+      padding: 1.5rem;
       border: 1px solid #87647c !important; /* esempio: viola chiaro */
       /* Disabilita il touch delay su iOS */
       touch-action: manipulation;
@@ -24,8 +24,8 @@
 
     .booking-sidebar {
       border-radius: 12px;
-      padding: 1.5rem;
-      margin-bottom: 2rem;
+      padding: 0.9rem 1.1rem;
+      margin-bottom: 1rem;
     }
 .custom-modal-content {
   background: linear-gradient(to right, #e7d8dd, #f0d7e1) !important;
@@ -43,22 +43,9 @@
     box-shadow: none;
     padding: 1rem;
   }
-    .booking-logo {
-    max-height: 60px !important;
-  }
   .booking-sidebar {
-    width: 90vw;                 /* Larga il 90% della viewport */
-    max-width: 98vw;
-    margin: 12px auto 18px auto; /* Centrata con un po' di spazio sopra e sotto */
-    min-width: unset;
-    font-size: calc(1.1rem + 0.7vw); /* Font size proporzionale allo schermo */
-    position: static;             /* NON fixed */
-    left: 0;
-    top: 0;
-    height: auto;
-    z-index: auto;
-    border-right: none;
-    padding: 1.2rem 0.8rem;
+    margin: 0 0 12px;
+    padding: 0.75rem 0.9rem;
   }
   .desktop-only { display: none !important; }
   .mobile-full { width: 100% !important; }
@@ -92,6 +79,71 @@
 .booking-sidebar {
   background: #1b1b1b; /* esempio azzurro */
   color: rgb(236, 207, 218);
+}
+
+/* ===== Testata: logo accanto al nome, contatti su una riga =====
+   Compatta perche' ad apertura pagina il campo di ricerca stia in alto. */
+.testata {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.booking-logo {
+  flex: 0 0 auto;
+  max-height: 64px;
+  max-width: 40%;
+  height: auto;
+  object-fit: contain;
+  filter: invert(1);
+}
+.testata-testi {
+  min-width: 0;
+}
+.testata-portale {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #c9a3b8;
+}
+.testata-nome {
+  margin: 0;
+  font-size: 1.45rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: #ffffff;
+}
+.testata-contatti {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 16px;
+  margin-top: 8px;
+  font-size: 0.88rem;
+  color: #d8c3cd;
+}
+.testata-contatti i {
+  margin-right: 3px;
+  color: #c9a3b8;
+}
+.testata-contatti a {
+  color: inherit;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.testata-contatti a:hover {
+  color: #ffffff;
+  text-decoration: underline;
+}
+@media (max-width: 767px) {
+  .booking-logo { max-height: 48px; }
+  .testata-nome { font-size: 1.25rem; }
+}
+/* Riga che introduce il campo di ricerca */
+.ricerca-etichetta {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.95rem;
+  color: #e7eace;
 }
 
   /* Cambia colore pseudoblocchi */
@@ -514,6 +566,7 @@ body {
   --bs-alert-border-color: #3d3439;
   --bs-alert-link-color: #e3bfd3;
   border-left-width: 4px;
+  max-width: none; /* allineati al campo di ricerca, non rientrati come gli altri avvisi */
 }
 #regole-prenotazione .alert a { color: #e3bfd3; }
 #regole-prenotazione .alert .btn-close {
@@ -521,20 +574,59 @@ body {
   opacity: 0.55;
 }
 #regole-prenotazione .alert .btn-close:hover { opacity: 0.9; }
-/* messaggio del negozio su appuntamenti e tempi */
-#regole-prenotazione #alert-info-prenotazioni {
+/* Messaggio del negozio: una riga con titolo e inizio del testo, che apre
+   #modalInfoPrenotazioni. E' un <button>: via gli stili da bottone del browser. */
+#regole-prenotazione .info-prenotazioni {
   --bs-alert-bg: #251d23;
   --bs-alert-border-color: #4f3d49;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-bottom: 0.75rem;
+  padding: 8px 12px;
   border-left-color: #a98ca7;
-  font-size: 0.875rem; /* 14px contro i 16 degli altri avvisi: e' testo lungo */
+  font: inherit;
+  font-size: 0.875rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s;
 }
-/* privacy e condizioni di vendita: il piu' discreto */
-#regole-prenotazione #alert-privacy-condizioni {
-  --bs-alert-bg: #1b1a1b;
-  --bs-alert-color: #c9bcc2;
-  --bs-alert-border-color: #353033;
-  border-left-color: #6f6469;
+#regole-prenotazione .info-prenotazioni:hover,
+#regole-prenotazione .info-prenotazioni:focus-visible {
+  --bs-alert-bg: #30242d;
+  outline: none;
 }
+#regole-prenotazione .info-prenotazioni:focus-visible {
+  box-shadow: 0 0 0 2px #d9bccb;
+}
+.info-prenotazioni-icona {
+  font-size: 1.05rem;
+  color: #c9a3b8;
+}
+.info-prenotazioni-testi {
+  flex: 1;
+  min-width: 0; /* senza, l'anteprima non si accorcia con i puntini */
+}
+.info-prenotazioni-testi b {
+  display: block;
+  color: #ffffff;
+}
+.info-prenotazioni-anteprima {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #c9b5bf;
+}
+/* Privacy e condizioni di vendita, accanto al tasto che invia i dati */
+.nota-consenso {
+  margin: 10px 0 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: #b9a6b0;
+}
+.nota-consenso a { color: #e3bfd3; }
 /* regole durata/prezzo: warning rosa, blocco rosso */
 #regole-prenotazione .alert.alert-warning {
   --bs-alert-bg: #2b1a23;
@@ -548,39 +640,205 @@ body {
 }
 #regole-prenotazione .alert.alert-warning > b:first-child { color: #eaa4c2; }
 #regole-prenotazione .alert.alert-danger > b:first-child { color: #f08a95; }
+
+/* ===== Mini-tutorial "Come prenotare" =====
+   Il tasto "?" sta accanto al campo di ricerca e apre #modalTutorial. */
+.tutorial-btn {
+  flex: 0 0 38px;
+  width: 38px;
+  height: 38px; /* come il campo di ricerca accanto */
+  padding: 0;
+  border: 1px solid #87647c;
+  border-radius: 50%;
+  background: #444;
+  color: #eaced6;
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+.tutorial-btn:hover,
+.tutorial-btn:focus-visible {
+  background: #87647c;
+  color: #ffffff;
+  outline: none;
+}
+.tutorial-btn:focus-visible {
+  box-shadow: 0 0 0 2px #d9bccb;
+}
+/* Modal scuri della pagina: tutorial e condizioni di prenotazione */
+.modal-scuro .modal-content {
+  border: 1px solid #4f3d49;
+  border-radius: 14px;
+}
+.modal-scuro .modal-header,
+.modal-scuro .modal-footer {
+  border-color: #4a4046;
+}
+.modal-scuro .btn-close {
+  filter: invert(1) grayscale(100%) brightness(200%);
+  opacity: 0.55;
+}
+.modal-scuro .btn-close:hover { opacity: 0.9; }
+.modal-scuro .modal-body {
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+.modal-scuro a { color: #e3bfd3; }
+/* Passi numerati: il numero e' nel cerchio, una linea sottile li unisce */
+.tutorial-passi {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  counter-reset: passo;
+}
+.tutorial-passi > li {
+  position: relative;
+  padding: 0 0 16px 40px;
+  counter-increment: passo;
+}
+.tutorial-passi > li::before {
+  content: counter(passo);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #b48fae, #87647c);
+  color: #ffffff;
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 28px;
+  text-align: center;
+}
+.tutorial-passi > li:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 13.5px;
+  top: 32px;
+  bottom: 4px;
+  width: 1px;
+  background: #5a4a54;
+}
+.tutorial-titolo {
+  display: block;
+  padding-top: 3px; /* allineato al centro del cerchio */
+  margin-bottom: 2px;
+  color: #ffffff;
+  font-weight: 700;
+}
+.tutorial-passi p {
+  margin: 0;
+  color: #e2cdd6;
+}
+/* Tasti e campi citati nel testo, disegnati come appaiono nella pagina */
+.tutorial-chip {
+  display: inline-block;
+  padding: 0 7px;
+  border: 1px solid #87647c;
+  border-radius: 6px;
+  background: #444;
+  color: #eaced6;
+  font-size: 0.85em;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+.tutorial-info {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: pink;
+  color: #000000;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+.tutorial-x {
+  color: #dc3545;
+  font-weight: 700;
+}
+.tutorial-giorno {
+  display: inline-block;
+  width: 24px;
+  border: 1px solid rgba(169, 140, 167, 0.3);
+  border-radius: 6px;
+  background: rgba(169, 140, 167, 0.16);
+  color: #f1dfe7;
+  font-size: 0.8em;
+  line-height: 20px;
+  text-align: center;
+}
+.tutorial-giorno.is-spento {
+  background: transparent;
+  border-color: transparent;
+  color: #948590;
+  text-decoration: line-through;
+}
+.tutorial-box {
+  margin-top: 4px;
+  padding: 10px 12px;
+  border-left: 4px solid #a98ca7;
+  border-radius: 8px;
+  background: #251d23;
+  color: #e2cdd6;
+}
+.tutorial-box + .tutorial-box {
+  margin-top: 10px;
+  border-left-color: #6f6469;
+  background: #1f1b1e;
+}
+.tutorial-box b { color: #ffffff; }
+.tutorial-box ul {
+  margin: 4px 0 0;
+  padding-left: 1.1rem;
+}
+.tutorial-box li + li { margin-top: 4px; }
+.btn-ho-capito {
+  background-color: #87647c !important;
+  color: #ffffff !important;
+  border: none !important;
+}
+.btn-ho-capito:hover { background-color: #a98ca7 !important; }
 </style>
 </head>
 <body>
   <div id="container-booking" class="container-booking">
-    <!-- Sidebar info salone, visibile solo su desktop -->
-    <div class="booking-sidebar mb-4">
-      {% if business_info.logo_image and business_info.logo_visible_in_booking_page %}
-      <div class="mb-3">
-        <img src="{{ url_for('booking.serve_logo', tenant_id=tenant_id) }}" 
-             alt="Logo {{ business_info.business_name }}" 
-             class="booking-logo"
-             style="max-height: 100px; max-width: 100%; height: auto; object-fit: contain; filter: invert(1);">
+    <!-- Testata del salone: su mobile sparisce alla prima interazione (nascondiSidebarEAvvisi) -->
+    <div class="booking-sidebar">
+      <div class="testata">
+        {% if business_info.logo_image and business_info.logo_visible_in_booking_page %}
+        <img src="{{ url_for('booking.serve_logo', tenant_id=tenant_id) }}"
+             alt="Logo {{ business_info.business_name }}"
+             class="booking-logo">
+        {% endif %}
+        <div class="testata-testi">
+          <div class="testata-portale">Portale prenotazioni</div>
+          <h1 class="testata-nome">{{ business_info.business_name }}</h1>
+        </div>
       </div>
-      {% endif %}
-      <h3 class="mb-2">PORTALE PRENOTAZIONI</h3>
-<h3 class="mb-2" style="color: #ffffff;">{{ business_info.business_name }}</h3>
-<div class="mb-2">
-  <i class="fa-solid fa-location-dot"></i>
-  {{ business_info.address }}{% if business_info.city %} ({{ business_info.city }}){% endif %}
-</div>
-<div class="mb-2">
-  <i class="fa-solid fa-phone"></i>
-  {{ business_info.phone }}
-</div>
-      <p class="mt-3" style="font-size: 0.95em; color: #e7eace;">
-        Scegli i <b>servizi</b>, la <b>data</b> e l'<b>orario</b>.<br>
-      </p>
+      <div class="testata-contatti">
+        <span><i class="fa-solid fa-location-dot" aria-hidden="true"></i>{{ business_info.address }}{% if business_info.city %} ({{ business_info.city }}){% endif %}</span>
+        {% if business_info.phone %}
+        <a href="tel:{{ business_info.phone|replace(' ', '') }}"><i class="fa-solid fa-phone" aria-hidden="true"></i>{{ business_info.phone }}</a>
+        {% endif %}
+      </div>
     </div>
 <form id="bookingForm" autocomplete="off">
 <input type="hidden" id="csrf_token" name="csrf_token" value="{{ csrf_token }}">
 <div class="row align-items-end mb-2" id="selezione-iniziale-servizio">
-<div class="col-7 position-relative mb-2">
-  <input type="text" id="servizio-iniziale" class="form-control" placeholder="Cerca un servizio..." autocomplete="off">
+<div class="col-12">
+  <label for="servizio-iniziale" class="ricerca-etichetta">Scegli i <b>servizi</b>, la <b>data</b> e l'<b>orario</b></label>
+</div>
+<!-- col-8 e non 7: con il "?" accanto, a 7 su un telefono il segnaposto veniva tagliato -->
+<div class="col-8 position-relative mb-2">
+  <div class="d-flex align-items-center gap-2">
+    <input type="text" id="servizio-iniziale" class="form-control" placeholder="Cerca un servizio..." autocomplete="off" style="flex:1 1 auto; min-width:0;">
+    <button type="button" class="tutorial-btn" data-bs-toggle="modal" data-bs-target="#modalTutorial" aria-label="Come prenotare" title="Come prenotare">?</button>
+  </div>
   <input type="hidden" id="servizio-id-selezionato">
 </div>
   <div class="col-4 mb-2">
@@ -601,16 +859,23 @@ body {
 
 <div id="pseudoblocchi-servizi"></div>
 
-<!-- Tutti i messaggi della pagina stanno qui, sotto il campo di ricerca, e
-     spariscono insieme alla prima interazione (nascondiSidebarEAvvisi, hideAlerts). -->
+<!-- I messaggi del negozio stanno qui, sotto il campo di ricerca, e spariscono
+     insieme alla prima interazione (nascondiSidebarEAvvisi, hideAlerts). La nota
+     su privacy e condizioni di vendita invece sta accanto a "Invia codice". -->
 <div id="regole-prenotazione" class="mb-3">
   {% if business_info.booking_info_message %}
-    {# HTML dell'editor del gestionale, gia' ripulito al salvataggio
-       (settings.py, _PulisciHtmlInfo): solo b/i/u/a capo/link #}
-    <div class="alert alert-info alert-dismissible fade show" role="alert" id="alert-info-prenotazioni">
-      {{ business_info.booking_info_message|safe }}
-      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Chiudi"></button>
-    </div>
+    {# Qui solo titolo e inizio del testo, per lasciare in vista la ricerca: il
+       messaggio intero e' in #modalInfoPrenotazioni. L'anteprima e' testo
+       semplice; lo spazio prima di div/br/p evita parole incollate fra due righe
+       (il gestionale, _PulisciHtmlInfo, lascia solo b/strong/i/em/u/br/div/p/a). #}
+    <button type="button" class="alert info-prenotazioni" id="alert-info-prenotazioni" data-bs-toggle="modal" data-bs-target="#modalInfoPrenotazioni">
+      <i class="fa-solid fa-circle-info info-prenotazioni-icona" aria-hidden="true"></i>
+      <span class="info-prenotazioni-testi">
+        <b>Condizioni di prenotazione</b>
+        <span class="info-prenotazioni-anteprima">{{ business_info.booking_info_message|replace('<div', ' <div')|replace('<br', ' <br')|replace('<p', ' <p')|striptags }}</span>
+      </span>
+      <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+    </button>
   {% endif %}
   {% if business_info.booking_rule_type_durata == 'warning' and business_info.booking_max_durata %}
     <div class="alert alert-warning alert-dismissible fade show" role="alert" id="alert-warning-durata">
@@ -634,13 +899,6 @@ body {
       <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Chiudi"></button>
     </div>
   {% endif %}
-<div class="alert alert-info alert-dismissible fade show" role="alert" id="alert-privacy-condizioni">
-  <b>Attenzione:</b> Proseguendo si accettano
-  <a href="#" id="link-privacy" style="text-decoration:underline;">l'informativa sulla privacy</a>
-  e
-  <a href="#" id="link-condizioni" style="text-decoration:underline;">le condizioni di vendita</a>.
-  <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Chiudi"></button>
-</div>
 </div>
 
 <!-- Modal Descrizione Servizi -->
@@ -765,6 +1023,83 @@ Per quanto non espressamente previsto nelle presenti CGV, si applica la legge it
   </div>
 </div>
 
+<!-- Modal Come prenotare: mini-tutorial del tasto "?" accanto alla ricerca.
+     Se cambia il flusso della pagina (tasti, campi, codice, email) va aggiornato anche qui. -->
+<div class="modal fade modal-scuro" id="modalTutorial" tabindex="-1" aria-labelledby="modalTutorialLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content bg-dark-custom">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalTutorialLabel"><i class="fa-regular fa-circle-question me-2" aria-hidden="true"></i>Come prenotare</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+      </div>
+      <div class="modal-body">
+        <ol class="tutorial-passi" role="list">
+          <li>
+            <span class="tutorial-titolo">Cerca il servizio</span>
+            <p>Tocca <span class="tutorial-chip">Cerca un servizio...</span>: si apre l'elenco diviso per categoria. Scrivi almeno 3 lettere per filtrarlo; il tasto <span class="tutorial-info" aria-hidden="true">i</span> accanto a un servizio ne mostra la descrizione. Se compare la scelta dell'operatore puoi indicarne uno, oppure lasciare <i>Qualsiasi</i>.</p>
+          </li>
+          <li>
+            <span class="tutorial-titolo">Premi <span class="tutorial-chip">+ Aggiungi servizio</span></span>
+            <p>Solo così il servizio entra nel riepilogo, con durata e costo totali. Vuoi più servizi? Ripeti i passi 1 e 2: verranno fatti uno dopo l'altro. Con la <span class="tutorial-x">×</span> ne togli uno.</p>
+          </li>
+          <li>
+            <span class="tutorial-titolo">Scegli il giorno</span>
+            <p>Nel calendario puoi toccare solo i giorni con posto per tutti i servizi scelti: <span class="tutorial-giorno">14</span> è libero, <span class="tutorial-giorno is-spento">15</span> è pieno o chiuso. Con le frecce cambi mese.</p>
+          </li>
+          <li>
+            <span class="tutorial-titolo">Scegli l'orario</span>
+            <p>Nella tendina <span class="tutorial-chip">Orario</span> ci sono solo le ore libere: è l'ora in cui inizia il primo servizio.</p>
+          </li>
+          <li>
+            <span class="tutorial-titolo">Inserisci i tuoi dati</span>
+            <p>Nome, cognome, cellulare ed email. Se il cellulare è già registrato in negozio, la prenotazione viene collegata alla tua scheda.</p>
+          </li>
+          <li>
+            <span class="tutorial-titolo">Conferma con il codice</span>
+            <p>Con tutti i campi compilati compare <span class="tutorial-chip">Invia codice di conferma</span>: ti arriva per email un codice di 6 cifre. Scrivilo nel campo e premi <span class="tutorial-chip">Conferma prenotazione</span>.</p>
+          </li>
+        </ol>
+        <div class="tutorial-box">
+          <b>E dopo?</b> Vedi subito il riepilogo e ricevi un'email con tutti i dettagli. La conferma dell'appuntamento arriva poi dal negozio via WhatsApp, in orario lavorativo. Non puoi più venire? Nell'email c'è il link <i>Annulla la prenotazione</i>.
+        </div>
+        <div class="tutorial-box">
+          <b>Se qualcosa non va</b>
+          <ul>
+            <li>Nessun giorno libero? Guarda il mese dopo, oppure lascia <i>Qualsiasi</i> come operatore: con più servizi o con un operatore preciso i posti sono meno.</li>
+            <li>Il codice non arriva? Controlla anche nello spam. Vale solo per l'email a cui è stato mandato: se l'hai sbagliata, ricarica la pagina e ricomincia.</li>
+            {% if business_info.phone %}
+            <li>Per qualsiasi dubbio chiamaci: <a href="tel:{{ business_info.phone|replace(' ', '') }}">{{ business_info.phone }}</a>.</li>
+            {% endif %}
+          </ul>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ho-capito w-100" data-bs-dismiss="modal">Ho capito</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if business_info.booking_info_message %}
+<!-- Modal Condizioni di prenotazione: il messaggio informativo del negozio per intero,
+     aperto dalla riga #alert-info-prenotazioni sotto la ricerca -->
+<div class="modal fade modal-scuro" id="modalInfoPrenotazioni" tabindex="-1" aria-labelledby="modalInfoPrenotazioniLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content bg-dark-custom">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalInfoPrenotazioniLabel"><i class="fa-solid fa-circle-info me-2" aria-hidden="true"></i>Condizioni di prenotazione</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+      </div>
+      {# HTML dell'editor del gestionale, gia' ripulito al salvataggio (settings.py, _PulisciHtmlInfo) #}
+      <div class="modal-body">{{ business_info.booking_info_message|safe }}</div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ho-capito w-100" data-bs-dismiss="modal">Ho capito</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <div class="mb-3" id="data_wrapper" style="display:none;">
   <div class="form-label" id="data-etichetta">Data*</div>
   <!-- Valore YYYY-MM-DD scelto nel calendario: lo leggono loadOrari e /prenota -->
@@ -829,6 +1164,14 @@ Per quanto non espressamente previsto nelle presenti CGV, si applica la legge it
       <td><input type="email" id="email" required class="form-control" autocomplete="email" enterkeyhint="done"></td>
     </tr>
   </table>
+  <!-- Accanto al tasto che invia i dati, e non in cima alla pagina dove spariva
+       al primo tocco, prima ancora che il cliente scrivesse i suoi dati -->
+  <p class="nota-consenso">
+    Proseguendo si accettano
+    <a href="#" id="link-privacy">l'informativa sulla privacy</a>
+    e
+    <a href="#" id="link-condizioni">le condizioni di vendita</a>.
+  </p>
   <!-- Invia codice (appare dopo conferma) -->
   <button type="button" id="inviaCodiceBtn" class="btn btn-success w-100" style="display:none; margin-top:10px;">Invia codice di conferma</button>
 </div>
