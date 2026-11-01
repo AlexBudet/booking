@@ -10,9 +10,9 @@
   <style>
     .container-booking {
       max-width: 600px;
-      margin: 24px auto;
+      margin: 32px auto;
       border-radius: 12px;
-      padding: 1.5rem;
+      padding: 1.75rem;
       border: 1px solid #87647c !important; /* esempio: viola chiaro */
       /* Disabilita il touch delay su iOS */
       touch-action: manipulation;
@@ -24,8 +24,8 @@
 
     .booking-sidebar {
       border-radius: 12px;
-      padding: 0.9rem 1.1rem;
-      margin-bottom: 1rem;
+      padding: 1.2rem 1.4rem;
+      margin-bottom: 1.25rem;
     }
 .custom-modal-content {
   background: linear-gradient(to right, #e7d8dd, #f0d7e1) !important;
@@ -44,8 +44,8 @@
     padding: 1rem;
   }
   .booking-sidebar {
-    margin: 0 0 12px;
-    padding: 0.75rem 0.9rem;
+    margin: 0 0 16px;
+    padding: 1rem 1.1rem;
   }
   .desktop-only { display: none !important; }
   .mobile-full { width: 100% !important; }
@@ -82,15 +82,17 @@
 }
 
 /* ===== Testata: logo accanto al nome, contatti su una riga =====
-   Compatta perche' ad apertura pagina il campo di ricerca stia in alto. */
+   Piu' raccolta di quella di una volta (ad apertura pagina il campo di ricerca
+   sta in alto), ma senza rimpicciolire troppo: il messaggio lungo del negozio
+   ora sta nel modal e lo spazio c'e'. */
 .testata {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 18px;
 }
 .booking-logo {
   flex: 0 0 auto;
-  max-height: 64px;
+  max-height: 84px;
   max-width: 40%;
   height: auto;
   object-fit: contain;
@@ -100,7 +102,7 @@
   min-width: 0;
 }
 .testata-portale {
-  font-size: 0.72rem;
+  font-size: 0.82rem;
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -108,7 +110,7 @@
 }
 .testata-nome {
   margin: 0;
-  font-size: 1.45rem;
+  font-size: 1.75rem;
   font-weight: 600;
   line-height: 1.2;
   color: #ffffff;
@@ -116,9 +118,9 @@
 .testata-contatti {
   display: flex;
   flex-wrap: wrap;
-  gap: 2px 16px;
-  margin-top: 8px;
-  font-size: 0.88rem;
+  gap: 4px 20px;
+  margin-top: 12px;
+  font-size: 1rem;
   color: #d8c3cd;
 }
 .testata-contatti i {
@@ -135,15 +137,21 @@
   text-decoration: underline;
 }
 @media (max-width: 767px) {
-  .booking-logo { max-height: 48px; }
-  .testata-nome { font-size: 1.25rem; }
+  .booking-logo { max-height: 60px; }
+  .testata-nome { font-size: 1.5rem; }
+  .testata-contatti { font-size: 0.95rem; }
 }
 /* Riga che introduce il campo di ricerca */
 .ricerca-etichetta {
   display: block;
-  margin-bottom: 6px;
-  font-size: 0.95rem;
+  margin-bottom: 8px;
+  font-size: 1.05rem;
   color: #e7eace;
+}
+/* Ricerca, "?" e operatore alti 44px: sono il primo passo, e un dito li prende meglio */
+#selezione-iniziale-servizio .form-control,
+#selezione-iniziale-servizio .form-select {
+  height: 44px;
 }
 
   /* Cambia colore pseudoblocchi */
@@ -664,9 +672,9 @@ body {
 /* ===== Mini-tutorial "Come prenotare" =====
    Il tasto "?" sta accanto al campo di ricerca e apre #modalTutorial. */
 .tutorial-btn {
-  flex: 0 0 38px;
-  width: 38px;
-  height: 38px; /* come il campo di ricerca accanto */
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px; /* come il campo di ricerca accanto */
   padding: 0;
   border: 1px solid #87647c;
   border-radius: 50%;
@@ -828,19 +836,15 @@ body {
 <style>
 /* Sfondo scelto dal negozio (gestionale, Impostazioni > Booking Web), solo su
    schermi grandi: dentro il media query telefoni e tablet non lo scaricano
-   nemmeno. Il velo scuro sopra la foto tiene in primo piano il riquadro. */
+   nemmeno. Foto piena, senza veli sopra, come sul sito del negozio
+   (www.sunexpressbeauty.it); l'ombra stacca il riquadro. */
 @media (min-width: 992px) {
   body {
-    background-color: #100f0f;
-    background-image:
-      linear-gradient(rgba(16, 15, 15, 0.45), rgba(16, 15, 15, 0.45)),
-      url("{{ url_for('booking.serve_sfondo', tenant_id=tenant_id, v=sfondo_versione) }}");
+    background: #100f0f url("{{ url_for('booking.serve_sfondo', tenant_id=tenant_id, v=sfondo_versione) }}") no-repeat center center fixed;
     background-size: cover;
-    background-position: center;
-    background-attachment: fixed;
   }
   .container-booking {
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
   }
 }
 </style>
