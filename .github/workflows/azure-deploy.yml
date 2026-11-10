@@ -33,6 +33,9 @@ jobs:
           path: |
             .
             !venv/
+          # serve solo al job deploy qui sotto: tenerlo 90 giorni occupava spazio
+          # Actions (tetto 500 MB sui repo privati)
+          retention-days: 1
 
   deploy:
     runs-on: ubuntu-latest
