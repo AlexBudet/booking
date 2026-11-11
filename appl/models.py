@@ -185,6 +185,11 @@ class Service(db.Model):
     # Nome della risorsa per messaggi più chiari
     # es. "Macchinario Radiofrequenza", "Lettino Pressoterapia"
     resource_name = db.Column(db.String(100), nullable=True, default=None)
+    # Servizio in PROMO: si spunta nel gestionale (Tools > Servizi). Sul sito di
+    # prenotazione finisce nella sottocategoria "PROMO", in cima al menu servizi.
+    # server_default: le righe gia' presenti e gli INSERT fatti fuori dall'ORM
+    # nascono non in promo. Stessa definizione di SunBooking/appl/models.py.
+    is_promo = db.Column(db.Boolean, nullable=False, server_default='false', default=False)
 
     operators = db.relationship(
     'Operator',

@@ -724,7 +724,8 @@ def booking_page(tenant_id):
         'servizio_prezzo': str(s.servizio_prezzo),
         'operator_ids': [op.id for op in s.operators if op.is_visible and not op.is_deleted],
         'sottocategoria': s.servizio_sottocategoria.nome if s.servizio_sottocategoria else None,
-        'servizio_descrizione': s.servizio_descrizione
+        'servizio_descrizione': s.servizio_descrizione,
+        'is_promo': bool(s.is_promo)
     } for s in servizi]
     
     operatori_json = [{

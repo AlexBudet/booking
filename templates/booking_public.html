@@ -1705,6 +1705,10 @@ function creaPulsanteInfoServizio(s) {
   return infoBtn;
 }
 
+// I servizi in promo (is_promo, spuntato nel gestionale) escono dalla loro
+// sottocategoria e finiscono tutti in "PROMO", che sta sempre in cima al menu.
+const CAT_PROMO = 'PROMO';
+
 function showModalSuggestions(lista, query = "") {
   const modalSuggestions = document.getElementById('modal-servizio-suggestions');
   modalSuggestions.innerHTML = '';
@@ -1712,12 +1716,17 @@ function showModalSuggestions(lista, query = "") {
   if (!query) {
     const gruppi = {};
     lista.forEach(s => {
-      const cat = s.sottocategoria || "Altro";
+      const cat = s.is_promo ? CAT_PROMO : (s.sottocategoria || "Altro");
       if (!gruppi[cat]) gruppi[cat] = [];
       gruppi[cat].push(s);
     });
 
-    Object.keys(gruppi).sort().forEach(cat => {
+    // PROMO prima di tutte, le altre in ordine alfabetico come prima
+    Object.keys(gruppi).sort((a, b) => {
+      if (a === CAT_PROMO) return -1;
+      if (b === CAT_PROMO) return 1;
+      return a < b ? -1 : (a > b ? 1 : 0);
+    }).forEach(cat => {
       const header = document.createElement('div');
       header.className = 'servizi-subcat-header d-flex align-items-center justify-content-between px-2 py-2';
       header.style.cursor = 'default';
@@ -1731,6 +1740,9 @@ function showModalSuggestions(lista, query = "") {
       serviziList.style.display = '';
 
       const toggleBtn = document.createElement('button');
+      // type=button: il menu sta dentro #bookingForm e senza type il "−" valeva
+      // come "invia" (ricaricava la pagina o dava errori di validazione)
+      toggleBtn.type = 'button';
       toggleBtn.className = 'toggle-subcat btn btn-sm btn-link';
       toggleBtn.textContent = '−';
       toggleBtn.dataset.cat = cat;
@@ -1773,7 +1785,9 @@ function showModalSuggestions(lista, query = "") {
     });
 
   } else {
-    lista.forEach(s => {
+    // anche nei risultati della ricerca i servizi in promo vengono per primi
+    // (sort stabile: dentro i due gruppi resta l'ordine alfabetico del server)
+    lista.slice().sort((a, b) => (b.is_promo ? 1 : 0) - (a.is_promo ? 1 : 0)).forEach(s => {
       const item = document.createElement('button');
       item.type = 'button';
       item.className = 'list-group-item list-group-item-action d-flex justify-content-between align-items-center';
