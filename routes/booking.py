@@ -18,6 +18,7 @@ import threading
 import requests
 from azure.communication.email import EmailClient
 from routes.usage import registra_uso
+from routes import risorse as risorse_mod
 from appl.formati import nome_proprio
 import html as html_lib
 
@@ -837,7 +838,8 @@ def _carica_turni_e_appuntamenti(data_da, data_a, operatori):
     return turni_per_giorno, appuntamenti_per_giorno
 
 def _calcola_orari_giorno(data, servizi, servizi_items, operatore_id, operatori,
-                          business_info, turni_giorno, appuntamenti_giorno, now):
+                          business_info, turni_giorno, appuntamenti_giorno, now,
+                          config_risorse=None):
     """Orari prenotabili di UN giorno per la combinazione di servizi richiesta:
     restituisce (orari, slot_operatori, debug_info).
 
@@ -845,8 +847,42 @@ def _calcola_orari_giorno(data, servizi, servizi_items, operatore_id, operatori,
     /giorni-disponibili: il calendario deve spegnere esattamente i giorni in cui
     /orari non troverebbe nulla, e con una funzione sola le due risposte non
     possono divergere. `now` e' l'ora di Roma senza secondi; turni_giorno e
-    appuntamenti_giorno arrivano gia' filtrati sul giorno."""
+    appuntamenti_giorno arrivano gia' filtrati sul giorno.
+
+    config_risorse (routes/risorse.py, letta una volta dalla rotta): uno slot in
+    cui una postazione/cabina/macchinario dei servizi scelti sarebbe oltre il
+    numero disponibile non viene proposto, qualunque operatrice sia libera."""
     servizi_operatori = {s.id: [op.id for op in s.operators] for s in servizi}
+
+    # RISORSE: la catena dei servizi parte dallo slot e prosegue servizio dopo
+    # servizio; l'occupazione delle risorse non dipende dall'operatrice, quindi
+    # basta un controllo per slot.
+    # Un errore imprevisto nelle risorse non deve mai spegnere le prenotazioni:
+    # in quel caso il controllo si fa da parte, come se non ci fossero risorse.
+    try:
+        occupati_risorse = (risorse_mod.occupati_del_giorno(appuntamenti_giorno)
+                            if config_risorse else [])
+    except Exception as e:
+        print(f"[RISORSE] occupati non calcolati, controllo spento: {e!r}")
+        config_risorse = None
+        occupati_risorse = []
+    durate_catena = []
+    for _item in servizi_items:
+        try:
+            _sid = int(_item.get("servizio_id"))
+        except Exception:
+            continue
+        durate_catena.append((_sid, next((s.servizio_durata or 30 for s in servizi if s.id == _sid), 30)))
+
+    def risorse_libere(slot_dt):
+        if not config_risorse:
+            return True
+        try:
+            blocchi = risorse_mod.blocchi_consecutivi(data, slot_dt.time(), durate_catena)
+            return not risorse_mod.conflitti(config_risorse, blocchi, occupati_risorse)
+        except Exception as e:
+            print(f"[RISORSE] controllo slot non riuscito, slot lasciato libero: {e!r}")
+            return True
     apertura = business_info.active_opening_time
     chiusura = business_info.active_closing_time
     closing_days = getattr(business_info, "closing_days_list", [])
@@ -973,6 +1009,9 @@ def _calcola_orari_giorno(data, servizi, servizi_items, operatore_id, operatori,
             slot = datetime.combine(data, start)
             fine = datetime.combine(data, end)
             while slot + durata <= fine:
+                if not risorse_libere(slot):
+                    slot += slot_step
+                    continue
                 operatori_idonei = []
                 for op in operatori_disponibili:
                     slot_corrente_temp = slot
@@ -1017,7 +1056,7 @@ def _calcola_orari_giorno(data, servizi, servizi_items, operatore_id, operatori,
             fine = datetime.combine(data, end)
             while slot + durata <= fine:
                 slot_str = slot.strftime("%H:%M")
-                if slot_str in slot_operatori:
+                if slot_str in slot_operatori or not risorse_libere(slot):
                     slot += slot_step
                     continue
                 assegnati = []
@@ -1129,10 +1168,12 @@ def orari_disponibili(tenant_id):
     operatori = g.db_session.query(Operator).filter_by(is_deleted=False, is_visible=True).all()
     turni_per_giorno, appuntamenti_per_giorno = _carica_turni_e_appuntamenti(data, data, operatori)
     now = datetime.now(pytz_timezone('Europe/Rome')).replace(second=0, microsecond=0)
+    config_risorse = risorse_mod.carica_config(g.db_session)
 
     orari, slot_operatori, debug_info = _calcola_orari_giorno(
         data, servizi, servizi_items, request.args.get('operatore_id'), operatori,
-        business_info, turni_per_giorno.get(data, []), appuntamenti_per_giorno.get(data, []), now
+        business_info, turni_per_giorno.get(data, []), appuntamenti_per_giorno.get(data, []), now,
+        config_risorse=config_risorse
     )
     return jsonify({
         "orari_disponibili": orari,
@@ -1170,11 +1211,13 @@ def giorni_disponibili(tenant_id):
         operatori = g.db_session.query(Operator).filter_by(is_deleted=False, is_visible=True).all()
         turni_per_giorno, appuntamenti_per_giorno = _carica_turni_e_appuntamenti(primo_giorno, data_a, operatori)
         operatore_id = request.args.get('operatore_id')
+        config_risorse = risorse_mod.carica_config(g.db_session)
         giorno = primo_giorno
         while giorno <= data_a:
             orari, _, _ = _calcola_orari_giorno(
                 giorno, servizi, servizi_items, operatore_id, operatori, business_info,
-                turni_per_giorno.get(giorno, []), appuntamenti_per_giorno.get(giorno, []), now
+                turni_per_giorno.get(giorno, []), appuntamenti_per_giorno.get(giorno, []), now,
+                config_risorse=config_risorse
             )
             if orari:
                 disponibili.append(giorno.strftime("%Y-%m-%d"))
@@ -1372,6 +1415,40 @@ def _prenota_impl(tenant_id):
     for b in blocchi_off:
         if b not in appuntamenti:
             appuntamenti.append(b)
+
+    # --- RISORSE: ricontrollo al momento di salvare (routes/risorse.py) ---
+    # /orari e' stato calcolato quando il cliente ha aperto la pagina: se nel
+    # frattempo un altro cliente ha preso l'ultima postazione (es. la sola
+    # pressoterapia alle 11:00), chi arriva secondo viene fermato qui, prima di
+    # creare qualsiasi appuntamento.
+    config_risorse = risorse_mod.carica_config(g.db_session)
+    conflitti_risorse = []
+    if config_risorse:
+        durate_richieste = []
+        for s in servizi:
+            try:
+                sid_r = int(s.get("servizio_id"))
+            except Exception:
+                continue
+            srv_r = servizi_map.get(sid_r)
+            durate_richieste.append((sid_r, (srv_r.servizio_durata if srv_r else None) or 30))
+        # Un errore imprevisto qui non deve fermare la prenotazione.
+        try:
+            blocchi_richiesti = risorse_mod.blocchi_consecutivi(data, ora, durate_richieste)
+            conflitti_risorse = risorse_mod.conflitti(
+                config_risorse, blocchi_richiesti, risorse_mod.occupati_del_giorno(appuntamenti))
+        except Exception as e:
+            print(f"[RISORSE] ricontrollo in /prenota non riuscito, si prosegue: {e!r}")
+            conflitti_risorse = []
+        if conflitti_risorse:
+            _log_prenota_error(tenant_id, "Risorsa occupata al momento della prenotazione", email=email,
+                                data_str=data_str, ora=ora, servizi=servizi_ids,
+                                risorse=[c['risorsa'] for c in conflitti_risorse])
+            return jsonify({
+                "success": False,
+                "errori": ["L'orario scelto non è più disponibile: nel frattempo è stato prenotato "
+                           "da un altro cliente. Scegli un altro orario."]
+            }), 409
 
     # --- LOGICA IDENTICA A orari_disponibili (solo per coerenza calcolo intervalli, ma senza ricontrollare tutto) ---
     durata_totale = sum([s.servizio_durata or 30 for s in servizi_objs])

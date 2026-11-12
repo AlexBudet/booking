@@ -215,6 +215,31 @@ class Service(db.Model):
             db.session.commit()
         return dummy
 
+
+class Risorsa(db.Model):
+    """Risorsa fisica condivisa fra piu' servizi: postazione, cabina, macchinario.
+    quantita = quante ce ne sono in negozio (es. "Postazione Mani" 4).
+    STESSA definizione del repo SunBooking (appl/models.py): tabella creata a
+    mano con migrations/manual_risorse.sql di SunBooking. Regole in routes/risorse.py."""
+    __tablename__ = 'risorse'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    nome = db.Column(db.String(60), nullable=False)
+    quantita = db.Column(db.Integer, nullable=False, default=1, server_default='1')
+    is_deleted = db.Column(db.Boolean, nullable=False, default=False, server_default='false')
+    __table_args__ = (db.CheckConstraint('quantita >= 1', name='ck_risorse_quantita'),)
+
+
+class ServizioRisorsa(db.Model):
+    """Il servizio usa la risorsa (un'unita' per appuntamento); quantita = tetto
+    del servizio, quanti suoi appuntamenti al massimo nello stesso momento."""
+    __tablename__ = 'servizio_risorse'
+    service_id = db.Column(db.Integer, db.ForeignKey('servizi.id', ondelete='CASCADE'), primary_key=True)
+    risorsa_id = db.Column(db.Integer, db.ForeignKey('risorse.id', ondelete='CASCADE'), primary_key=True,
+                           index=True)
+    quantita = db.Column(db.Integer, nullable=False, default=1, server_default='1')
+    __table_args__ = (db.CheckConstraint('quantita >= 1', name='ck_servizio_risorse_quantita'),)
+
+
 class Appointment(db.Model):
     __tablename__ = 'appuntamenti'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
