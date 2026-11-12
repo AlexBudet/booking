@@ -19,6 +19,7 @@ import requests
 from azure.communication.email import EmailClient
 from routes.usage import registra_uso
 from routes import risorse as risorse_mod
+from routes import no_show as no_show_mod
 from appl.formati import nome_proprio
 import html as html_lib
 
@@ -1229,6 +1230,34 @@ def giorni_disponibili(tenant_id):
         "disponibili": disponibili
     })
 
+def _blocco_no_show(business_info, telefono, email):
+    """Messaggio per chi non puo' prenotare online perche' salta gli
+    appuntamenti (routes/no_show.py), None se puo' prenotare.
+
+    Il messaggio e' neutro e non dice il perche': il cellulare lo scrive chi
+    prenota senza verifica, e scrivendo il numero di un altro non si deve poter
+    sapere se quella persona ha mancato degli appuntamenti. Un errore nel
+    controllo non ferma la prenotazione."""
+    try:
+        esito = no_show_mod.controlla_prenotazione(
+            g.db_session, business_info, telefono, email, _now_rome().replace(tzinfo=None))
+    except Exception as e:
+        try:
+            g.db_session.rollback()
+        except Exception:
+            pass
+        print(f"[NO-SHOW] controllo non riuscito, si prosegue: {e!r}")
+        return None
+    if not esito:
+        return None
+    print(f"[NO-SHOW] prenotazione online fermata: {esito['conteggio']} salti "
+          f"({esito['no_show']} no-show, {esito['annullati_tardi']} annullati all'ultimo)")
+    nome_centro = (getattr(business_info, 'business_name', None) or '').strip() or 'il centro'
+    telefono_centro = (getattr(business_info, 'phone', None) or '').strip()
+    return (f"Per prenotare contatta direttamente {nome_centro}"
+            + (f" al numero {telefono_centro}" if telefono_centro else "") + ".")
+
+
 @booking_bp.route('/prenota', methods=['POST'])
 def prenota(tenant_id):
     """Wrapper che garantisce che QUALSIASI eccezione non prevista venga sempre
@@ -1294,6 +1323,12 @@ def _prenota_impl(tenant_id):
                             email=email, email_sessione=email_sessione,
                             codice_ricevuto=codice_conferma, telefono=telefono)
         return jsonify({"success": False, "errori": ["Codice di conferma errato o email non corrispondente"]}), 400
+
+    # Chi salta gli appuntamenti: stesso controllo dell'invio del codice, qui
+    # decisivo (il codice puo' essere stato chiesto prima di un no-show).
+    blocco = _blocco_no_show(business_info, telefono, email)
+    if blocco:
+        return jsonify({"success": False, "errori": [blocco]}), 403
 
     # --- RATE LIMITING: max 3 prenotazioni ogni 4 minuti ---
     with _BOOKING_LOCK:
@@ -1681,6 +1716,7 @@ def _prenota_impl(tenant_id):
                 
                 <p style="color:#555555; font-size:14px; line-height:1.6; margin:25px 0 0 0;">
                     Non puoi più venire? Clicca qui: <a href="{{ cancel_url }}" style="color:#dc3545; text-decoration:none; font-weight:bold;">Annulla la prenotazione</a>
+                    {% if annullo_ore %}<br>Puoi annullare online fino a {{ annullo_ore }} ore prima dell'appuntamento: dopo, chiama il centro{% if telefono_centro %} al {{ telefono_centro }}{% endif %}.{% endif %}
                 </p>
             </td>
         </tr>
@@ -1710,7 +1746,11 @@ def _prenota_impl(tenant_id):
             totale_durata=totale_durata,
             totale_prezzo=f"{totale_prezzo:.2f}",
             company_name=company_name,
-            cancel_url=cancel_url
+            cancel_url=cancel_url,
+            # Limite di annullamento online (Booking Web): None se spento.
+            annullo_ore=(no_show_mod.regole(business_info)['annullo_ore']
+                         if no_show_mod.regole(business_info)['annullo_attivo'] else None),
+            telefono_centro=(getattr(business_info, 'phone', None) or '').strip()
         )
 
         # Prepara email admin PRIMA di qualsiasi invio
@@ -1824,6 +1864,36 @@ def cancel_booking(tenant_id, token):
         biz = g.db_session.query(BusinessInfo).first()
         company_name = (getattr(biz, 'business_name', None) or "Tosca Gestionale")
 
+        # --- Limite di annullamento online (Booking Web del gestionale) ---
+        # Nelle ultime N ore prima del primo appuntamento il link non annulla
+        # piu': spiega di telefonare al centro. Vale anche per il POST, se la
+        # pagina e' stata aperta poco prima del limite.
+        regole_ns = no_show_mod.regole(biz)
+        primo = min(appts_future, key=lambda a: to_comparable(a.start_time))
+        if regole_ns['annullo_attivo'] and \
+                to_comparable(primo.start_time) - now_naive < timedelta(hours=regole_ns['annullo_ore']):
+            telefono_centro = (getattr(biz, 'phone', None) or '').strip()
+            return render_template_string("""
+                <!doctype html>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <title>Annullamento online non più possibile</title>
+                <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:720px;margin:40px auto;padding:20px;line-height:1.5;">
+                  <h2>Non è più possibile annullare online</h2>
+                  <p>Il tuo appuntamento è il <b>{{ data_str }}</b> alle <b>{{ ora_str }}</b>.
+                     La prenotazione si può annullare online fino a {{ ore }} ore prima:
+                     ormai è troppo tardi per farlo in automatico.</p>
+                  <p style="font-size:1.15em;">Per annullare o spostare l'appuntamento
+                     {% if telefono %}chiama <b>{{ company_name }}</b> al
+                     <a href="tel:{{ telefono_link }}" style="font-weight:bold;">{{ telefono }}</a>.
+                     {% else %}contatta telefonicamente <b>{{ company_name }}</b>.{% endif %}</p>
+                  <p style="color:#666;">{{ company_name }}</p>
+                </div>
+            """, data_str=_fmt_date_it_short(primo.start_time.strftime('%Y-%m-%d')),
+                 ora_str=primo.start_time.strftime('%H:%M'), ore=regole_ns['annullo_ore'],
+                 telefono=telefono_centro, telefono_link=re.sub(r'[^\d+]', '', telefono_centro),
+                 company_name=company_name)
+
         # Usa solo appuntamenti futuri per conteggio e cancellazione
         count = len(appts_future)
 
@@ -1856,9 +1926,11 @@ def cancel_booking(tenant_id, token):
             """, count=count, company_name=company_name,
                  data_str=data_str, ora_str=ora_str, csrf_token=csrf_token)
 
-        # POST: soft-delete solo appuntamenti futuri
+        # POST: soft-delete solo appuntamenti futuri. annullato_il serve a
+        # riconoscere gli annullamenti all'ultimo (routes/no_show.py).
         for a in appts_future:
             a.is_cancelled_by_client = True  # Imposta soft-delete
+            a.annullato_il = now_naive
         g.db_session.commit()  # Commit delle modifiche
 
         # --- INVIO EMAIL NOTIFICA ALL'ADMIN ---
@@ -2014,6 +2086,12 @@ def invia_codice(tenant_id):
     if '@' not in email or '.' not in email.split('@')[-1]:
         print(f"[INVIA-CODICE] ERROR: Invalid email format: {email}")
         return jsonify({"success": False, "error": "Indirizzo email non valido."}), 400
+
+    # Chi salta gli appuntamenti (Booking Web del gestionale) non riceve il
+    # codice: prenota solo contattando il centro. Ricontrollato in /prenota.
+    blocco = _blocco_no_show(business_info, telefono, email)
+    if blocco:
+        return jsonify({"success": False, "error": blocco}), 403
 
     # Blocca SOLO dal 3° tentativo se entro cooldown
     if attempts >= 2 and last_sent and now_ts - last_sent < cooldown:
