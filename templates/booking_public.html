@@ -1294,6 +1294,9 @@ fetch(`/${tenantId}/orari?` + params.toString())
 
       const orari = res.orari_disponibili || [];
       window._operatoriOrariMap = res.operatori_assegnati || {};
+      // PROMO: orari in cui almeno un servizio scelto costa meno (routes/promo.py)
+      window._promoOrariMap = res.promo_per_orario || {};
+      if (typeof window.aggiornaTotaleServizi === 'function') window.aggiornaTotaleServizi();
 
       if (orari.length > 0) {
         oraSelect.options.length = 0;
@@ -1304,7 +1307,7 @@ fetch(`/${tenantId}/orari?` + params.toString())
         orari.forEach(orario => {
           const opt = document.createElement('option');
           opt.value = orario;
-          opt.textContent = orario;
+          opt.textContent = window._promoOrariMap[orario] ? `${orario}  · PROMO` : orario;
           oraSelect.appendChild(opt);        });
       } else {
         oraSelect.options.length = 0;
@@ -1382,6 +1385,8 @@ document.getElementById('data').addEventListener('change', function() {
 
 // 4. Dopo la selezione dell'orario, mostra i campi cliente
 document.getElementById('ora').addEventListener('change', function() {
+  // PROMO: il totale dipende dall'orario (prezzo promo solo in certi orari)
+  if (typeof window.aggiornaTotaleServizi === 'function') window.aggiornaTotaleServizi();
   if (this.value) {
     document.getElementById('dati-cliente').style.display = '';
     scrollToBottom();
@@ -1550,7 +1555,7 @@ if (res.success && res.prenotazioni && res.prenotazioni.length) {
       <span>🗓 <b>Data:</b> ${escapeHtml(p.data)} <b>Ora:</b> ${escapeHtml(p.ora)}</span><br>
       ${p.operatore_nome ? `<span>👤 <b>con</b> ${escapeHtml(p.operatore_nome)}</span><br>` : ""}
       <span>💇 <b>Servizio:</b> ${escapeHtml(p.servizio_nome)}</span><br>
-      <small>Durata: ${durata} min - Prezzo: €${prezzo.toFixed(2)}</small>
+      <small>Durata: ${durata} min - Prezzo: €${prezzo.toFixed(2)}${p.promo ? ' (promo)' : ''}</small>
     </div>`;
   });
   sommario += `<div class="alert alert-dark mt-2"><b>Totale durata:</b> ${totaleDurata} min &nbsp; | &nbsp; <b>Totale costo:</b> €${totalePrezzo.toFixed(2)}</div>`;
@@ -1709,6 +1714,23 @@ function creaPulsanteInfoServizio(s) {
 // sottocategoria e finiscono tutti in "PROMO", che sta sempre in cima al menu.
 const CAT_PROMO = 'PROMO';
 
+// Nome del servizio nell'elenco; per quelli in promo sotto il nome il prezzo
+// promo e le condizioni ("€30 invece di €34 · mar e mer · inizio tra 9:00–13:00").
+// Testi calcolati dal server (routes/promo.py), inseriti come testo.
+function creaNomeServizio(s) {
+  const nameSpan = document.createElement('span');
+  nameSpan.textContent = s.servizio_nome;
+  if (!s.is_promo) return nameSpan;
+  const dettagli = [s.promo_prezzo_testo, s.promo_condizioni].filter(Boolean).join(' · ');
+  if (!dettagli) return nameSpan;
+  nameSpan.appendChild(document.createElement('br'));
+  const small = document.createElement('small');
+  small.className = 'text-muted';
+  small.textContent = dettagli;
+  nameSpan.appendChild(small);
+  return nameSpan;
+}
+
 function showModalSuggestions(lista, query = "") {
   const modalSuggestions = document.getElementById('modal-servizio-suggestions');
   modalSuggestions.innerHTML = '';
@@ -1772,9 +1794,7 @@ function showModalSuggestions(lista, query = "") {
           aggiornaOperatori(s.id);
         };
 
-        const nameSpan = document.createElement('span');
-        nameSpan.textContent = s.servizio_nome;
-        item.appendChild(nameSpan);
+        item.appendChild(creaNomeServizio(s));
 
         const infoBtn = creaPulsanteInfoServizio(s);
         if (infoBtn) item.appendChild(infoBtn);
@@ -1800,9 +1820,7 @@ function showModalSuggestions(lista, query = "") {
         aggiornaOperatori(s.id);
       };
 
-      const nameSpan = document.createElement('span');
-      nameSpan.textContent = s.servizio_nome;
-      item.appendChild(nameSpan);
+      item.appendChild(creaNomeServizio(s));
 
       const infoBtn = creaPulsanteInfoServizio(s);
       if (infoBtn) item.appendChild(infoBtn);
@@ -1904,6 +1922,15 @@ if (!blockPrezzo && maxPrezzo > 0 && totalePrezzo > maxPrezzo) {
     const prezzoText = `${durata ? `Durata: ${durata}` : ''}${durata && prezzo ? ' · ' : ''}${prezzo ? `Prezzo: ${prezzo}` : ''}`;
     small.textContent = prezzoText;
     infoWrap.appendChild(small);
+    // PROMO: condizioni e prezzo promo; il prezzo vero dipende dall'orario scelto
+    if (servizioObj && servizioObj.is_promo && (servizioObj.promo_prezzo_testo || servizioObj.promo_condizioni)) {
+      infoWrap.appendChild(document.createElement('br'));
+      const smallPromo = document.createElement('small');
+      smallPromo.className = 'text-muted';
+      smallPromo.style.fontSize = '0.85em';
+      smallPromo.textContent = 'PROMO: ' + [servizioObj.promo_prezzo_testo, servizioObj.promo_condizioni].filter(Boolean).join(' · ');
+      infoWrap.appendChild(smallPromo);
+    }
 
     // hidden inputs
     const hidServ = document.createElement('input');
@@ -1962,15 +1989,32 @@ window.getServiziSelezionati = function() {
     }));
 };
 
+// PROMO: prezzi promo dell'orario scelto, uno per servizio nell'ordine della
+// prenotazione (null = listino). Li calcola il server in /orari (routes/promo.py).
+window.prezziPromoOrarioScelto = function() {
+  const oraSel = document.getElementById('ora');
+  const ora = oraSel ? oraSel.value : '';
+  const mappa = window._promoOrariMap || {};
+  return (ora && Array.isArray(mappa[ora])) ? mappa[ora] : [];
+};
+
 window.aggiornaTotaleServizi = function() {
   const serviziSelezionati = getServiziSelezionati();
+  const prezziPromo = prezziPromoOrarioScelto();
   let totaleDurata = 0;
   let totalePrezzo = 0;
-  serviziSelezionati.forEach(sel => {
+  let conPromo = false;
+  serviziSelezionati.forEach((sel, i) => {
     const servizioObj = servizi.find(s => String(s.id) === String(sel.servizio_id));
     if (servizioObj) {
       totaleDurata += parseInt(servizioObj.servizio_durata || 0, 10);
-      totalePrezzo += parseFloat(servizioObj.servizio_prezzo || 0);
+      const promo = prezziPromo[i];
+      if (promo !== null && promo !== undefined && !isNaN(parseFloat(promo))) {
+        totalePrezzo += parseFloat(promo);
+        conPromo = true;
+      } else {
+        totalePrezzo += parseFloat(servizioObj.servizio_prezzo || 0);
+      }
     }
   });
 
@@ -1988,7 +2032,7 @@ window.aggiornaTotaleServizi = function() {
     const textDur = document.createTextNode(` ${totaleDurata} min  |  `);
     const boldPrez = document.createElement('b');
     boldPrez.textContent = 'Totale costo:';
-    const textPrez = document.createTextNode(` €${totalePrezzo.toFixed(2)}`);
+    const textPrez = document.createTextNode(` €${totalePrezzo.toFixed(2)}` + (conPromo ? ' (con promo)' : ''));
     divTotale.appendChild(boldDur);
     divTotale.appendChild(textDur);
     divTotale.appendChild(boldPrez);

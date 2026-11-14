@@ -193,6 +193,10 @@ class Service(db.Model):
     # server_default: le righe gia' presenti e gli INSERT fatti fuori dall'ORM
     # nascono non in promo. Stessa definizione di SunBooking/appl/models.py.
     is_promo = db.Column(db.Boolean, nullable=False, server_default='false', default=False)
+    # Condizioni della promo, impostate dall'ingranaggio in Tools > Servizi:
+    # JSON letto SOLO da routes/promo.py (copia di SunBooking appl/services/promo.py).
+    # NULL = promo sempre valida e senza sconto. Stessa definizione del gestionale.
+    promo_regole = db.Column(db.Text, nullable=True)
 
     operators = db.relationship(
     'Operator',

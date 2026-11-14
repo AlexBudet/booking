@@ -20,6 +20,7 @@ from azure.communication.email import EmailClient
 from routes.usage import registra_uso
 from routes import risorse as risorse_mod
 from routes import no_show as no_show_mod
+from routes import promo as promo_mod
 from appl.formati import nome_proprio
 import html as html_lib
 
@@ -720,16 +721,31 @@ def booking_page(tenant_id):
             func.md5(BusinessInfo.booking_background_image)
         ).filter(BusinessInfo.id == business_info.id).scalar()
 
-    servizi_json = [{
-        'id': s.id, 
-        'servizio_nome': s.servizio_nome, 
-        'servizio_durata': s.servizio_durata,
-        'servizio_prezzo': str(s.servizio_prezzo),
-        'operator_ids': [op.id for op in s.operators if op.is_visible and not op.is_deleted],
-        'sottocategoria': s.servizio_sottocategoria.nome if s.servizio_sottocategoria else None,
-        'servizio_descrizione': s.servizio_descrizione,
-        'is_promo': bool(s.is_promo)
-    } for s in servizi]
+    # PROMO (routes/promo.py): una promo in corso o futura sta nella sezione
+    # PROMO con condizioni e prezzo; finita, il servizio torna nella sua
+    # sottocategoria a prezzo pieno, oppure sparisce se era "solo in promo".
+    oggi_promo = _now_rome().date()
+    servizi_json = []
+    for s in servizi:
+        regole_promo = promo_mod.leggi(s.promo_regole)
+        stato_promo = promo_mod.stato_online(s.is_promo, regole_promo, oggi_promo)
+        if stato_promo == 'nascosto':
+            continue
+        in_promo = stato_promo == 'promo'
+        servizi_json.append({
+            'id': s.id,
+            'servizio_nome': s.servizio_nome,
+            'servizio_durata': s.servizio_durata,
+            'servizio_prezzo': str(s.servizio_prezzo),
+            'operator_ids': [op.id for op in s.operators if op.is_visible and not op.is_deleted],
+            'sottocategoria': s.servizio_sottocategoria.nome if s.servizio_sottocategoria else None,
+            'servizio_descrizione': s.servizio_descrizione,
+            'is_promo': in_promo,
+            # Testi per il cliente: "€30 invece di €34" e "mar e mer · inizio tra 9:00–13:00 · ..."
+            'promo_prezzo_testo': promo_mod.testo_prezzo(regole_promo, s.servizio_prezzo) if in_promo else '',
+            'promo_condizioni': promo_mod.testo_condizioni(regole_promo) if in_promo else '',
+            'promo_solo_promo': in_promo and promo_mod.vincola_online(True, regole_promo),
+        })
     
     operatori_json = [{
         'id': op.id, 
@@ -885,6 +901,30 @@ def _calcola_orari_giorno(data, servizi, servizi_items, operatore_id, operatori,
         except Exception as e:
             print(f"[RISORSE] controllo slot non riuscito, slot lasciato libero: {e!r}")
             return True
+
+    # PROMO (routes/promo.py): un servizio "non prenotabile online fuori promo"
+    # si propone solo negli orari della promo. Ogni servizio della catena si
+    # giudica col SUO orario: inizio = slot + durate dei servizi che lo precedono.
+    vincoli_promo = {}
+    for _s in servizi:
+        try:
+            _regole = promo_mod.leggi(_s.promo_regole)
+            if promo_mod.vincola_online(_s.is_promo, _regole):
+                vincoli_promo[_s.id] = _regole
+        except Exception as e:
+            print(f"[PROMO] regole del servizio {_s.id} non lette, nessun vincolo: {e!r}")
+
+    def promo_ok(slot_dt):
+        if not vincoli_promo:
+            return True
+        inizio_servizio = slot_dt
+        for _sid, _durata in durate_catena:
+            _regole = vincoli_promo.get(_sid)
+            if _regole is not None and not promo_mod.dentro(_regole, inizio_servizio, _durata):
+                return False
+            inizio_servizio = inizio_servizio + timedelta(minutes=_durata)
+        return True
+
     apertura = business_info.active_opening_time
     chiusura = business_info.active_closing_time
     closing_days = getattr(business_info, "closing_days_list", [])
@@ -1013,7 +1053,7 @@ def _calcola_orari_giorno(data, servizi, servizi_items, operatore_id, operatori,
             slot = datetime.combine(data, start)
             fine = datetime.combine(data, end)
             while slot + durata <= fine:
-                if not risorse_libere(slot):
+                if not risorse_libere(slot) or not promo_ok(slot):
                     slot += slot_step
                     continue
                 operatori_idonei = []
@@ -1060,7 +1100,7 @@ def _calcola_orari_giorno(data, servizi, servizi_items, operatore_id, operatori,
             fine = datetime.combine(data, end)
             while slot + durata <= fine:
                 slot_str = slot.strftime("%H:%M")
-                if slot_str in slot_operatori or not risorse_libere(slot):
+                if slot_str in slot_operatori or not risorse_libere(slot) or not promo_ok(slot):
                     slot += slot_step
                     continue
                 assegnati = []
@@ -1179,11 +1219,52 @@ def orari_disponibili(tenant_id):
         business_info, turni_per_giorno.get(data, []), appuntamenti_per_giorno.get(data, []), now,
         config_risorse=config_risorse
     )
+    try:
+        promo_orari = _promo_per_orari(data, servizi, servizi_items, orari)
+    except Exception as e:
+        print(f"[PROMO] prezzi promo per orario non calcolati: {e!r}")
+        promo_orari = {}
     return jsonify({
         "orari_disponibili": orari,
         "operatori_assegnati": slot_operatori,
+        # {"HH:MM": [prezzo promo o null, ...]} nell'ordine dei servizi scelti;
+        # solo gli orari in cui almeno un servizio e' in promo con uno sconto.
+        "promo_per_orario": promo_orari,
         "debug": debug_info
     })
+
+
+def _catena_servizi(servizi, servizi_items):
+    """[(servizio, durata)] nell'ordine in cui il cliente li ha scelti: e'
+    l'ordine in cui si susseguono a partire dall'orario."""
+    per_id = {s.id: s for s in servizi}
+    catena = []
+    for item in servizi_items:
+        try:
+            sv = per_id.get(int(item.get("servizio_id")))
+        except Exception:
+            sv = None
+        catena.append((sv, (sv.servizio_durata if sv else None) or 30))
+    return catena
+
+
+def _promo_per_orari(data, servizi, servizi_items, orari):
+    """PROMO (routes/promo.py): per ogni orario proposto, il prezzo promo di
+    ogni servizio della catena (None = listino). Ogni servizio si giudica col
+    suo orario. Restano solo gli orari con almeno un prezzo promo."""
+    catena = _catena_servizi(servizi, servizi_items)
+    if not any(sv is not None and sv.is_promo for sv, _ in catena):
+        return {}
+    risultato = {}
+    for orario in orari:
+        inizio = datetime.combine(data, datetime.strptime(orario, "%H:%M").time())
+        prezzi = []
+        for sv, durata in catena:
+            prezzi.append(promo_mod.prezzo_scontato_servizio(sv, inizio, durata) if sv else None)
+            inizio += timedelta(minutes=durata)
+        if any(p is not None for p in prezzi):
+            risultato[orario] = prezzi
+    return risultato
 
 @booking_bp.route('/giorni-disponibili', methods=['GET'])
 def giorni_disponibili(tenant_id):
@@ -1488,6 +1569,36 @@ def _prenota_impl(tenant_id):
                            "da un altro cliente. Scegli un altro orario."]
             }), 409
 
+    # --- PROMO: ricontrollo al momento di salvare (routes/promo.py) ---
+    # Un servizio "non prenotabile online fuori promo" deve rientrare nella promo
+    # anche adesso: /orari non lo propone fuori, ma nel frattempo le condizioni
+    # possono essere cambiate. Ogni servizio si giudica col suo orario.
+    fuori_promo = []
+    try:
+        inizio_promo = datetime.strptime(f"{data_str} {ora}", "%Y-%m-%d %H:%M")
+        for s in servizi:
+            srv_p = servizi_map.get(int(s.get("servizio_id")))
+            durata_p = (srv_p.servizio_durata if srv_p else None) or 30
+            if srv_p is not None:
+                regole_p = promo_mod.leggi(srv_p.promo_regole)
+                if (promo_mod.vincola_online(srv_p.is_promo, regole_p)
+                        and not promo_mod.dentro(regole_p, inizio_promo, durata_p)):
+                    condizioni_p = promo_mod.testo_condizioni(regole_p)
+                    fuori_promo.append(f"{srv_p.servizio_nome}"
+                                       + (f" ({condizioni_p})" if condizioni_p else ""))
+            inizio_promo += timedelta(minutes=durata_p)
+    except Exception as e:
+        print(f"[PROMO] ricontrollo in /prenota non riuscito, si prosegue: {e!r}")
+        fuori_promo = []
+    if fuori_promo:
+        _log_prenota_error(tenant_id, "Servizio in promo fuori dalle condizioni", email=email,
+                            data_str=data_str, ora=ora, servizi=servizi_ids, fuori_promo=fuori_promo)
+        return jsonify({
+            "success": False,
+            "errori": ["Questo servizio si prenota online solo nei giorni e negli orari della promo: "
+                       + "; ".join(fuori_promo) + ". Scegli un altro orario."]
+        }), 409
+
     # --- LOGICA IDENTICA A orari_disponibili (solo per coerenza calcolo intervalli, ma senza ricontrollare tutto) ---
     durata_totale = sum([s.servizio_durata or 30 for s in servizi_objs])
     durata = timedelta(minutes=durata_totale)
@@ -1619,13 +1730,21 @@ def _prenota_impl(tenant_id):
             else (servizio.servizio_durata or 30)
         )
 
+        # PROMO: prezzo scontato se questo servizio, al suo orario, rientra
+        # nella promo (routes/promo.py); e' lo stesso che il centro vedra' in cassa.
+        prezzo_listino = float(getattr(servizio, 'servizio_prezzo', 0) or 0)
+        prezzo_promo = promo_mod.prezzo_scontato_servizio(
+            servizio, inizio, servizio.servizio_durata or 30)
+
         risultati.append({
             "success": True,
             "id": nuovo.id,
             "servizio_id": servizio_id,
             "servizio_nome": servizio.servizio_nome,
             "servizio_durata": servizio_durata_display,
-            "servizio_prezzo": float(getattr(servizio, 'servizio_prezzo', 0) or 0),
+            "servizio_prezzo": prezzo_promo if prezzo_promo is not None else prezzo_listino,
+            "promo": prezzo_promo is not None,
+            "servizio_prezzo_listino": prezzo_listino,
             "data": data_str,
             "ora": inizio.strftime("%H:%M"),
             "operatore_nome": operatore_nome
@@ -1659,7 +1778,8 @@ def _prenota_impl(tenant_id):
                 "operatore_nome": r.get('operatore_nome', ''),
                 "servizio_nome": r['servizio_nome'],
                 "durata": durata_i,
-                "prezzo": f"{prezzo_i:.2f}"
+                "prezzo": f"{prezzo_i:.2f}",
+                "promo": bool(r.get('promo'))
             })
 
         business_info = g.db_session.query(BusinessInfo).first()
@@ -1702,7 +1822,7 @@ def _prenota_impl(tenant_id):
                         {% if a.operatore_nome %}<div style="margin-bottom:8px; font-size:15px;"><strong>Operatore:</strong> {{ a.operatore_nome }}</div>{% endif %}
                         <div style="margin-bottom:8px; font-size:15px;"><strong>Servizio:</strong> {{ a.servizio_nome }}</div>
                         <div style="font-size:13px; color:#666666; margin-top:10px;">
-                            Durata: {{ a.durata }} min &nbsp;|&nbsp; Prezzo: {{ a.prezzo }} €
+                            Durata: {{ a.durata }} min &nbsp;|&nbsp; Prezzo: {{ a.prezzo }} €{% if a.promo %} (promo){% endif %}
                         </div>
                     </div>
                     {% endfor %}
@@ -2002,7 +2122,9 @@ def cancel_booking(tenant_id, token):
                 servizio = g.db_session.get(Service, a.service_id)
                 operatore = g.db_session.get(Operator, a.operator_id)
                 durata = int(getattr(a, '_duration', 0) or 30)
-                prezzo = float(getattr(servizio, 'servizio_prezzo', 0) or 0)
+                # Prezzo promo se l'appuntamento rientrava nella promo (routes/promo.py)
+                prezzo_promo = promo_mod.prezzo_scontato_servizio(servizio, a.start_time, durata) if servizio else None
+                prezzo = prezzo_promo if prezzo_promo is not None else float(getattr(servizio, 'servizio_prezzo', 0) or 0)
                 totale_durata += durata
                 totale_prezzo += prezzo
                 appuntamenti_annullati.append({
