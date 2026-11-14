@@ -559,11 +559,12 @@ def is_calendar_closed(op_id, inizio, fine, turni_per_operatore, all_apps):
     # Fuori turno
     if not any(s <= inizio.time() and fine.time() <= e for s, e in shifts):
         return True
-    for a in all_apps:
-        if a.is_cancelled_by_client:  # Salta quelli soft-deleted
-            continue
-        a_start = to_naive(a.start_time)
-        a_end = to_naive(a.start_time + timedelta(minutes=a._duration))
+    # Spazio occupato davvero: un no-show tiene solo il primo quarto d'ora del
+    # suo primo servizio (no_show.intervalli_occupati, stessa regola di Tosca).
+    attivi = [a for a in all_apps if not a.is_cancelled_by_client]  # salta quelli soft-deleted
+    for a, a_start, a_end in no_show_mod.intervalli_occupati(attivi):
+        a_start = to_naive(a_start)
+        a_end = to_naive(a_end)
         # Blocco OFF globale
         if a.operator_id is None and a.note and "OFF" in a.note:
             if a_start < fine and a_end > inizio:
@@ -953,11 +954,13 @@ def _calcola_orari_giorno(data, servizi, servizi_items, operatore_id, operatori,
     # operatore fermano tutti, il resto solo l'operatore a cui appartiene.
     # operatore_disponibile li scorreva tutti a ogni verifica, e per il calendario
     # le verifiche sono decine di migliaia.
+    # Un no-show occupa solo il primo quarto d'ora del suo primo servizio: il
+    # resto torna prenotabile (no_show.intervalli_occupati, stessa regola di Tosca).
     off_globali = []
     occupato_per_operatore = {}
-    for app in appuntamenti_giorno:
-        app_start = to_naive(app.start_time)
-        app_end = to_naive(app_start + timedelta(minutes=app._duration))
+    for app, app_start, app_end in no_show_mod.intervalli_occupati(appuntamenti_giorno):
+        app_start = to_naive(app_start)
+        app_end = to_naive(app_end)
         if app.operator_id is None and app.note and "OFF" in app.note:
             off_globali.append((app_start, app_end))
         occupato_per_operatore.setdefault(str(app.operator_id), []).append((app_start, app_end))
@@ -1872,27 +1875,59 @@ def cancel_booking(tenant_id, token):
         primo = min(appts_future, key=lambda a: to_comparable(a.start_time))
         if regole_ns['annullo_attivo'] and \
                 to_comparable(primo.start_time) - now_naive < timedelta(hours=regole_ns['annullo_ore']):
-            telefono_centro = (getattr(biz, 'phone', None) or '').strip()
+            # Il messaggio lo scrive il negozio in Booking Web (vuoto = quello
+            # predefinito in routes/no_show.py), i {{tag}} diventano i dati
+            # veri. Testo e valori passano da escape(); il numero del centro
+            # diventa un link per chiamare dal telefono.
+            telefono_centro = ((getattr(biz, 'phone', None) or '').strip()
+                               or (getattr(biz, 'mobile', None) or '').strip())
+            telefono_link = re.sub(r'[^\d+]', '', telefono_centro)
+            cliente = g.db_session.get(Client, primo.client_id) if primo.client_id else None
+            if cliente and not no_show_mod.scheda_segnaposto(cliente.cliente_nome, cliente.cliente_cognome):
+                nome_cl, cognome_cl = cliente.cliente_nome, cliente.cliente_cognome
+            else:
+                nome_cl, cognome_cl = no_show_mod.nome_cognome_dalla_nota(primo.note)
+            servizi_nomi = []
+            for a in sorted(appts_future, key=lambda a: to_comparable(a.start_time)):
+                srv = g.db_session.get(Service, a.service_id) if a.service_id else None
+                nome_srv = (getattr(srv, 'servizio_nome', '') or '').strip()
+                if nome_srv and nome_srv.lower() != 'dummy' and nome_srv not in servizi_nomi:
+                    servizi_nomi.append(nome_srv)
+            valori = {
+                'nome': str(escape(nome_proprio(nome_cl) or '')),
+                'cognome': str(escape(nome_proprio(cognome_cl) or '')),
+                'data': str(escape(_fmt_date_it_short(primo.start_time.strftime('%Y-%m-%d')))),
+                'ora': primo.start_time.strftime('%H:%M'),
+                'servizi': str(escape(', '.join(servizi_nomi))),
+                'nome_istituto': str(escape(company_name)),
+                'telefono_istituto': (f'<a href="tel:{escape(telefono_link)}" style="font-weight:bold;">'
+                                      f'{escape(telefono_centro)}</a>') if telefono_centro else '',
+                'ore_limite': str(regole_ns['annullo_ore']),
+                'soglia': str(regole_ns['soglia']),
+            }
+            corpo = no_show_mod.compila_testo(str(escape(no_show_mod.testo_annullo(biz))), valori)
+            # Un dato mancante (es. nome) non deve lasciare "Gentile  ," a video.
+            corpo = re.sub(r'[ \t]+([,.;:])', r'\1', re.sub(r'[ \t]{2,}', ' ', corpo))
+            paragrafi = [p.strip().replace('\n', '<br>')
+                         for p in corpo.replace('\r\n', '\n').split('\n\n') if p.strip()]
             return render_template_string("""
                 <!doctype html>
                 <meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
                 <title>Annullamento online non più possibile</title>
-                <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:720px;margin:40px auto;padding:20px;line-height:1.5;">
+                <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:720px;margin:40px auto;padding:20px;line-height:1.55;font-size:1.05em;">
                   <h2>Non è più possibile annullare online</h2>
-                  <p>Il tuo appuntamento è il <b>{{ data_str }}</b> alle <b>{{ ora_str }}</b>.
-                     La prenotazione si può annullare online fino a {{ ore }} ore prima:
-                     ormai è troppo tardi per farlo in automatico.</p>
-                  <p style="font-size:1.15em;">Per annullare o spostare l'appuntamento
-                     {% if telefono %}chiama <b>{{ company_name }}</b> al
-                     <a href="tel:{{ telefono_link }}" style="font-weight:bold;">{{ telefono }}</a>.
-                     {% else %}contatta telefonicamente <b>{{ company_name }}</b>.{% endif %}</p>
-                  <p style="color:#666;">{{ company_name }}</p>
+                  {% for p in paragrafi %}<p>{{ p|safe }}</p>{% endfor %}
+                  {% if telefono_link %}
+                  <p style="margin-top:24px;">
+                    <a href="tel:{{ telefono_link }}" style="display:inline-block;background:#28a745;color:#fff;text-decoration:none;padding:12px 22px;border-radius:6px;font-weight:bold;font-size:1.1em;">
+                      Chiama {{ company_name }}
+                    </a>
+                  </p>
+                  {% endif %}
+                  <p style="color:#666;margin-top:24px;">{{ company_name }}</p>
                 </div>
-            """, data_str=_fmt_date_it_short(primo.start_time.strftime('%Y-%m-%d')),
-                 ora_str=primo.start_time.strftime('%H:%M'), ore=regole_ns['annullo_ore'],
-                 telefono=telefono_centro, telefono_link=re.sub(r'[^\d+]', '', telefono_centro),
-                 company_name=company_name)
+            """, paragrafi=paragrafi, telefono_link=telefono_link, company_name=company_name)
 
         # Usa solo appuntamenti futuri per conteggio e cancellazione
         count = len(appts_future)

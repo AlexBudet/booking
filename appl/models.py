@@ -356,6 +356,9 @@ class BusinessInfo(db.Model):
     # routes/no_show.py, copia di SunBooking appl/services/no_show.py).
     booking_annullo_blocco_attivo = db.Column(db.Boolean, nullable=False, default=False, server_default='false')
     booking_annullo_blocco_ore = db.Column(db.Integer, nullable=False, default=24, server_default='24')
+    # Testo della pagina "troppo tardi per annullare" ({{nome}}, {{data}}...);
+    # NULL = testo predefinito (routes/no_show.py).
+    booking_annullo_messaggio = db.Column(db.Text, nullable=True)
     booking_noshow_blocco_attivo = db.Column(db.Boolean, nullable=False, default=False, server_default='false')
     booking_noshow_soglia = db.Column(db.Integer, nullable=False, default=2, server_default='2')
     booking_noshow_mesi = db.Column(db.Integer, nullable=False, default=12, server_default='12')

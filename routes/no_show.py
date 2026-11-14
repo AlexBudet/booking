@@ -102,6 +102,72 @@ def regole(biz):
     }
 
 
+# ------------------------------------------------- messaggio "troppo tardi"
+# Cosa legge il cliente quando clicca "Annulla la prenotazione" nell'e-mail ma
+# mancano meno ore del limite. Si scrive in Tools > Booking Web
+# (business_info.booking_annullo_messaggio); vuoto = il testo qui sotto.
+# Stessa sintassi dei messaggi WhatsApp: {{tag}}.
+MESSAGGIO_ANNULLO_PREDEFINITO = (
+    "Gentile {{nome}} {{cognome}},\n"
+    "la prenotazione del {{data}} alle {{ora}} per {{servizi}} non si può più annullare online: "
+    "mancano meno di {{ore_limite}} ore all'appuntamento.\n\n"
+    "Se non puoi venire, chiama {{nome_istituto}} al numero {{telefono_istituto}} per disdire. "
+    "Avvisarci per tempo ci permette di offrire l'orario a qualcun altro, e la disdetta fatta "
+    "per telefono non viene conteggiata nel tuo storico.\n\n"
+    "Dopo {{soglia}} appuntamenti saltati o annullati all'ultimo momento, le prenotazioni online "
+    "potrebbero essere possibili solo contattando direttamente il centro.\n\n"
+    "Grazie per la collaborazione!"
+)
+
+# (tag, cosa diventa): per i pulsanti e la legenda in Booking Web.
+TAG_ANNULLO = (
+    ('nome', 'nome del cliente'),
+    ('cognome', 'cognome del cliente'),
+    ('data', "data dell'appuntamento"),
+    ('ora', "ora dell'appuntamento"),
+    ('servizi', 'servizi prenotati'),
+    ('nome_istituto', 'nome del centro (Info Azienda)'),
+    ('telefono_istituto', 'telefono del centro (Info Azienda)'),
+    ('ore_limite', 'ore del limite di annullamento'),
+    ('soglia', 'appuntamenti saltati che bloccano le prenotazioni online'),
+)
+
+_RE_TAG = re.compile(r'\{\{\s*(\w+)\s*\}\}')
+
+
+def testo_annullo(biz):
+    """Il messaggio scritto in Booking Web, o quello predefinito se vuoto."""
+    testo = (getattr(biz, 'booking_annullo_messaggio', None) or '').strip()
+    return testo or MESSAGGIO_ANNULLO_PREDEFINITO
+
+
+def compila_testo(testo, valori):
+    """Sostituisce ogni {{tag}} (anche {{ tag }}) con valori[tag]; un tag
+    sconosciuto resta com'e', cosi' chi scrive vede l'errore di battitura."""
+    return _RE_TAG.sub(lambda m: valori.get(m.group(1), m.group(0)), str(testo or ''))
+
+
+def nome_cognome_dalla_nota(nota):
+    """(nome, cognome) dalla nota di una prenotazione online, o (None, None)."""
+    m = _RE_NOTA_NOME.search(html.unescape(str(nota or '')))
+    if not m:
+        return None, None
+    return (m.group(1).strip() or None), (m.group(2).strip() or None)
+
+
+def _senza_fuso(quando):
+    """Data e ora senza fuso orario. In PostgreSQL appuntamenti.start_time e'
+    'timestamp with time zone' (ora italiana registrata come +00), mentre
+    annullato_il e prenotazioni_online_sblocco_il sono senza fuso (ora italiana):
+    sottrarre o confrontare le due forme manda Python in errore (TypeError), ed
+    e' successo al primo annullamento dal link (14/11/2026: tile NO-SHOW in
+    errore 500, controllo del blocco online saltato). Tolto il fuso, sono tutte
+    ore italiane e si confrontano fra loro."""
+    if quando is not None and getattr(quando, 'tzinfo', None) is not None:
+        return quando.replace(tzinfo=None)
+    return quando
+
+
 def mesi_fa(quando, mesi):
     """Lo stesso giorno di `mesi` mesi prima (il 31 diventa l'ultimo del mese)."""
     totale = quando.year * 12 + (quando.month - 1) - int(mesi)
@@ -152,7 +218,8 @@ def eventi_da_righe(righe, ore_tardivo):
     limite = timedelta(hours=int(ore_tardivo))
     eventi = {}
     for r in righe:
-        inizio = r.start_time
+        inizio = _senza_fuso(r.start_time)
+        annullato_il = _senza_fuso(r.annullato_il)
         if inizio is None:
             continue
         tel_c = normalizza_cellulare(r.cliente_cellulare)
@@ -169,9 +236,9 @@ def eventi_da_righe(righe, ore_tardivo):
                 continue    # nessun modo di sapere chi fosse
             chiave = (NO_SHOW, chi, inizio.date())
         else:
-            if r.annullato_il is None:
+            if annullato_il is None:
                 continue
-            anticipo = inizio - r.annullato_il
+            anticipo = inizio - annullato_il
             if anticipo < timedelta(0) or anticipo >= limite:
                 continue
             tipo = ANNULLATO_TARDI
@@ -207,7 +274,7 @@ def carica_sblocchi(sessione):
         "FROM clienti WHERE prenotazioni_online_sblocco_il IS NOT NULL "
         "AND is_deleted IS NOT TRUE"
     ).columns(prenotazioni_online_sblocco_il=DateTime)).fetchall()
-    return [(normalizza_cellulare(r[0]), normalizza_email(r[1]), r[2]) for r in righe]
+    return [(normalizza_cellulare(r[0]), normalizza_email(r[1]), _senza_fuso(r[2])) for r in righe]
 
 
 def sblocco_per(sblocchi, cellulare, email):
@@ -247,3 +314,66 @@ def controlla_prenotazione(sessione, biz, cellulare, email, adesso):
     eventi = carica_eventi(sessione, r['ore_tardivo'], dal=mesi_fa(adesso, r['mesi']))
     esito = valuta(eventi, carica_sblocchi(sessione), tel, mail, r['soglia'])
     return esito if esito['bloccato'] else None
+
+
+# ------------------------------------------------------- spazio in agenda
+# Un no-show NON occupa piu' l'agenda (richiesta del 14/11/2026). Di tutti i
+# servizi saltati da una persona in un giorno resta occupato solo il PRIMO
+# QUARTO D'ORA del primo servizio in ordine di orario (a parita' di orario il
+# primo inserito, cioe' l'id piu' basso), nella colonna di quel servizio: tutto
+# il resto torna prenotabile, in Agenda e online. In Agenda quel quarto d'ora
+# e' il riquadro nero "NO-SHOW · 3 servizi · 3h30": la stessa scelta la fa
+# applicaCompressioneNoShow in calendar.js.
+#
+# I dati NON cambiano: durate e servizi restano quelli prenotati, cosi' i
+# report e la classifica dei no-show continuano a contarli per intero, e
+# togliendo il no-show i blocchi tornano come prima.
+QUARTO_NO_SHOW = 15
+
+
+def e_no_show(appuntamento):
+    stato = getattr(appuntamento, 'stato', None)
+    return getattr(stato, 'name', stato) == 'NON_ARRIVATO'
+
+
+def _persona(appuntamento):
+    """Chi ha saltato. Di norma la scheda cliente; una prenotazione online non
+    ancora associata sta su una scheda segnaposto condivisa da tutti, e li' la
+    persona e' la sessione di prenotazione (o l'appuntamento da solo)."""
+    cliente = getattr(appuntamento, 'client', None)
+    if cliente is not None and scheda_segnaposto(getattr(cliente, 'cliente_nome', ''),
+                                                  getattr(cliente, 'cliente_cognome', '')):
+        sessione = getattr(appuntamento, 'booking_session_id', None)
+        return ('sessione', sessione) if sessione else ('appuntamento', appuntamento.id)
+    return ('cliente', appuntamento.client_id)
+
+
+def intervalli_occupati(appuntamenti):
+    """[(appuntamento, inizio, fine)]: lo spazio che ogni appuntamento occupa
+    davvero in agenda. I no-show che non sono il primo della loro persona non
+    compaiono; il primo occupa al massimo QUARTO_NO_SHOW minuti.
+
+    `appuntamenti` deve essere il giorno INTERO, tutte le colonne: il primo
+    servizio saltato si sceglie fra tutti, anche quelli di altre operatrici.
+    Gli annullati vanno tolti prima, come gia' fa chi chiama."""
+    primi = {}
+    for a in appuntamenti:
+        if a.start_time is None or not e_no_show(a):
+            continue
+        chiave = (_persona(a), a.start_time.date())
+        primo = primi.get(chiave)
+        if primo is None or (a.start_time, a.id or 0) < (primo.start_time, primo.id or 0):
+            primi[chiave] = a
+    primi_ids = {id(a) for a in primi.values()}
+
+    risultato = []
+    for a in appuntamenti:
+        if a.start_time is None:
+            continue
+        durata = int(getattr(a, '_duration', None) or getattr(a, 'duration', None) or 0)
+        if e_no_show(a):
+            if id(a) not in primi_ids:
+                continue
+            durata = min(durata, QUARTO_NO_SHOW) if durata > 0 else QUARTO_NO_SHOW
+        risultato.append((a, a.start_time, a.start_time + timedelta(minutes=durata)))
+    return risultato
