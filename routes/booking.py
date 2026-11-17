@@ -754,16 +754,22 @@ def booking_page(tenant_id):
 
     csrf_token = generate_csrf()
 
+    # ?embed=1: pagina dentro l'iframe del sito del negozio (es.
+    # www.suncitybeauty.it/prenota/): fondo trasparente, senza sfondo proprio,
+    # e controllo dei cookie bloccati (vedi booking_public.html e main.py).
+    embed = request.args.get('embed') == '1'
+
     return render_template(
-        'booking_public.html', 
-        servizi_json=servizi_json, 
+        'booking_public.html',
+        servizi_json=servizi_json,
         operatori_json=operatori_json,
         operatori=operatori,
         oggi=oggi,
         business_info=business_info,
         sfondo_versione=sfondo_versione,
         csrf_token=csrf_token,
-        tenant_id=tenant_id
+        tenant_id=tenant_id,
+        embed=embed
     )
 
 @booking_bp.route('/search-servizi')

@@ -32,7 +32,24 @@ app.config['SECRET_KEY'] = secret
 
 app.config['SESSION_COOKIE_SECURE'] = True
 app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+# La pagina di prenotazione puo' stare dentro un iframe sul sito del negozio
+# (es. www.suncitybeauty.it/prenota/, vedi EMBED_ORIGINS): il cookie di sessione
+# (token CSRF e codice di conferma) deve arrivare anche li', quindi SameSite=None.
+# Partitioned (CHIPS, Flask >= 3.1) tiene un cookie separato per ogni sito che
+# incorpora la pagina, e Chrome lo accetta anche quando blocca i cookie di terze
+# parti. Safari (e ogni browser su iPhone) li blocca comunque se l'app sta su un
+# altro dominio: la pagina con ?embed=1 se ne accorge e chiede al sito di aprirla
+# a pagina intera. Le richieste POST restano protette dal token CSRF.
+app.config['SESSION_COOKIE_SAMESITE'] = 'None'
+app.config['SESSION_COOKIE_PARTITIONED'] = True
+
+# Siti che possono mostrare queste pagine in un iframe (CSP frame-ancestors),
+# separati da spazi; sovrascrivibile con la variabile d'ambiente EMBED_ORIGINS.
+EMBED_ORIGINS = os.environ.get(
+    'EMBED_ORIGINS',
+    'https://www.suncitybeauty.it https://suncitybeauty.it '
+    'https://www.sunexpressbeauty.it https://sunexpressbeauty.it'
+).split()
 
 # 3. Crea un "motore" e una "sessione" per ogni database
 #    Questo permette di scegliere a quale database connettersi
@@ -232,8 +249,10 @@ def set_security_headers(response):
     # Prevent MIME type sniffing
     response.headers['X-Content-Type-Options'] = 'nosniff'
 
-    # Clickjacking: allow same-origin embedding for internal widgets
-    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    # Clickjacking: in iframe solo dalla stessa origine e dai siti dei negozi
+    # (EMBED_ORIGINS). Niente X-Frame-Options: non sa elencare piu' siti, e
+    # i browser la ignorano comunque quando c'e' CSP frame-ancestors.
+    frame_ancestors = "frame-ancestors " + " ".join(["'self'"] + EMBED_ORIGINS)
 
     # Build CSP with optional extra hosts from env
     extra_hosts = os.environ.get('CSP_TRUSTED_HOSTS', '').strip()
@@ -247,12 +266,14 @@ def set_security_headers(response):
         "connect-src 'self' https: " + extra + "; "
         "font-src 'self' data: https: " + extra + "; "
         "object-src 'none'; "
-        "frame-ancestors 'self';"
+        + frame_ancestors + ";"
     )
 
     # If set, send report-only header first to detect violations without breaking layout
     if os.environ.get('CSP_REPORT_ONLY', '0') == '1':
         response.headers['Content-Security-Policy-Report-Only'] = csp
+        # frame-ancestors resta comunque attivo (era il compito di X-Frame-Options)
+        response.headers['Content-Security-Policy'] = frame_ancestors
     else:
         response.headers['Content-Security-Policy'] = csp
 
