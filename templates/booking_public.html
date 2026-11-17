@@ -259,17 +259,6 @@ body {
   }
 }
 
-@media (max-width: 767px) {
-  .container-booking.no-sidebar {
-    margin-top: 25vw !important; /* Regola questo valore per il tuo caso */
-  }
-}
-
-@media (max-width: 767px) {
-  .container-booking.no-sidebar.drop-active {
-    margin-top: 0 !important;
-  }
-}
 
 #modal-servizio-input {
   border-radius: 8px;
@@ -923,7 +912,10 @@ html, body { background: transparent !important; }
 <div class="row align-items-end mb-2 ricerca-iniziale" id="selezione-iniziale-servizio">
 <div class="col-8 position-relative mb-2">
   <div class="d-flex align-items-center gap-2">
-    <input type="text" id="servizio-iniziale" class="form-control" placeholder="Cerca un servizio..." aria-label="Cerca un servizio" autocomplete="off" style="flex:1 1 auto; min-width:0;">
+    <!-- readonly: e' il tasto che apre l'elenco servizi (#modalServizi), dove c'e' il
+         vero campo di ricerca. Scrivibile, su iPhone apriva la tastiera su questo
+         campo, coperto dall'elenco, e la pagina scorreva per mostrarlo. -->
+    <input type="text" id="servizio-iniziale" class="form-control" placeholder="Cerca un servizio..." aria-label="Cerca un servizio" aria-haspopup="dialog" autocomplete="off" readonly style="flex:1 1 auto; min-width:0; cursor:pointer;">
     <button type="button" class="tutorial-btn" data-bs-toggle="modal" data-bs-target="#modalTutorial" aria-label="Come prenotare" title="Come prenotare">?</button>
   </div>
   <input type="hidden" id="servizio-id-selezionato">
@@ -1428,13 +1420,13 @@ document.getElementById('data').addEventListener('input', aggiornaDataLabel);
 
 // Aggiorna anche quando mostri la data precompilata
 // --- PATCH: mostra la data solo dopo almeno un servizio aggiunto ---
-function mostraDataSePronto() {
+function mostraDataSePronto(scorri = true) {
   const servizi = getServiziSelezionati();
   const almenoUno = servizi.length > 0 && servizi.every(s => s.servizio_id);
   if (almenoUno) {
     document.getElementById('data_wrapper').style.display = '';
     aggiornaDataLabel();
-    scrollToBottom();
+    if (scorri) mostraSezione(document.getElementById('data_wrapper'));
   } else {
     document.getElementById('data_wrapper').style.display = 'none';
     document.getElementById('ora_wrapper').style.display = 'none';
@@ -1448,7 +1440,7 @@ document.getElementById('data').addEventListener('change', function() {
   if (this.value) {
     document.getElementById('ora_wrapper').style.display = '';
     loadOrari();
-    scrollToBottom(); 
+    mostraSezione(document.getElementById('ora_wrapper'));
   } else {
     document.getElementById('ora_wrapper').style.display = 'none';
     document.getElementById('dati-cliente').style.display = 'none';
@@ -1462,7 +1454,7 @@ document.getElementById('ora').addEventListener('change', function() {
   if (typeof window.aggiornaTotaleServizi === 'function') window.aggiornaTotaleServizi();
   if (this.value) {
     document.getElementById('dati-cliente').style.display = '';
-    scrollToBottom();
+    mostraSezione(document.getElementById('dati-cliente'));
   } else {
     document.getElementById('dati-cliente').style.display = 'none';
     inviaCodiceBtn.style.display = 'none';
@@ -1546,7 +1538,7 @@ document.getElementById('inviaCodiceBtn').addEventListener('click', function(e) 
       // Nascondi completamente il bottone anche su mobile
       document.getElementById('inviaCodiceBtn').classList.add('hidden-force');
       document.getElementById('inviaConfermaPrenotazioneBtn').style.display = '';
-      scrollToBottom();
+      mostraSezione(document.getElementById('codice-conferma-wrapper'));
     } else {
       alert(res.error || 'Errore invio codice');
     }
@@ -1653,8 +1645,38 @@ if (res.success && res.prenotazioni && res.prenotazioni.length) {
 
 </script>
 <script>
-  function scrollToBottom() {
-  window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+// Porta in vista la sezione appena comparsa (calendario, orario, dati, codice)
+// con lo scroll minimo: se manca la parte bassa si scende quel tanto, ma mai
+// oltre la sua cima; se e' gia' tutta a schermo non si muove nulla, e non si
+// sale mai. Prima c'era scrollToBottom(), che a ogni passo portava in fondo alla
+// pagina: su telefono la sezione nuova finiva mezza fuori schermo e su iPhone
+// la pagina faceva salti enormi.
+// Su iPhone/iPad, se e' ancora aperta una select (rotella di iOS) o la tastiera,
+// si aspetta che si chiuda: scorrere sotto la rotella fa saltare la pagina.
+// (Su Android la select resta attiva anche dopo la scelta: li' si scorre subito.)
+const SU_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+function mostraSezione(el) {
+  if (!el) return;
+  const margine = 12;
+  function scorri() {
+    requestAnimationFrame(function () {
+      const r = el.getBoundingClientRect();
+      if (!r.height) return; // sezione nascosta nel frattempo
+      let giu = r.bottom - (window.innerHeight - margine);
+      giu = Math.min(giu, r.top - margine); // la cima resta a schermo
+      if (giu > 1) window.scrollBy({ top: giu, behavior: 'smooth' });
+    });
+  }
+  const attivo = document.activeElement;
+  if (SU_IOS && attivo && /^(SELECT|INPUT|TEXTAREA)$/.test(attivo.tagName)) {
+    let fatto = false;
+    const una = function () { if (!fatto) { fatto = true; setTimeout(scorri, 60); } };
+    attivo.addEventListener('blur', una, { once: true });
+    setTimeout(una, 1000); // se il campo resta attivo, si scorre comunque
+  } else {
+    scorri();
+  }
 }
 </script>
 <script>
@@ -1731,7 +1753,13 @@ document.getElementById('servizio-iniziale').addEventListener('focus', function(
   document.getElementById('modalServizi').style.display = 'block';
   document.getElementById('modal-servizio-input').value = '';
   showModalSuggestions(servizi);
-  setTimeout(() => document.getElementById('modal-servizio-input').focus(), 150);
+  if (window.matchMedia('(hover: none) and (pointer: coarse)').matches) {
+    // Telefono/tablet: si vede subito l'elenco, senza tastiera che lo copre a meta'
+    // e fa scorrere la pagina; per cercare si tocca il campo in cima all'elenco.
+    this.blur();
+  } else {
+    setTimeout(() => document.getElementById('modal-servizio-input').focus(), 150);
+  }
 });
 
 // --- CHIUSURA MODAL CUSTOM (pulsante X) ---
@@ -2044,7 +2072,7 @@ if (!blockPrezzo && maxPrezzo > 0 && totalePrezzo > maxPrezzo) {
     if (btn) {
       btn.closest('.alert').remove();
       aggiornaTotaleServizi();
-      mostraDataSePronto();
+      mostraDataSePronto(false);
       calendario.aggiorna();
     }
   });
@@ -2125,12 +2153,13 @@ window.aggiornaTotaleServizi = function() {
   }
 };
 
-window.mostraDataSePronto = function() {
+// scorri=false quando si toglie un servizio: la pagina resta dov'e'
+window.mostraDataSePronto = function(scorri = true) {
   const servizi = getServiziSelezionati();
   if (servizi.length > 0) {
     document.getElementById('data_wrapper').style.display = '';
     aggiornaDataLabel();
-    scrollToBottom();
+    if (scorri) mostraSezione(document.getElementById('data_wrapper'));
   } else {
     document.getElementById('data_wrapper').style.display = 'none';
     document.getElementById('ora_wrapper').style.display = 'none';
@@ -2473,21 +2502,6 @@ document.querySelectorAll('.link-condizioni').forEach(function(link) {
     var modal = new bootstrap.Modal(document.getElementById('modalCondizioni'));
     modal.show();
   });
-});
-</script>
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-  if (window.innerWidth <= 767) {
-    const container = document.getElementById('container-booking');
-    document.querySelectorAll('input[type="text"], input[type="email"], input[type="tel"], input[type="date"]').forEach(input => {
-      input.addEventListener('focus', function() {
-        container.classList.add('no-sidebar');
-      });
-      input.addEventListener('blur', function() {
-        container.classList.remove('no-sidebar');
-      });
-    });
-  }
 });
 </script>
 </body>
