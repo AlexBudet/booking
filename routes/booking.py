@@ -12,6 +12,9 @@ from pytz import timezone as pytz_timezone
 import re
 import os
 import random
+import secrets
+import hmac
+import hashlib
 import uuid
 from markupsafe import escape
 import threading
@@ -102,6 +105,47 @@ _BOOKING_TIMESTAMPS = []  # Lista di timestamp delle ultime prenotazioni complet
 _BOOKING_LOCK = threading.Lock()
 BOOKING_RATE_LIMIT_MAX = 3      # Massimo 3 prenotazioni
 BOOKING_RATE_LIMIT_WINDOW = 240  # in 4 minuti (240 secondi)
+
+# --- CODICE DI CONFERMA EMAIL (/invia-codice e /prenota) ---
+# La sessione di Flask e' un cookie firmato ma NON cifrato: chi lo decodifica
+# (base64) ne legge il contenuto, e prima ci leggeva il codice senza aprire
+# l'email. Ora nella sessione c'e' solo l'impronta HMAC del codice sulla
+# SECRET_KEY (_impronta_codice): dal cookie il codice non si ricava, e senza la
+# chiave non si possono provare offline i 6 cifre. Restano i tentativi online,
+# limitati da CODICE_MAX_ERRORI.
+CODICE_VALIDITA_SECONDI = 30 * 60   # l'email dice "10 minuti": qui un po' di margine
+CODICE_MAX_ERRORI = 5               # codici sbagliati per email...
+CODICE_FINESTRA_ERRORI = 15 * 60    # ...in 15 minuti, poi stop fino a fine finestra
+# Gli errori stanno in memoria del processo, non nella sessione: rimandando un
+# cookie vecchio il conteggio si azzererebbe.
+_CODICE_ERRORI = {}   # email minuscola -> [timestamp dei codici sbagliati]
+_CODICE_ERRORI_LOCK = threading.Lock()
+
+
+def _impronta_codice(email, codice):
+    """HMAC-SHA256 di email+codice sulla SECRET_KEY: e' quello che va in sessione."""
+    chiave = current_app.config['SECRET_KEY']
+    if isinstance(chiave, str):
+        chiave = chiave.encode('utf-8')
+    return hmac.new(chiave, f"{email}|{codice}".encode('utf-8'), hashlib.sha256).hexdigest()
+
+
+def _codice_errori(email, adesso, aggiungi=False, azzera=False):
+    """Codici sbagliati per `email` negli ultimi CODICE_FINESTRA_ERRORI secondi.
+    aggiungi=True ne registra uno, azzera=True cancella il conteggio."""
+    chiave = (email or '').strip().lower()
+    with _CODICE_ERRORI_LOCK:
+        # via gli errori scaduti di tutte le email: il dizionario non cresce
+        for k in list(_CODICE_ERRORI):
+            _CODICE_ERRORI[k] = [t for t in _CODICE_ERRORI[k] if adesso - t < CODICE_FINESTRA_ERRORI]
+            if not _CODICE_ERRORI[k]:
+                del _CODICE_ERRORI[k]
+        if azzera:
+            _CODICE_ERRORI.pop(chiave, None)
+            return []
+        if aggiungi:
+            _CODICE_ERRORI.setdefault(chiave, []).append(adesso)
+        return list(_CODICE_ERRORI.get(chiave, []))
 
 def _op_dbg(tenant_id, msg):
     if WA_OPERATOR_DEBUG:
@@ -1399,16 +1443,46 @@ def _prenota_impl(tenant_id):
     booking_session_id = str(uuid.uuid4())
     operatori_assegnati = data.get('operatori_assegnati')
 
-    # Verifica codice conferma basato sulla sessione
-    codice_sessione = session.get('codice_conferma')
+    # Verifica codice conferma: in sessione c'e' la sua impronta (_impronta_codice)
+    impronta_sessione = session.get('codice_conferma_hmac')
+    # Codice in chiaro delle sessioni aperte prima del 17/11/2026: scade da solo
+    # con CODICE_VALIDITA_SECONDI, poi questo ramo si puo' togliere.
+    codice_vecchio = session.get('codice_conferma')
     email_sessione = session.get('email_conferma')
+    codice_inviato_at = session.get('last_code_sent_at', 0)
+    adesso = datetime.now().timestamp()
 
-    if not codice_sessione or not email_sessione:
+    if not (impronta_sessione or codice_vecchio) or not email_sessione:
         _log_prenota_error(tenant_id, "Nessun codice/email in sessione (sessione scaduta o invia-codice mai chiamato)",
                             email=email, telefono=telefono)
         return jsonify({"success": False, "errori": ["Codice di conferma non valido"]}), 400
 
-    if not codice_conferma or codice_conferma != codice_sessione or email != email_sessione:
+    # Troppi codici sbagliati per questa email: stop fino a fine finestra
+    errori_codice = _codice_errori(email_sessione, adesso)
+    if len(errori_codice) >= CODICE_MAX_ERRORI:
+        attesa_min = max(1, int(CODICE_FINESTRA_ERRORI - (adesso - min(errori_codice)) + 59) // 60)
+        _log_prenota_error(tenant_id, "Troppi codici di conferma sbagliati",
+                            email=email, email_sessione=email_sessione, telefono=telefono)
+        return jsonify({"success": False, "errori": [
+            f"Troppi codici di conferma sbagliati. Riprova tra {attesa_min} minuti, oppure chiamaci."]}), 429
+
+    if adesso - codice_inviato_at > CODICE_VALIDITA_SECONDI:
+        _log_prenota_error(tenant_id, "Codice di conferma scaduto", email=email, telefono=telefono)
+        return jsonify({"success": False, "errori": [
+            "Il codice di conferma è scaduto: ricarica la pagina e chiedine uno nuovo."]}), 400
+
+    codice_dato = str(codice_conferma or '').strip()
+    if impronta_sessione:
+        codice_ok = bool(codice_dato) and hmac.compare_digest(
+            _impronta_codice(email_sessione, codice_dato), impronta_sessione)
+    else:
+        codice_ok = bool(codice_dato) and hmac.compare_digest(
+            codice_dato.encode('utf-8'), str(codice_vecchio).encode('utf-8'))
+
+    if not codice_ok or email != email_sessione:
+        # conta solo i tentativi veri sul codice mandato a questa email
+        if codice_dato and email == email_sessione:
+            _codice_errori(email_sessione, adesso, aggiungi=True)
         _log_prenota_error(tenant_id, "Codice di conferma errato o email non corrispondente",
                             email=email, email_sessione=email_sessione,
                             codice_ricevuto=codice_conferma, telefono=telefono)
@@ -1936,6 +2010,12 @@ def _prenota_impl(tenant_id):
             except Exception as e:
                 print(f"ERROR queueing admin email: {repr(e)}")
 
+    # Codice usato: vale una sola volta (per un'altra prenotazione se ne chiede uno nuovo)
+    if risultati:
+        session.pop('codice_conferma_hmac', None)
+        session.pop('codice_conferma', None)
+        _codice_errori(email_sessione, adesso, azzera=True)
+
     return jsonify({
         "success": len(risultati) > 0,
         "prenotazioni": risultati,
@@ -2263,11 +2343,15 @@ def invia_codice(tenant_id):
         return jsonify({"success": False, "error": f"Puoi inviare un nuovo codice tra {remaining} secondi."}), 429
 
     # Procedi con l'invio: genera codice, registra timestamp, e aggiorna tentativi
-    codice = ''.join(random.choices(string.digits, k=6))
-    print(f"[INVIA-CODICE] Generated code: {codice}")
-    
+    # secrets e non random: il generatore di random non e' fatto per i segreti.
+    # Il codice non va nei log: chi li legge potrebbe usarlo.
+    codice = ''.join(secrets.choice(string.digits) for _ in range(6))
+    print("[INVIA-CODICE] Code generated")
+
     now_ts = datetime.now().timestamp()
-    session['codice_conferma'] = codice
+    # Solo l'impronta, mai il codice in chiaro (vedi _impronta_codice)
+    session['codice_conferma_hmac'] = _impronta_codice(email, codice)
+    session.pop('codice_conferma', None)
     session['email_conferma'] = email
     session['last_code_sent_at'] = now_ts
     session['code_send_attempts'] = attempts + 1
